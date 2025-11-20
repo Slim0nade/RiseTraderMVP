@@ -1,0 +1,136 @@
+# ============================================================================
+# Docker Build Exclusions
+# Files and directories to exclude from Docker build context
+# ============================================================================
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+!README.md
+docs/
+.serena/
+.claude/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+
+# Virtual Environments
+venv/
+env/
+ENV/
+.venv
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing
+tests/
+.coveragerc
+pytest.ini
+.pytest_cache/
+
+# Data & Logs (don't copy into image)
+*.log
+logs/
+data/
+backups/*.dump
+backups/*.sql
+*.csv
+*.parquet
+
+# Docker
+docker-compose*.yml
+Dockerfile*
+.dockerignore
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.circleci/
+
+# Research
+research/
+notebooks/
+*.ipynb
+examples/
+
+# ML Models (will be mounted as volumes)
+models/
+*.pkl
+*.joblib
+*.h5
+*.pt
+*.pth
+*.onnx
+
+# Kubernetes
+k8s/
+*.yaml
+!docker/**/*.yaml
+
+# Environment files (use build args instead)
+.env*
+!.env.example
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.cache
+
+# Node modules (if any)
+node_modules/
+package-lock.json
+yarn.lock
+
+# OS files
+Thumbs.db
+desktop.ini
+
+# Build artifacts
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Secrets
+secrets/
+*.key
+*.pem
+*.crt
+ssl/
+
+# Monitoring configs (mounted as volumes)
+prometheus/
+grafana/

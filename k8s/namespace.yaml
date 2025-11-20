@@ -1,0 +1,11 @@
+# ============================================================================
+# RiseTrader Kubernetes Namespace
+# ============================================================================
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: risetrader
+  labels:
+    name: risetrader
+    environment: production

@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: risetrader-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-risetrader}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-risetrader2024}
+      POSTGRES_HOST_AUTH_METHOD: md5
+      # Performance tuning for development
+      POSTGRES_SHARED_BUFFERS: ${POSTGRES_SHARED_BUFFERS:-256MB}
+      POSTGRES_WORK_MEM: ${POSTGRES_WORK_MEM:-16MB}
+      POSTGRES_MAINTENANCE_WORK_MEM: ${POSTGRES_MAINTENANCE_WORK_MEM:-128MB}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backups:/backups  # Mount for easy backup/restore access
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-risetrader}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - risetrader
+
+  # Redis for caching and pub/sub (ready for future use)
+  redis:
+    image: redis:7-alpine
+    container_name: risetrader-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - risetrader
+
+  # Placeholder for FastAPI service (to be implemented)
+  # api:
+  #   build:
+  #     context: .
+  #     dockerfile: docker/api/Dockerfile
+  #   container_name: risetrader-api
+  #   restart: unless-stopped
+  #   ports:
+  #     - "${API_PORT:-8003}:8000"
+  #   depends_on:
+  #     - postgres
+  #     - redis
+  #   environment:
+  #     DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-risetrader2024}@postgres:5432/${POSTGRES_DB:-risetrader}
+  #     REDIS_URL: redis://redis:6379
+  #   networks:
+  #     - risetrader
+
+volumes:
+  postgres_data:
+    name: risetrader_postgres_data
+  redis_data:
+    name: risetrader_redis_data
+
+networks:
+  risetrader:
+    name: risetrader_network
+    driver: bridge

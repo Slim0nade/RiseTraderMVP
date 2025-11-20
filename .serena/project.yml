@@ -1,0 +1,33 @@
+# Serena Project Configuration for RiseTraderMVP
+# Auto-generated on November 16, 2025
+
+name: RiseTraderMVP
+# Project name (will appear in Serena dashboard)
+
+context: ide-assistant
+# Context type: ide-assistant for development work
+
+description: |
+  Autonomous algorithmic trading platform with 10 specialized agents,
+  ML-powered forecasting, and MetaTrader 4 integration.
+
+  Key Components:
+  - 10 Trading Agents (Signal Generator, Risk Manager, Execution, etc.)
+  - MCP Server for agent coordination
+  - PostgreSQL 17 + Redis infrastructure
+  - FastAPI backend + React dashboard
+  - ML pipeline (PyTorch, XGBoost, MLflow)
+  - MT4 integration via ZMQ
+
+# Language servers and tools will be auto-detected
+# You can customize settings here if needed
+
+# Project-specific excluded patterns (optional)
+# excluded_patterns:
+#   - "*.pyc"
+#   - "__pycache__"
+#   - "node_modules"
+
+# Project-specific tool settings (optional)
+# tool_settings:
+#   max_file_size: 1000000

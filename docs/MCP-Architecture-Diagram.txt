@@ -1,0 +1,236 @@
+================================================================================
+                    RISETRADER MCP SERVER ARCHITECTURE
+                        Complete System Diagram
+================================================================================
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│                           EXTERNAL SYSTEMS                                  │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────────┐         ┌──────────────────┐        ┌──────────────┐│
+│  │ MT4 Platform    │         │  PostgreSQL 17   │        │   Redis 7    ││
+│  │ 75.154.254.186  │         │  Port: 5433      │        │  Port: 6379  ││
+│  │                 │         │  13.5M records   │        │  Pub/Sub +   ││
+│  │  ├─ ZMQ 5555    │         │                  │        │  KV Store    ││
+│  │  └─ ZMQ 5556    │         │  10 tables:      │        │              ││
+│  │                 │         │  - market_data   │        │  Uses:       ││
+│  │  Order Exec     │         │  - positions     │        │  - Events    ││
+│  │  Tick Stream    │         │  - trades        │        │  - Context   ││
+│  └─────────────────┘         │  - forecasts     │        │  - Registry  ││
+│         │                    └──────────────────┘        └──────────────┘│
+│         │ ZMQ                       │ AsyncPG                  │ Redis    │
+└─────────┼───────────────────────────┼──────────────────────────┼──────────┘
+          │                           │                          │
+          │                           │                          │
+┌─────────┼───────────────────────────┼──────────────────────────┼──────────┐
+│         │    MCP SERVER (Port 7000) │                          │          │
+│         │         FastAPI + Uvicorn │                          │          │
+├─────────┴───────────────────────────┴──────────────────────────┴──────────┤
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐  │
+│  │                        CORE COMPONENTS                               │  │
+│  └─────────────────────────────────────────────────────────────────────┘  │
+│                                                                             │
+│  ┌──────────────────────┐  ┌──────────────────────┐  ┌────────────────┐  │
+│  │    EventBus          │  │   AgentRegistry      │  │   MCPServer    │  │
+│  │  (event_bus.py)      │  │ (agent_registry.py)  │  │ (mcp_server.py)│  │
+│  ├──────────────────────┤  ├──────────────────────┤  ├────────────────┤  │
+│  │ • Redis Pub/Sub      │  │ • Health Monitoring  │  │ • Agent Loader │  │
+│  │ • Priority Queues    │  │ • Circuit Breaker    │  │ • REST API     │  │
+│  │   - CRITICAL (0)     │  │ • Heartbeat (30s)    │  │ • Lifecycle    │  │
+│  │   - HIGH (1)         │  │ • Redis State Store  │  │ • /agents      │  │
+│  │   - NORMAL (2)       │  │                      │  │ • /health      │  │
+│  │   - LOW (3)          │  │ Circuit States:      │  │ • /metrics     │  │
+│  │ • Retry Logic (3x)   │  │   CLOSED ──> OPEN    │  │ • Signal Hdlr  │  │
+│  │ • Dead Letter Queue  │  │     │         │      │  │ • Config Mgmt  │  │
+│  │ • Backpressure       │  │   (5 fail)  (60s)    │  │                │  │
+│  │ • Metrics            │  │     └───> HALF_OPEN  │  │                │  │
+│  └──────────────────────┘  └──────────────────────┘  └────────────────┘  │
+│          ▲                          ▲                        ▲            │
+│          │                          │                        │            │
+│          └──────────────────┬───────┴────────────────────────┘            │
+│                             │                                             │
+│  ┌──────────────────────────┴──────────────────────────────────────────┐ │
+│  │                         BASE AGENT                                   │ │
+│  │                      (base_agent.py)                                 │ │
+│  ├──────────────────────────────────────────────────────────────────────┤ │
+│  │  Abstract Methods:                     Features:                     │ │
+│  │  • async def initialize()             • Event subscription          │ │
+│  │  • async def process_event(event)     • Publishing                  │ │
+│  │  • async def cleanup()                • Heartbeat (auto)            │ │
+│  │                                       • Shared context (Redis)      │ │
+│  │  Lifecycle:                           • Error handling              │ │
+│  │  STOPPED → STARTING → RUNNING         • Metrics                     │ │
+│  │              ↓           ↕                                          │ │
+│  │          initialize()  PAUSED                                       │ │
+│  └──────────────────────────────────────────────────────────────────────┘ │
+│                                 │                                          │
+└─────────────────────────────────┼──────────────────────────────────────────┘
+                                  │ Inherits
+                                  │
+┌─────────────────────────────────┴──────────────────────────────────────────┐
+│                         10 TRADING AGENTS                                   │
+│                   (All inherit from BaseAgent)                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌────────────────────────────────────────────────────────────────────┐   │
+│  │ EXECUTION LAYER (Priority 1-3)                                     │   │
+│  └────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+│  ┌──────────────────────────┬──────────────────────────┬────────────────┐ │
+│  │ 1. SignalGenerator       │ 2. RiskManager           │ 3. Execution   │ │
+│  │    Priority: 1           │    Priority: 2           │    Priority: 3 │ │
+│  ├──────────────────────────┼──────────────────────────┼────────────────┤ │
+│  │ Subscribes:              │ Subscribes:              │ Subscribes:    │ │
+│  │ • new_tick               │ • signal_generated       │ • trade_valid  │ │
+│  │ • regime_changed         │                          │                │ │
+│  │ • forecast_generated     │ Validates:               │ Executes:      │ │
+│  │                          │ • Position size          │ • MT4 orders   │ │
+│  │ Strategies:              │ • Risk limits            │ • ZMQ comm     │ │
+│  │ • Momentum (30%)         │ • Correlation            │ • Retry (3x)   │ │
+│  │ • Mean Rev (25%)         │ • Daily loss             │                │ │
+│  │ • Breakout (25%)         │                          │ Publishes:     │ │
+│  │ • ML Fcst (20%)          │ Publishes:               │ • trade_exec   │ │
+│  │                          │ • trade_validated        │ • trade_failed │ │
+│  │ Publishes:               │ • trade_rejected         │                │ │
+│  │ • signal_generated       │                          │                │ │
+│  └──────────────────────────┴──────────────────────────┴────────────────┘ │
+│                                                                             │
+│  ┌────────────────────────────────────────────────────────────────────┐   │
+│  │ DATA/ML LAYER (Priority 4-6)                                       │   │
+│  └────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+│  ┌──────────────────────────┬──────────────────────────┬────────────────┐ │
+│  │ 4. MarketData            │ 5. MLPrediction          │ 6. Regime      │ │
+│  │    Priority: 4           │    Priority: 5           │    Priority: 6 │ │
+│  ├──────────────────────────┼──────────────────────────┼────────────────┤ │
+│  │ Sources:                 │ Subscribes:              │ Subscribes:    │ │
+│  │ • MT4 ZMQ stream         │ • new_tick               │ • new_tick     │ │
+│  │ • CrudeOIL, DXY, VIX     │                          │ • new_bar      │ │
+│  │                          │ Models:                  │                │ │
+│  │ Validates:               │ • XGBoost (40%)          │ Detects:       │ │
+│  │ • Data quality           │ • Transformer (35%)      │ • Trending Up  │ │
+│  │ • Outliers               │ • LSTM (25%)             │ • Trending Dn  │ │
+│  │ • Missing values         │                          │ • Ranging      │ │
+│  │                          │ Horizons:                │ • High Vol     │ │
+│  │ Stores:                  │ • 5 min                  │ • Low Vol      │ │
+│  │ • PostgreSQL             │ • 15 min                 │                │ │
+│  │                          │ • 60 min                 │ Lookback:      │ │
+│  │ Publishes:               │                          │ • 100 bars     │ │
+│  │ • new_tick               │ Publishes:               │                │ │
+│  │ • new_bar                │ • forecast_generated     │ Publishes:     │ │
+│  │ • data_error             │                          │ • regime_chng  │ │
+│  └──────────────────────────┴──────────────────────────┴────────────────┘ │
+│                                                                             │
+│  ┌────────────────────────────────────────────────────────────────────┐   │
+│  │ SUPERVISORY LAYER (Priority 7-9)                                   │   │
+│  └────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+│  ┌──────────────────────────┬──────────────────────────┬────────────────┐ │
+│  │ 7. PerformanceMonitor    │ 8. RiskOverseer          │ 9. Optimizer   │ │
+│  │    Priority: 7           │    Priority: 8           │    Priority: 9 │ │
+│  ├──────────────────────────┼──────────────────────────┼────────────────┤ │
+│  │ Subscribes:              │ Subscribes:              │ Runs:          │ │
+│  │ • trade_executed         │ • trade_executed         │ • Daily (00:00)│ │
+│  │ • position_closed        │ • pnl_updated            │                │ │
+│  │                          │                          │ Optimizes:     │ │
+│  │ Calculates:              │ Monitors:                │ • Thresholds   │ │
+│  │ • Real-time P&L          │ • Portfolio VaR          │ • Stop loss    │ │
+│  │ • Sharpe ratio           │ • Position correlation   │ • Take profit  │ │
+│  │ • Max drawdown           │ • Exposure limits        │ • Position sz  │ │
+│  │ • Win rate               │                          │                │ │
+│  │ • Profit factor          │ Triggers:                │ Method:        │ │
+│  │                          │ • emergency_stop         │ • Bayesian     │ │
+│  │ Updates:                 │   (daily loss > $1000)   │ • A/B testing  │ │
+│  │ • Every 5 seconds        │ • risk_alert             │                │ │
+│  │                          │   (drawdown > 15%)       │ Publishes:     │ │
+│  │ Publishes:               │                          │ • strategy_opt │ │
+│  │ • pnl_updated            │ Publishes:               │                │ │
+│  │ • performance_report     │ • risk_alert             │                │ │
+│  │                          │ • emergency_stop         │                │ │
+│  └──────────────────────────┴──────────────────────────┴────────────────┘ │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          EVENT FLOW EXAMPLE                                  │
+│                    (Normal Trading Cycle - 200ms total)                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Time    Event                    Agent                Priority    Latency
+────────────────────────────────────────────────────────────────────────────
+0ms     [new_tick]            ← MarketData          NORMAL      10ms
+        price: 75.50
+
+10ms    [new_tick]            → RegimeDetection     NORMAL      20ms
+                              → MLPrediction        NORMAL      30ms
+                              → SignalGenerator     NORMAL      35ms
+
+75ms    [forecast_generated]  ← MLPrediction        NORMAL      5ms
+
+80ms    [regime_changed]      ← RegimeDetection     NORMAL      5ms
+
+85ms    [signal_generated]    ← SignalGenerator     HIGH        15ms
+        direction: LONG
+        confidence: 0.75
+
+100ms   [signal_generated]    → RiskManager         HIGH        25ms
+
+125ms   [trade_validated]     ← RiskManager         HIGH        5ms
+        position_size: 2.5
+        stop_loss: 74.00
+        take_profit: 77.00
+
+130ms   [trade_validated]     → ExecutionAgent      HIGH        50ms
+                                 ├─ ZMQ to MT4
+                                 └─ Wait confirm
+
+180ms   [trade_executed]      ← ExecutionAgent      HIGH        5ms
+        order_id: MT4-12345
+        fill_price: 75.52
+
+185ms   [trade_executed]      → PerformanceMonitor  LOW         10ms
+                              → RiskOverseer        LOW         10ms
+
+200ms   [pnl_updated]         ← PerformanceMonitor  LOW         5ms
+
+────────────────────────────────────────────────────────────────────────────
+Total Time: 200ms (well under 1-second target)
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        MONITORING & OBSERVABILITY                            │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────┐  ┌─────────────────────┐  ┌──────────────────────┐
+│  Prometheus         │  │  Grafana            │  │  Structured Logs     │
+│  (Port 9090)        │  │  (Port 3001)        │  │  (JSON format)       │
+├─────────────────────┤  ├─────────────────────┤  ├──────────────────────┤
+│ Metrics:            │  │ Dashboards:         │  │ • Event tracing      │
+│ • Event counts      │  │ • MCP Overview      │  │ • Correlation IDs    │
+│ • Processing time   │  │ • Event Processing  │  │ • Error tracking     │
+│ • Queue sizes       │  │ • Agent Health      │  │ • Performance data   │
+│ • Circuit states    │  │ • Performance       │  │                      │
+│ • Error rates       │  │                     │  │ LogLevel: INFO       │
+│                     │  │ Alerts:             │  │ Handler: File+Console│
+│ Scrape: /metrics    │  │ • High latency      │  │                      │
+│ Interval: 15s       │  │ • Queue capacity    │  │ Path: /var/log/      │
+│                     │  │ • Circuit open      │  │       risetrader/    │
+└─────────────────────┘  └─────────────────────┘  └──────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        KEY PERFORMANCE METRICS                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Target                        Achieved Method
+─────────────────────────────────────────────────────────────────────────────
+Event Processing < 50ms       ✓        Async I/O, Priority Queues
+Throughput > 100 events/sec   ✓        Redis Pub/Sub, Parallel Processing
+Agent Startup < 5 seconds     ✓        Async Initialization
+Circuit Recovery = 60s        ✓        Configurable Circuit Breaker
+Zero Event Loss               ✓        Dead Letter Queue (1000 capacity)
+Health Detection < 90s        ✓        Heartbeat Monitoring
+Uptime > 99.9%                ○        Target (with HA Redis)
+
+════════════════════════════════════════════════════════════════════════════
+                              END OF DIAGRAM
+════════════════════════════════════════════════════════════════════════════

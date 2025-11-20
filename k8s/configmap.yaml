@@ -1,0 +1,49 @@
+# ============================================================================
+# RiseTrader ConfigMap
+# Non-sensitive configuration
+# ============================================================================
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: risetrader-config
+  namespace: risetrader
+data:
+  # Database
+  POSTGRES_DB: "risetrader"
+  POSTGRES_USER: "postgres"
+  POSTGRES_HOST: "postgres.risetrader.svc.cluster.local"
+  POSTGRES_PORT: "5432"
+
+  # Redis
+  REDIS_HOST: "redis.risetrader.svc.cluster.local"
+  REDIS_PORT: "6379"
+
+  # API
+  HOST: "0.0.0.0"
+  PORT: "8000"
+  LOG_LEVEL: "info"
+  API_WORKERS: "4"
+
+  # MT4
+  MT4_HOST: "75.154.254.186"
+  MT4_COMMAND_PORT: "5555"
+  MT4_STREAM_PORT: "5556"
+
+  # Features
+  ENABLE_PAPER_TRADING: "true"
+  ENABLE_LIVE_TRADING: "false"
+  ENABLE_FORECASTING: "true"
+
+  # Risk Limits
+  MAX_POSITION_SIZE: "10.0"
+  MAX_DAILY_LOSS: "1000.0"
+  MAX_OPEN_POSITIONS: "5"
+
+  # Monitoring
+  PROMETHEUS_ENABLED: "true"
+  MLFLOW_TRACKING_URI: "http://mlflow.risetrader.svc.cluster.local:5000"
+
+  # CORS
+  CORS_ENABLED: "true"
+  CORS_CREDENTIALS: "true"

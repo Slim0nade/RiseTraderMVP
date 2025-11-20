@@ -1,0 +1,59 @@
+# RiseTrader Requirements
+# Generated: 2025-11-16
+# Python 3.11+
+
+# Core Framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0.post1
+python-multipart==0.0.6
+
+# Database
+sqlalchemy==2.0.23
+asyncpg==0.29.0
+alembic==1.12.1
+psycopg2-binary==2.9.9
+
+# Redis & Caching
+redis==5.0.1
+hiredis==2.3.2
+
+# MCP & Agent System - ZMQ for MT4 communication
+pyzmq==25.1.2
+msgpack==1.0.7
+
+# ML & Data Science
+torch==2.1.1
+xgboost==2.0.3
+scikit-learn==1.3.2
+pandas==2.1.3
+numpy==1.26.2
+optuna==3.4.0
+
+# MLflow & Experiment Tracking
+mlflow==2.9.1
+
+# Technical Analysis
+# Note: TA-Lib requires system installation first
+# macOS: brew install ta-lib
+# Ubuntu: sudo apt-get install ta-lib
+# Then: pip install TA-Lib
+TA-Lib==0.4.28
+pandas-ta==0.3.14b0
+
+# API & Validation
+pydantic==2.5.2
+pydantic-settings==2.1.0
+
+# Security
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-dotenv==1.0.0
+
+# Monitoring & Logging
+prometheus-client==0.19.0
+structlog==23.2.0
+
+# Utilities
+httpx==0.25.2
+aiofiles==23.2.1
+python-dateutil==2.8.2

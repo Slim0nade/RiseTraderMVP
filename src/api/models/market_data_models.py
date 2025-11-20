@@ -14,30 +14,32 @@ class MarketDataResponse(BaseModel):
 
     id: int
     symbol: str
-    timestamp: datetime
+    time: datetime
+    timeframe: str
     open: Decimal
     high: Decimal
     low: Decimal
     close: Decimal
-    volume: Optional[int] = None
-    tick_volume: Optional[int] = None
-    spread: Optional[int] = None
-    real_volume: Optional[int] = None
+    volume: int
+    import_symbol: Optional[str] = None
+    source: Optional[str] = None
+    change: Optional[Decimal] = None
+    change_percent: Optional[Decimal] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     class Config:
         json_schema_extra = {
             "example": {
                 "id": 1,
                 "symbol": "CrudeOIL",
-                "timestamp": "2024-01-15T10:30:00Z",
+                "time": "2024-01-15T10:30:00Z",
+                "timeframe": "M5",
                 "open": 72.45,
                 "high": 72.65,
                 "low": 72.40,
                 "close": 72.55,
                 "volume": 1500,
-                "tick_volume": 150,
-                "spread": 2,
-                "real_volume": 1500,
             }
         }
 
@@ -73,10 +75,10 @@ class SymbolInfoResponse(BaseModel):
     symbol: str
     description: Optional[str] = None
     latest_price: Optional[Decimal] = None
-    latest_timestamp: Optional[datetime] = None
+    latest_time: Optional[datetime] = None
     data_points_count: int
-    first_timestamp: Optional[datetime] = None
-    last_timestamp: Optional[datetime] = None
+    first_time: Optional[datetime] = None
+    last_time: Optional[datetime] = None
 
     class Config:
         json_schema_extra = {
@@ -84,10 +86,10 @@ class SymbolInfoResponse(BaseModel):
                 "symbol": "CrudeOIL",
                 "description": "Crude Oil Futures",
                 "latest_price": 72.55,
-                "latest_timestamp": "2024-01-15T10:30:00Z",
+                "latest_time": "2024-01-15T10:30:00Z",
                 "data_points_count": 50000,
-                "first_timestamp": "2024-01-01T00:00:00Z",
-                "last_timestamp": "2024-01-15T10:30:00Z",
+                "first_time": "2024-01-01T00:00:00Z",
+                "last_time": "2024-01-15T10:30:00Z",
             }
         }
 

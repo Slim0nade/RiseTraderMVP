@@ -1,0 +1,469 @@
+# ============================================================================
+# RiseTrader Production Docker Compose Configuration
+# Complete production deployment with monitoring and security
+# ============================================================================
+
+version: '3.8'
+
+# ============================================================================
+# Networks
+# ============================================================================
+networks:
+  frontend:
+    name: risetrader_frontend
+    driver: bridge
+  backend:
+    name: risetrader_backend
+    driver: bridge
+    internal: true  # Backend not accessible from outside
+  monitoring:
+    name: risetrader_monitoring
+    driver: bridge
+
+# ============================================================================
+# Volumes
+# ============================================================================
+volumes:
+  postgres_data:
+    name: risetrader_postgres_data
+  redis_data:
+    name: risetrader_redis_data
+  prometheus_data:
+    name: risetrader_prometheus_data
+  grafana_data:
+    name: risetrader_grafana_data
+  elasticsearch_data:
+    name: risetrader_elasticsearch_data
+  mlflow_data:
+    name: risetrader_mlflow_data
+  model_cache:
+    name: risetrader_model_cache
+
+# ============================================================================
+# Services
+# ============================================================================
+services:
+  # ==========================================================================
+  # Core Infrastructure
+  # ==========================================================================
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: risetrader-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-risetrader}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST_AUTH_METHOD: md5
+      # Performance tuning for production
+      POSTGRES_SHARED_BUFFERS: ${POSTGRES_SHARED_BUFFERS:-512MB}
+      POSTGRES_WORK_MEM: ${POSTGRES_WORK_MEM:-32MB}
+      POSTGRES_MAINTENANCE_WORK_MEM: ${POSTGRES_MAINTENANCE_WORK_MEM:-256MB}
+      POSTGRES_EFFECTIVE_CACHE_SIZE: ${POSTGRES_EFFECTIVE_CACHE_SIZE:-2GB}
+      POSTGRES_MAX_CONNECTIONS: ${POSTGRES_MAX_CONNECTIONS:-200}
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=200"
+      - "-c"
+      - "shared_buffers=512MB"
+      - "-c"
+      - "effective_cache_size=2GB"
+      - "-c"
+      - "maintenance_work_mem=256MB"
+      - "-c"
+      - "checkpoint_completion_target=0.9"
+      - "-c"
+      - "wal_buffers=16MB"
+      - "-c"
+      - "default_statistics_target=100"
+      - "-c"
+      - "random_page_cost=1.1"
+      - "-c"
+      - "effective_io_concurrency=200"
+      - "-c"
+      - "work_mem=32MB"
+      - "-c"
+      - "min_wal_size=1GB"
+      - "-c"
+      - "max_wal_size=4GB"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backups:/backups
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-risetrader}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+
+  redis:
+    image: redis:7-alpine
+    container_name: risetrader-redis
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly yes
+      - --appendfsync everysec
+      - --maxmemory 512mb
+      - --maxmemory-policy allkeys-lru
+      - --tcp-backlog 511
+      - --timeout 300
+      - --tcp-keepalive 60
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+  # ==========================================================================
+  # Application Services
+  # ==========================================================================
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/api/Dockerfile
+      args:
+        - BUILD_DATE=${BUILD_DATE}
+        - VCS_REF=${VCS_REF}
+    image: risetrader/api:${VERSION:-latest}
+    container_name: risetrader-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      # Database
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-risetrader}
+      REDIS_URL: redis://redis:6379
+
+      # API Configuration
+      HOST: 0.0.0.0
+      PORT: 8000
+      WORKERS: ${API_WORKERS:-4}
+      RELOAD: false
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+
+      # Security
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      API_KEY: ${API_KEY}
+      CORS_ENABLED: "true"
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,https://localhost}
+
+      # MT4 Connection
+      MT4_HOST: ${MT4_HOST:-75.154.254.186}
+      MT4_COMMAND_PORT: ${MT4_COMMAND_PORT:-5555}
+      MT4_STREAM_PORT: ${MT4_STREAM_PORT:-5556}
+      ZMQ_CLIENT_SECRET_KEY: ${ZMQ_CLIENT_SECRET_KEY}
+      ZMQ_CLIENT_PUBLIC_KEY: ${ZMQ_CLIENT_PUBLIC_KEY}
+      ZMQ_SERVER_PUBLIC_KEY: ${ZMQ_SERVER_PUBLIC_KEY}
+
+      # Risk Limits
+      MAX_POSITION_SIZE: ${MAX_POSITION_SIZE:-10.0}
+      MAX_DAILY_LOSS: ${MAX_DAILY_LOSS:-1000.0}
+      MAX_OPEN_POSITIONS: ${MAX_OPEN_POSITIONS:-5}
+
+      # Feature Flags
+      ENABLE_PAPER_TRADING: ${ENABLE_PAPER_TRADING:-true}
+      ENABLE_LIVE_TRADING: ${ENABLE_LIVE_TRADING:-false}
+      ENABLE_FORECASTING: ${ENABLE_FORECASTING:-true}
+
+      # Monitoring
+      PROMETHEUS_ENABLED: "true"
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+
+      # Python Environment
+      PYTHONPATH: /app
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+      - model_cache:/app/models
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - frontend
+      - backend
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+
+  ml-service:
+    build:
+      context: .
+      dockerfile: docker/ml-service/Dockerfile
+    image: risetrader/ml-service:${VERSION:-latest}
+    container_name: risetrader-ml-service
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-risetrader}
+      REDIS_URL: redis://redis:6379
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MODEL_CACHE_DIR: /app/models
+      PYTHONPATH: /app
+      PYTHONUNBUFFERED: "1"
+      # ML optimizations
+      OMP_NUM_THREADS: 4
+      MKL_NUM_THREADS: 4
+    volumes:
+      - ./logs:/app/logs
+      - model_cache:/app/models
+      - ./data:/app/data
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G
+        reservations:
+          cpus: '2'
+          memory: 2G
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.9.1
+    container_name: risetrader-mlflow
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      MLFLOW_BACKEND_STORE_URI: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-risetrader}
+      MLFLOW_ARTIFACT_ROOT: /mlflow/artifacts
+      MLFLOW_DEFAULT_ARTIFACT_ROOT: /mlflow/artifacts
+    volumes:
+      - mlflow_data:/mlflow
+    command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-risetrader} --default-artifact-root /mlflow/artifacts
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - backend
+      - monitoring
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: docker/dashboard/Dockerfile
+      args:
+        - VITE_API_URL=${VITE_API_URL:-https://localhost/api}
+    image: risetrader/dashboard:${VERSION:-latest}
+    container_name: risetrader-dashboard
+    restart: unless-stopped
+    depends_on:
+      - api
+    networks:
+      - frontend
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+  # ==========================================================================
+  # Monitoring Stack
+  # ==========================================================================
+
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: risetrader-prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./docker/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - monitoring
+      - backend
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+
+  grafana:
+    image: grafana/grafana:10.2.2
+    container_name: risetrader-grafana
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_INSTALL_PLUGINS: grafana-piechart-panel,grafana-clock-panel
+      GF_SERVER_ROOT_URL: https://localhost/grafana/
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./docker/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./docker/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - monitoring
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: risetrader-elasticsearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - xpack.security.enabled=false
+      - xpack.security.enrollment.enabled=false
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - monitoring
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.11.0
+    container_name: risetrader-logstash
+    restart: unless-stopped
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    volumes:
+      - ./docker/logstash/pipeline:/usr/share/logstash/pipeline:ro
+      - ./logs:/logs:ro
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+      LS_JAVA_OPTS: "-Xmx256m -Xms256m"
+    networks:
+      - monitoring
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    container_name: risetrader-kibana
+    restart: unless-stopped
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+      SERVER_BASEPATH: /kibana
+      SERVER_REWRITEBASEPATH: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5601/api/status || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - monitoring
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  # ==========================================================================
+  # Gateway
+  # ==========================================================================
+
+  nginx:
+    build:
+      context: .
+      dockerfile: docker/nginx/Dockerfile
+    image: risetrader/nginx:${VERSION:-latest}
+    container_name: risetrader-nginx
+    restart: unless-stopped
+    depends_on:
+      - api
+      - dashboard
+      - grafana
+      - prometheus
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./logs/nginx:/var/log/nginx
+      - ./ssl:/etc/nginx/ssl:ro  # Mount production SSL certificates
+    networks:
+      - frontend
+      - monitoring
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 256M

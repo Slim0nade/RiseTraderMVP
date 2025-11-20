@@ -1,0 +1,202 @@
+# Agent System Configuration
+# RiseTrader 10-Agent System
+
+mcp_server:
+  host: "0.0.0.0"
+  port: 7000
+  max_connections: 100
+  heartbeat_interval: 30  # seconds
+
+agents:
+  # ========================================
+  # Execution Layer Agents
+  # ========================================
+
+  signal_generator:
+    enabled: true
+    class: "src.agents.execution.signal_generator.SignalGeneratorAgent"
+    priority: 1
+    config:
+      strategies:
+        - name: "momentum"
+          enabled: true
+          weight: 0.3
+        - name: "mean_reversion"
+          enabled: true
+          weight: 0.25
+        - name: "breakout"
+          enabled: true
+          weight: 0.25
+        - name: "ml_forecast"
+          enabled: true
+          weight: 0.2
+      signal_threshold: 0.6
+      min_confidence: 0.5
+
+  risk_manager:
+    enabled: true
+    class: "src.agents.execution.risk_manager.RiskManagerAgent"
+    priority: 2
+    config:
+      max_position_size: 10.0
+      max_daily_loss: 1000.0
+      max_open_positions: 5
+      max_correlation: 0.7
+      position_sizing_method: "kelly"  # kelly, fixed, volatility
+      risk_per_trade: 0.02  # 2% of capital
+
+  execution:
+    enabled: true
+    class: "src.agents.execution.execution.ExecutionAgent"
+    priority: 3
+    config:
+      mt4_host: "${MT4_HOST}"
+      mt4_command_port: "${MT4_COMMAND_PORT}"
+      mt4_stream_port: "${MT4_STREAM_PORT}"
+      use_encryption: true  # ZMQ CurveZMQ
+      max_retry: 3
+      retry_delay: 1.0  # seconds
+      timeout: 5.0  # seconds
+      slippage_tolerance: 0.0002  # 2 pips
+
+  # ========================================
+  # Data/ML Layer Agents
+  # ========================================
+
+  market_data:
+    enabled: true
+    class: "src.agents.data_ml.market_data.MarketDataAgent"
+    priority: 4
+    config:
+      symbols:
+        - "CrudeOIL"
+        - "DXY"
+        - "VIX"
+      timeframes:
+        - "M1"
+        - "M5"
+      stream_batch_size: 10
+      validation_enabled: true
+      store_to_db: true
+
+  ml_prediction:
+    enabled: true
+    class: "src.agents.data_ml.ml_prediction.MLPredictionAgent"
+    priority: 5
+    config:
+      models:
+        - type: "xgboost"
+          version: "latest"
+          weight: 0.4
+        - type: "transformer"
+          version: "latest"
+          weight: 0.35
+        - type: "lstm"
+          version: "latest"
+          weight: 0.25
+      forecast_horizons:
+        - 5    # 5 minutes
+        - 15   # 15 minutes
+        - 60   # 1 hour
+      ensemble_method: "weighted_average"
+      confidence_threshold: 0.6
+      mlflow_tracking: true
+
+  regime_detection:
+    enabled: true
+    class: "src.agents.data_ml.regime_detection.RegimeDetectionAgent"
+    priority: 6
+    config:
+      regimes:
+        - "trending_up"
+        - "trending_down"
+        - "ranging"
+        - "high_volatility"
+        - "low_volatility"
+      lookback_period: 100  # bars
+      update_frequency: 60  # seconds
+
+  # ========================================
+  # Supervisory Layer Agents
+  # ========================================
+
+  performance_monitor:
+    enabled: true
+    class: "src.agents.supervisory.performance_monitor.PerformanceMonitorAgent"
+    priority: 7
+    config:
+      metrics:
+        - "pnl"
+        - "sharpe_ratio"
+        - "max_drawdown"
+        - "win_rate"
+        - "profit_factor"
+      update_frequency: 5  # seconds
+      alert_thresholds:
+        daily_loss: -500.0
+        drawdown: -0.10  # 10%
+      report_frequency: 3600  # 1 hour
+
+  risk_overseer:
+    enabled: true
+    class: "src.agents.supervisory.risk_overseer.RiskOverseerAgent"
+    priority: 8
+    config:
+      checks:
+        - "position_concentration"
+        - "correlation"
+        - "var"  # Value at Risk
+        - "exposure"
+      check_frequency: 10  # seconds
+      emergency_stop_conditions:
+        max_daily_loss: -1000.0
+        max_drawdown: -0.15  # 15%
+        max_open_positions: 10
+      auto_hedge: false
+
+  strategy_optimizer:
+    enabled: true
+    class: "src.agents.supervisory.strategy_optimizer.StrategyOptimizerAgent"
+    priority: 9
+    config:
+      optimization_method: "bayesian"  # grid, random, bayesian
+      evaluation_window: 1000  # trades
+      optimization_frequency: 86400  # 24 hours
+      a_b_testing: true
+      parameters_to_optimize:
+        - "signal_threshold"
+        - "stop_loss"
+        - "take_profit"
+        - "position_size"
+      performance_metric: "sharpe_ratio"
+      min_sample_size: 100
+
+# Event Configuration
+events:
+  retry_failed: true
+  retry_max_attempts: 3
+  retry_delay: 1.0
+  timeout: 30.0
+
+# Logging Configuration
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  format: "json"
+  handlers:
+    console: true
+    file: true
+    prometheus: true
+  file_path: "/var/log/risetrader/agents.log"
+
+# Health Check Configuration
+health_check:
+  enabled: true
+  interval: 60  # seconds
+  endpoint: "/agents/health"
+
+# Circuit Breaker Configuration
+circuit_breaker:
+  enabled: true
+  failure_threshold: 5
+  recovery_timeout: 60  # seconds
+  half_open_max_calls: 3
