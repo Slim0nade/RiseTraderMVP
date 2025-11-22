@@ -389,3 +389,9 @@ Market Tick → MarketDataAgent validates
 ```
 
 This autonomous flow requires careful testing and monitoring at each stage.
+
+## Active Technologies
+- PostgreSQL 15+ with async operations (positions, orders, account state, EA registry) (001-mt4-integration)
+
+## Recent Changes
+- 001-mt4-integration: Added Python 3.11+
