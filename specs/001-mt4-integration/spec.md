@@ -74,6 +74,24 @@ The trading system needs to query MT4 for current account information including 
 
 ---
 
+### User Story 5 - Manage Multiple Expert Advisors (Priority: P2)
+
+The trading system needs to connect to and coordinate multiple Expert Advisors (EAs) running simultaneously in MT4, each executing different trading strategies. The system must track which orders belong to which EA (via magic numbers), aggregate risk across all EAs, and ensure that portfolio-level risk limits are not exceeded by the combined activity of all strategies.
+
+**Why this priority**: Supporting multiple EAs is essential for running a diversified trading portfolio with multiple strategies. However, single-EA operation can be validated first, making this lower priority than basic execution capabilities. This becomes critical before production deployment with real strategies.
+
+**Independent Test**: Can be tested by launching 3 EAs in MT4 with different magic numbers, sending orders from each, and verifying that the system correctly attributes orders to their respective EAs and calculates cumulative risk. Delivers multi-strategy portfolio management.
+
+**Acceptance Scenarios**:
+
+1. **Given** 3 EAs are running with magic numbers 100001, 100002, and 100003, **When** each EA places an order, **Then** the system correctly identifies which EA placed each order using the magic number
+2. **Given** multiple EAs are active, **When** querying open positions, **Then** the system returns all positions grouped by EA/magic number
+3. **Given** EA1 has 2 open positions using 40% margin and EA2 has 1 position using 35% margin, **When** calculating portfolio risk, **Then** the system reports 75% total margin usage across all EAs
+4. **Given** portfolio risk limit is 80% margin usage, **When** EA3 attempts to open a position requiring 20% margin, **Then** the system blocks the order to prevent exceeding the 80% limit
+5. **Given** multiple EAs are streaming market data, **When** price updates arrive, **Then** each EA receives updates only for its subscribed symbols without interference
+
+---
+
 ### Edge Cases
 
 - What happens when MT4 connection is lost while orders are in-flight?
@@ -84,6 +102,10 @@ The trading system needs to query MT4 for current account information including 
 - How does the system handle MT4 server maintenance windows or broker disconnections?
 - What if message queues overflow during high-frequency trading periods?
 - How does the system distinguish between network issues vs MT4 platform issues?
+- What happens if one EA crashes while others continue running?
+- How does the system handle magic number conflicts if two EAs are accidentally assigned the same magic number?
+- What if portfolio risk limits are reached but one EA has an emergency close order that needs to execute?
+- How does the system handle the case where MT4 terminal is restarted and all EA connections need to re-establish?
 
 ## Requirements *(mandatory)*
 
@@ -99,19 +121,26 @@ The trading system needs to query MT4 for current account information including 
 - **FR-008**: System MUST query open positions list with details (symbol, volume, open price, current price, P&L)
 - **FR-009**: System MUST query order history for specified time periods
 - **FR-010**: System MUST detect connection failures and automatically attempt reconnection with exponential backoff
-- **FR-011**: System MUST encrypt all communication with MT4 using [NEEDS CLARIFICATION: CurveZMQ encryption or VPN tunnel - which approach should be implemented?]
+- **FR-011**: System MUST encrypt all communication with MT4 using CurveZMQ encryption with key pairs (client secret key, client public key, server public key)
 - **FR-012**: System MUST handle MT4 error responses (insufficient margin, invalid parameters, market closed) and propagate errors to calling agents
 - **FR-013**: System MUST maintain message ordering for critical operations (order submission, position updates)
 - **FR-014**: System MUST implement timeout handling for all MT4 requests with configurable timeout values (default: 5 seconds for commands, 10 seconds for queries)
 - **FR-015**: System MUST log all MT4 communication (requests, responses, errors) with timestamps and correlation IDs for audit purposes
+- **FR-016**: System MUST support multiple Expert Advisor (EA) connections simultaneously, with up to 100 EAs per MT4 terminal instance
+- **FR-017**: System MUST assign and track unique magic numbers for each EA to prevent order interference between different strategies
+- **FR-018**: System MUST aggregate risk metrics across all connected EAs to calculate cumulative portfolio exposure
+- **FR-019**: System MUST enforce portfolio-level risk limits that consider the combined positions and margin usage of all EAs
+- **FR-020**: System MUST identify orders by both magic number and ticket number to support EA-specific order management
 
 ### Key Entities
 
-- **Trading Order**: Represents an order to be executed on MT4, containing symbol, direction (BUY/SELL), volume, order type (market/limit/stop), optional stop-loss, optional take-profit, and timestamp
-- **Order Confirmation**: Represents MT4's response to an order submission, containing success/failure status, MT4 ticket number, execution price, execution timestamp, and any error messages
-- **Position**: Represents an open trading position in MT4, containing ticket number, symbol, direction, volume, open price, current price, unrealized P&L, open timestamp
+- **Expert Advisor (EA)**: Represents a trading strategy instance running in MT4, containing unique EA identifier, magic number, assigned symbol(s), connection ports (REP/PUB), encryption keys, and active status
+- **Trading Order**: Represents an order to be executed on MT4, containing symbol, direction (BUY/SELL), volume, order type (market/limit/stop), optional stop-loss, optional take-profit, magic number, and timestamp
+- **Order Confirmation**: Represents MT4's response to an order submission, containing success/failure status, MT4 ticket number, magic number, execution price, execution timestamp, and any error messages
+- **Position**: Represents an open trading position in MT4, containing ticket number, magic number, symbol, direction, volume, open price, current price, unrealized P&L, open timestamp
 - **Market Tick**: Represents a real-time price update from MT4, containing symbol, bid price, ask price, and timestamp
 - **Account Status**: Represents current MT4 account state, containing balance, equity, margin used, free margin, margin level percentage, and number of open positions
+- **Portfolio Risk State**: Represents aggregated risk across all EAs, containing total exposure by symbol, cumulative margin usage, number of active EAs, total open positions, and combined unrealized P&L
 - **Connection State**: Represents the communication link status with MT4, containing connection status (connected/disconnected/reconnecting), last successful message timestamp, error count, and reconnection attempts
 
 ## Success Criteria *(mandatory)*
@@ -132,15 +161,17 @@ The trading system needs to query MT4 for current account information including 
 ## Assumptions
 
 1. **MT4 Server Location**: MT4 server is located at IP address 75.154.254.186 as documented in project files
-2. **Communication Protocol**: Assumes bi-directional message passing protocol is supported by MT4 (command port for requests, stream port for real-time updates)
-3. **MT4 Availability**: Assumes MT4 platform and broker connection are available during configured trading hours (24/5 for forex/commodities)
-4. **Network Reliability**: Assumes reasonably stable network connection with internet access between trading system and MT4 server
-5. **Message Format**: Assumes MT4 integration supports structured message formats (likely JSON or binary protocol) for commands and responses
-6. **Order Types**: Assumes MT4 supports standard order types (market, limit, stop) and modification operations
-7. **Real-time Capabilities**: Assumes MT4 platform can push real-time updates rather than requiring constant polling
-8. **Concurrent Operations**: Assumes MT4 can handle multiple simultaneous requests (orders, queries, subscriptions) from the trading system
-9. **Error Reporting**: Assumes MT4 provides structured error codes and messages for failure scenarios
-10. **Historical Data**: Assumes MT4 provides access to recent order history (at minimum, past 24-48 hours)
+2. **ZMQ Socket Architecture**: Each EA uses dual ZMQ sockets - REP socket (port 5555 + EA offset) for request/response commands, PUB socket (port 5556 + EA offset) for real-time market data streaming
+3. **Message Format**: JSON-formatted messages for all commands and responses between trading system and MT4 EAs
+4. **MT4 Availability**: Assumes MT4 platform and broker connection are available during configured trading hours (24/5 for forex/commodities with specific session windows)
+5. **Network Reliability**: Assumes reasonably stable network connection with internet access between trading system and MT4 server
+6. **Order Types**: MT4 supports standard order types (OP_BUY, OP_SELL for market orders; OP_BUYLIMIT, OP_SELLLIMIT, OP_BUYSTOP, OP_SELLSTOP for pending orders)
+7. **Real-time Capabilities**: MT4 EAs push real-time updates via PUB socket including OHLCV data, technical indicators (MA, RSI, MACD, Bollinger Bands, ATR, SAR, VWAP, Fibonacci levels), and trading signals
+8. **Concurrent Operations**: MT4 can handle multiple simultaneous requests (orders, queries, subscriptions) from the trading system across multiple EAs
+9. **Error Reporting**: MT4 provides GetLastError() codes and structured error messages in JSON responses
+10. **Historical Data**: MT4 provides access to recent order history via get_account_info and historical price data via iTime/iOpen/iHigh/iLow/iClose functions
+11. **Magic Number Range**: Each EA is assigned a unique magic number in the range 100000-999999 to identify its orders
+12. **EA Command Set**: Existing EA prototype supports commands including test_connection, login, loadPair, create_instant_order, create_pending_order, close_position, get_open_positions, get_account_info, get_symbols, getOHLCV, and technical indicator retrieval
 
 ## Dependencies
 

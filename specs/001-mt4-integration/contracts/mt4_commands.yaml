@@ -1,0 +1,332 @@
+# MT4 Command/Response Schemas
+# Communication between RiseTrader and MT4 Expert Advisors
+
+version: "1.0.0"
+description: "ZMQ message schemas for MT4 integration"
+
+commands:
+  test_connection:
+    description: "Verify MT4 EA is reachable and responsive"
+    request:
+      type: object
+      required: [command]
+      properties:
+        command:
+          type: string
+          const: "test_connection"
+    response:
+      type: object
+      required: [status, message]
+      properties:
+        status:
+          type: string
+          enum: [OK, ERROR]
+        message:
+          type: string
+          example: "Connection successful"
+
+  create_instant_order:
+    description: "Submit market order (BUY/SELL) for immediate execution"
+    request:
+      type: object
+      required: [command, symbol, order_type, volume]
+      properties:
+        command:
+          type: string
+          const: "create_instant_order"
+        symbol:
+          type: string
+          example: "CrudeOIL"
+        order_type:
+          type: string
+          enum: [BUY, SELL]
+        volume:
+          type: number
+          minimum: 0.01
+          example: 0.1
+        stop_loss:
+          type: number
+          example: 75.50
+        take_profit:
+          type: number
+          example: 80.00
+    response:
+      type: object
+      required: [status, message]
+      properties:
+        status:
+          type: string
+          enum: [OK, ERROR]
+        message:
+          type: string
+          example: "Order created with ticket 123456"
+        return:
+          type: integer
+          description: "MT4 ticket number (>0 for success, -1 for error)"
+          example: 123456
+
+  create_pending_order:
+    description: "Submit pending order (LIMIT/STOP) for future execution"
+    request:
+      type: object
+      required: [command, symbol, order_type, volume, price]
+      properties:
+        command:
+          type: string
+          const: "create_pending_order"
+        symbol:
+          type: string
+          example: "CrudeOIL"
+        order_type:
+          type: string
+          enum: [BUY_LIMIT, SELL_LIMIT, BUY_STOP, SELL_STOP]
+        volume:
+          type: number
+          minimum: 0.01
+          example: 0.1
+        price:
+          type: number
+          example: 77.50
+        stop_loss:
+          type: number
+          example: 75.50
+        take_profit:
+          type: number
+          example: 80.00
+    response:
+      type: object
+      required: [status, message]
+      properties:
+        status:
+          type: string
+          enum: [OK, ERROR]
+        message:
+          type: string
+        return:
+          type: integer
+          description: "MT4 ticket number"
+
+  close_position:
+    description: "Close an open position by ticket number"
+    request:
+      type: object
+      required: [command, ticket]
+      properties:
+        command:
+          type: string
+          const: "close_position"
+        ticket:
+          type: integer
+          example: 123456
+    response:
+      type: object
+      required: [status, message]
+      properties:
+        status:
+          type: string
+          enum: [OK, ERROR]
+        message:
+          type: string
+          example: "Position 123456 closed successfully"
+
+  get_open_positions:
+    description: "Query all open positions for this EA"
+    request:
+      type: object
+      required: [command]
+      properties:
+        command:
+          type: string
+          const: "get_open_positions"
+    response:
+      type: object
+      required: [status, positions]
+      properties:
+        status:
+          type: string
+          enum: [OK, ERROR]
+        message:
+          type: string
+        positions:
+          type: array
+          items:
+            type: object
+            required: [ticket, symbol, type, lots, openPrice, curPrice]
+            properties:
+              ticket:
+                type: integer
+                example: 123456
+              symbol:
+                type: string
+                example: "CrudeOIL"
+              type:
+                type: string
+                enum: [BUY, SELL, OTHER]
+              lots:
+                type: number
+                example: 0.1
+              openPrice:
+                type: number
+                example: 77.85
+              curPrice:
+                type: number
+                example: 78.20
+              sl:
+                type: number
+                example: 75.50
+              tp:
+                type: number
+                example: 80.00
+
+  get_account_info:
+    description: "Query MT4 account balance, equity, margin"
+    request:
+      type: object
+      required: [command]
+      properties:
+        command:
+          type: string
+          const: "get_account_info"
+    response:
+      type: object
+      required: [status, account_info]
+      properties:
+        status:
+          type: string
+          enum: [OK, ERROR]
+        message:
+          type: string
+        account_info:
+          type: object
+          required: [balance, equity, margin, freeMargin, marginLevel]
+          properties:
+            balance:
+              type: number
+              example: 50000.00
+            equity:
+              type: number
+              example: 50500.00
+            margin:
+              type: number
+              example: 35000.00
+            freeMargin:
+              type: number
+              example: 15500.00
+            marginLevel:
+              type: number
+              example: 144.29
+              description: "(equity / margin) * 100"
+
+  get_symbols:
+    description: "Get list of available trading symbols"
+    request:
+      type: object
+      required: [command]
+      properties:
+        command:
+          type: string
+          const: "get_symbols"
+    response:
+      type: object
+      required: [status, symbols]
+      properties:
+        status:
+          type: string
+          enum: [OK, ERROR]
+        message:
+          type: string
+        symbols:
+          type: array
+          items:
+            type: string
+          example: ["CrudeOIL", "EURUSD", "GBPUSD", "USDJPY"]
+
+  getOHLCV:
+    description: "Get OHLCV bar data for specific timeframe and time"
+    request:
+      type: object
+      required: [command, symbol, timeframe, time]
+      properties:
+        command:
+          type: string
+          const: "getOHLCV"
+        symbol:
+          type: string
+          example: "CrudeOIL"
+        timeframe:
+          type: string
+          enum: [PERIOD_M1, PERIOD_M5, PERIOD_M15, PERIOD_M30, PERIOD_H1, PERIOD_H4, PERIOD_D1, PERIOD_W1, PERIOD_MN1]
+        time:
+          type: string
+          format: date-time
+          example: "2025-11-20T10:00:00"
+    response:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [OK, ERROR]
+        message:
+          type: string
+        ohlcv:
+          type: object
+          properties:
+            open:
+              type: number
+            high:
+              type: number
+            low:
+              type: number
+            close:
+              type: number
+            volume:
+              type: number
+            time:
+              type: integer
+              description: "Unix timestamp"
+
+error_codes:
+  - code: 0
+    description: "Success"
+  - code: 1
+    description: "No error (returned for successful operations)"
+  - code: 2
+    description: "Common error"
+  - code: 3
+    description: "Invalid trade parameters"
+  - code: 4
+    description: "Trade server is busy"
+  - code: 6
+    description: "No connection with trade server"
+  - code: 8
+    description: "Too frequent requests"
+  - code: 129
+    description: "Invalid price"
+  - code: 130
+    description: "Invalid stops (stop loss/take profit)"
+  - code: 131
+    description: "Invalid trade volume"
+  - code: 132
+    description: "Market is closed"
+  - code: 133
+    description: "Trade is disabled"
+  - code: 134
+    description: "Not enough money"
+  - code: 136
+    description: "Off quotes"
+  - code: 138
+    description: "Requote"
+  - code: 141
+    description: "Too many requests"
+  - code: 145
+    description: "Modification denied because order is too close to market"
+  - code: 146
+    description: "Trade context is busy"
+
+notes:
+  - "All requests are sent via ZMQ REP socket (synchronous request-response)"
+  - "Commands use JSON format for both request and response"
+  - "Response status is always 'OK' or 'ERROR'"
+  - "Error messages should include MT4 error code when available"
+  - "Timeouts: 5 seconds for commands, 10 seconds for queries"

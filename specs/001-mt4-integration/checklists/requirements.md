@@ -13,7 +13,7 @@
 
 ## Requirement Completeness
 
-- [ ] No [NEEDS CLARIFICATION] markers remain
+- [x] No [NEEDS CLARIFICATION] markers remain
 - [x] Requirements are testable and unambiguous
 - [x] Success criteria are measurable
 - [x] Success criteria are technology-agnostic (no implementation details)
@@ -31,7 +31,9 @@
 
 ## Notes
 
-**Outstanding Item**:
-- FR-011 contains one [NEEDS CLARIFICATION] marker regarding encryption method choice (CurveZMQ vs VPN tunnel)
-- This is a critical security decision that impacts implementation approach
-- Need user input to proceed with planning phase
+**Resolution**:
+- User selected Option A: CurveZMQ encryption for MT4 communication security
+- Specification updated to include multi-EA management requirements based on user's existing prototype
+- Added User Story 5 for managing multiple Expert Advisors with portfolio-level risk coordination
+- Assumptions updated to reflect actual ZMQ socket architecture (REP on port 5555, PUB on port 5556)
+- Ready to proceed to planning phase (`/speckit.plan`)

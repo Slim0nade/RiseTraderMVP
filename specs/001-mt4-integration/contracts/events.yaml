@@ -1,0 +1,359 @@
+# MT4 Integration Event Schemas
+# Redis pub/sub events for agent communication
+
+version: "1.0.0"
+description: "Event schemas for MT4 integration pub/sub messaging"
+
+base_event:
+  description: "Base structure for all events"
+  type: object
+  required: [event_type, version, timestamp, correlation_id, source]
+  properties:
+    event_type:
+      type: string
+      description: "Type of event"
+    version:
+      type: string
+      pattern: '^\d+\.\d+\.\d+$'
+      example: "1.0.0"
+    timestamp:
+      type: string
+      format: date-time
+      description: "ISO 8601 timestamp with microseconds"
+    correlation_id:
+      type: string
+      format: uuid
+      description: "UUID for request tracing"
+    source:
+      type: string
+      description: "Service/agent that emitted the event"
+      example: "mt4_integration_service"
+
+events:
+  order_confirmed:
+    description: "MT4 confirmed receipt of order submission"
+    channel: "mt4.orders.confirmed"
+    schema:
+      allOf:
+        - $ref: "#/base_event"
+        - type: object
+          required: [data]
+          properties:
+            event_type:
+              const: "order_confirmed"
+            data:
+              type: object
+              required: [order_id, magic_number, ticket_number, symbol, direction, volume, execution_price, execution_time]
+              properties:
+                order_id:
+                  type: string
+                  format: uuid
+                  description: "RiseTrader order UUID"
+                magic_number:
+                  type: integer
+                  example: 100001
+                ticket_number:
+                  type: integer
+                  example: 123456
+                  description: "MT4 ticket number"
+                symbol:
+                  type: string
+                  example: "CrudeOIL"
+                direction:
+                  type: string
+                  enum: [BUY, SELL]
+                volume:
+                  type: number
+                  example: 0.1
+                execution_price:
+                  type: number
+                  example: 77.85
+                execution_time:
+                  type: string
+                  format: date-time
+
+  order_rejected:
+    description: "MT4 rejected order submission"
+    channel: "mt4.orders.rejected"
+    schema:
+      allOf:
+        - $ref: "#/base_event"
+        - type: object
+          required: [data]
+          properties:
+            event_type:
+              const: "order_rejected"
+            data:
+              type: object
+              required: [order_id, magic_number, symbol, reason, error_code]
+              properties:
+                order_id:
+                  type: string
+                  format: uuid
+                magic_number:
+                  type: integer
+                symbol:
+                  type: string
+                reason:
+                  type: string
+                  example: "Insufficient margin"
+                error_code:
+                  type: integer
+                  example: 134
+                  description: "MT4 error code"
+
+  position_updated:
+    description: "Position P&L or status changed"
+    channel: "mt4.positions.updated"
+    schema:
+      allOf:
+        - $ref: "#/base_event"
+        - type: object
+          required: [data]
+          properties:
+            event_type:
+              const: "position_updated"
+            data:
+              type: object
+              required: [ticket_number, magic_number, symbol, direction, volume, open_price, current_price, unrealized_pnl]
+              properties:
+                ticket_number:
+                  type: integer
+                magic_number:
+                  type: integer
+                symbol:
+                  type: string
+                direction:
+                  type: string
+                  enum: [BUY, SELL]
+                volume:
+                  type: number
+                open_price:
+                  type: number
+                current_price:
+                  type: number
+                unrealized_pnl:
+                  type: number
+                  description: "Current unrealized profit/loss"
+                stop_loss:
+                  type: number
+                  nullable: true
+                take_profit:
+                  type: number
+                  nullable: true
+
+  position_closed:
+    description: "Position was closed (stop loss, take profit, or manual)"
+    channel: "mt4.positions.closed"
+    schema:
+      allOf:
+        - $ref: "#/base_event"
+        - type: object
+          required: [data]
+          properties:
+            event_type:
+              const: "position_closed"
+            data:
+              type: object
+              required: [ticket_number, magic_number, symbol, close_price, realized_pnl, close_reason]
+              properties:
+                ticket_number:
+                  type: integer
+                magic_number:
+                  type: integer
+                symbol:
+                  type: string
+                close_price:
+                  type: number
+                realized_pnl:
+                  type: number
+                  description: "Final profit/loss"
+                close_reason:
+                  type: string
+                  enum: [STOP_LOSS, TAKE_PROFIT, MANUAL, MARGIN_CALL]
+                close_time:
+                  type: string
+                  format: date-time
+
+  market_tick:
+    description: "Real-time price update from MT4"
+    channel: "mt4.market.tick.{symbol}"
+    schema:
+      allOf:
+        - $ref: "#/base_event"
+        - type: object
+          required: [data]
+          properties:
+            event_type:
+              const: "market_tick"
+            data:
+              type: object
+              required: [symbol, bid, ask, timestamp, market_open]
+              properties:
+                symbol:
+                  type: string
+                  example: "CrudeOIL"
+                bid:
+                  type: number
+                  example: 77.84
+                ask:
+                  type: number
+                  example: 77.86
+                timestamp:
+                  type: string
+                  format: date-time
+                market_open:
+                  type: boolean
+                  description: "Whether market is currently open"
+                price_data:
+                  type: object
+                  description: "OHLCV data for current bar"
+                  properties:
+                    open:
+                      type: number
+                    high:
+                      type: number
+                    low:
+                      type: number
+                    close:
+                      type: number
+                    volume:
+                      type: number
+                ta_indicators:
+                  type: object
+                  description: "Technical indicators"
+                  properties:
+                    MA_20:
+                      type: number
+                    MA_50:
+                      type: number
+                    MA_200:
+                      type: number
+                    RSI_14:
+                      type: number
+                    MACD:
+                      type: number
+                    MACD_signal:
+                      type: number
+                    BB_upper:
+                      type: number
+                    BB_middle:
+                      type: number
+                    BB_lower:
+                      type: number
+                    ATR:
+                      type: number
+                    SAR:
+                      type: number
+                    VWAP:
+                      type: number
+
+  connection_status_changed:
+    description: "EA connection status changed"
+    channel: "mt4.connection.status"
+    schema:
+      allOf:
+        - $ref: "#/base_event"
+        - type: object
+          required: [data]
+          properties:
+            event_type:
+              const: "connection_status_changed"
+            data:
+              type: object
+              required: [ea_id, magic_number, old_status, new_status]
+              properties:
+                ea_id:
+                  type: string
+                  example: "crude_oil_ea_1"
+                magic_number:
+                  type: integer
+                  example: 100001
+                old_status:
+                  type: string
+                  enum: [ACTIVE, INACTIVE, ERROR, RECONNECTING]
+                new_status:
+                  type: string
+                  enum: [ACTIVE, INACTIVE, ERROR, RECONNECTING]
+                error_message:
+                  type: string
+                  nullable: true
+                reconnect_attempt:
+                  type: integer
+                  description: "Current reconnection attempt number"
+
+  portfolio_risk_updated:
+    description: "Portfolio-level risk metrics changed"
+    channel: "mt4.portfolio.risk"
+    schema:
+      allOf:
+        - $ref: "#/base_event"
+        - type: object
+          required: [data]
+          properties:
+            event_type:
+              const: "portfolio_risk_updated"
+            data:
+              type: object
+              required: [total_equity, total_margin_used, margin_level, total_open_positions]
+              properties:
+                total_equity:
+                  type: number
+                  example: 50500.00
+                total_margin_used:
+                  type: number
+                  example: 35000.00
+                margin_level:
+                  type: number
+                  example: 144.29
+                  description: "(equity / margin) * 100"
+                total_open_positions:
+                  type: integer
+                  example: 15
+                exposure_by_symbol:
+                  type: object
+                  additionalProperties:
+                    type: number
+                  example:
+                    CrudeOIL: 25000.00
+                    EURUSD: 10000.00
+                exposure_by_ea:
+                  type: object
+                  additionalProperties:
+                    type: number
+                  example:
+                    "100001": 12000.00
+                    "100002": 18000.00
+                    "100003": 5000.00
+                is_margin_critical:
+                  type: boolean
+                  description: "True if margin level <120%"
+
+channel_patterns:
+  - pattern: "mt4.orders.*"
+    description: "All order-related events"
+  - pattern: "mt4.positions.*"
+    description: "All position-related events"
+  - pattern: "mt4.market.tick.*"
+    description: "All market data events (by symbol)"
+  - pattern: "mt4.connection.*"
+    description: "All connection status events"
+  - pattern: "mt4.portfolio.*"
+    description: "All portfolio-level events"
+
+event_guarantees:
+  - "At-least-once delivery (Redis pub/sub semantics)"
+  - "Events may be received out of order - use timestamp and correlation_id for ordering"
+  - "Consumers must be idempotent"
+  - "Events are not persisted by default - consumers must subscribe before events are emitted"
+
+versioning_policy:
+  major_change:
+    description: "Breaking changes (field removal, type changes)"
+    action: "Increment major version, maintain N-1 version support for 6 months"
+  minor_change:
+    description: "New optional fields"
+    action: "Increment minor version, backward compatible"
+  patch_change:
+    description: "Documentation or validation updates"
+    action: "Increment patch version, no schema changes"

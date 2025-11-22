@@ -9,6 +9,9 @@ from .forecasts import Forecast
 from .indicators import Indicators
 from .market_data import MarketData
 from .model_performance import ModelPerformance
+from .mt4_connection import MT4Connection
+from .mt4_orders import MT4Order
+from .mt4_positions import MT4Position
 from .news import NewsEvent
 from .optimal_trades import OptimalTrade
 from .positions import OpenPosition
@@ -28,4 +31,7 @@ __all__ = [
     "NewsEvent",
     "AccountInfo",
     "ModelPerformance",
+    "MT4Connection",
+    "MT4Order",
+    "MT4Position",
 ]

@@ -1,0 +1,602 @@
+# MT4 Integration REST API Endpoints
+# API for managing MT4 connections and querying state
+
+openapi: 3.0.3
+info:
+  title: RiseTrader MT4 Integration API
+  description: REST API for managing Expert Advisor connections and querying MT4 state
+  version: 1.0.0
+  contact:
+    name: RiseTrader Development Team
+
+servers:
+  - url: http://localhost:8003/api/v1
+    description: Local development
+  - url: https://api.risetrader.com/v1
+    description: Production
+
+tags:
+  - name: connections
+    description: EA connection management
+  - name: orders
+    description: Order operations and queries
+  - name: positions
+    description: Position monitoring
+  - name: portfolio
+    description: Portfolio-level risk and metrics
+
+paths:
+  /mt4/connections:
+    get:
+      tags: [connections]
+      summary: List all MT4 EA connections
+      operationId: listConnections
+      parameters:
+        - name: status
+          in: query
+          description: Filter by connection status
+          schema:
+            type: string
+            enum: [ACTIVE, INACTIVE, ERROR, RECONNECTING]
+        - name: symbol
+          in: query
+          description: Filter by trading symbol
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  connections:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MT4Connection'
+                  total:
+                    type: integer
+
+    post:
+      tags: [connections]
+      summary: Register new EA connection
+      operationId: registerConnection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterConnectionRequest'
+      responses:
+        '201':
+          description: Connection registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MT4Connection'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Magic number or EA ID already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /mt4/connections/{ea_id}:
+    get:
+      tags: [connections]
+      summary: Get EA connection details
+      operationId: getConnection
+      parameters:
+        - name: ea_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MT4Connection'
+        '404':
+          description: Connection not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    patch:
+      tags: [connections]
+      summary: Update EA connection configuration
+      operationId: updateConnection
+      parameters:
+        - name: ea_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateConnectionRequest'
+      responses:
+        '200':
+          description: Connection updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MT4Connection'
+        '404':
+          description: Connection not found
+        '400':
+          description: Invalid request
+
+    delete:
+      tags: [connections]
+      summary: Deregister EA connection
+      operationId: deleteConnection
+      parameters:
+        - name: ea_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Connection deleted successfully
+        '404':
+          description: Connection not found
+
+  /mt4/connections/{ea_id}/reconnect:
+    post:
+      tags: [connections]
+      summary: Force reconnection attempt for EA
+      operationId: reconnectEA
+      parameters:
+        - name: ea_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Reconnection initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Reconnection initiated for crude_oil_ea_1"
+                  status:
+                    type: string
+                    enum: [RECONNECTING]
+        '404':
+          description: Connection not found
+
+  /mt4/orders:
+    get:
+      tags: [orders]
+      summary: Query orders
+      operationId: listOrders
+      parameters:
+        - name: magic_number
+          in: query
+          description: Filter by EA magic number
+          schema:
+            type: integer
+        - name: symbol
+          in: query
+          description: Filter by symbol
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: Filter by order status
+          schema:
+            type: string
+            enum: [PENDING, CONFIRMED, EXECUTED, REJECTED, CANCELLED]
+        - name: from_date
+          in: query
+          description: Start date (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+        - name: to_date
+          in: query
+          description: End date (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          description: Maximum number of results
+          schema:
+            type: integer
+            default: 100
+            maximum: 1000
+        - name: offset
+          in: query
+          description: Pagination offset
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  orders:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MT4Order'
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+
+  /mt4/orders/{order_id}:
+    get:
+      tags: [orders]
+      summary: Get order details
+      operationId: getOrder
+      parameters:
+        - name: order_id
+          in: path
+          required: true
+          description: RiseTrader order UUID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MT4Order'
+        '404':
+          description: Order not found
+
+  /mt4/positions:
+    get:
+      tags: [positions]
+      summary: Query open positions
+      operationId: listPositions
+      parameters:
+        - name: magic_number
+          in: query
+          description: Filter by EA magic number
+          schema:
+            type: integer
+        - name: symbol
+          in: query
+          description: Filter by symbol
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  positions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MT4Position'
+                  total:
+                    type: integer
+
+  /mt4/positions/{ticket_number}:
+    get:
+      tags: [positions]
+      summary: Get position details
+      operationId: getPosition
+      parameters:
+        - name: ticket_number
+          in: path
+          required: true
+          description: MT4 ticket number
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MT4Position'
+        '404':
+          description: Position not found
+
+  /mt4/portfolio/risk:
+    get:
+      tags: [portfolio]
+      summary: Get portfolio risk metrics
+      operationId: getPortfolioRisk
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortfolioRiskState'
+
+  /mt4/portfolio/health:
+    get:
+      tags: [portfolio]
+      summary: Get overall system health
+      operationId: getSystemHealth
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [HEALTHY, DEGRADED, UNHEALTHY]
+                  total_connections:
+                    type: integer
+                  active_connections:
+                    type: integer
+                  error_connections:
+                    type: integer
+                  total_positions:
+                    type: integer
+                  margin_level:
+                    type: number
+                  is_margin_critical:
+                    type: boolean
+                  last_updated:
+                    type: string
+                    format: date-time
+
+components:
+  schemas:
+    MT4Connection:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        ea_id:
+          type: string
+          example: "crude_oil_ea_1"
+        magic_number:
+          type: integer
+          example: 100001
+        rep_port:
+          type: integer
+          example: 5555
+        pub_port:
+          type: integer
+          example: 5556
+        symbol:
+          type: string
+          example: "CrudeOIL"
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE, ERROR, RECONNECTING]
+        mt4_server_host:
+          type: string
+          example: "75.154.254.186"
+        encryption_enabled:
+          type: boolean
+        last_heartbeat:
+          type: string
+          format: date-time
+          nullable: true
+        error_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    RegisterConnectionRequest:
+      type: object
+      required: [ea_id, symbol]
+      properties:
+        ea_id:
+          type: string
+          example: "crude_oil_ea_1"
+        symbol:
+          type: string
+          example: "CrudeOIL"
+        mt4_server_host:
+          type: string
+          example: "75.154.254.186"
+          default: "75.154.254.186"
+        encryption_enabled:
+          type: boolean
+          default: true
+        client_public_key:
+          type: string
+          description: "Z85-encoded client public key"
+        server_public_key:
+          type: string
+          description: "Z85-encoded server public key"
+
+    UpdateConnectionRequest:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE]
+        symbol:
+          type: string
+
+    MT4Order:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        order_id:
+          type: string
+          format: uuid
+        magic_number:
+          type: integer
+        ticket_number:
+          type: integer
+          nullable: true
+        symbol:
+          type: string
+        direction:
+          type: string
+          enum: [BUY, SELL]
+        volume:
+          type: number
+        order_type:
+          type: string
+          enum: [MARKET, LIMIT, STOP, BUY_LIMIT, SELL_LIMIT, BUY_STOP, SELL_STOP]
+        limit_price:
+          type: number
+          nullable: true
+        stop_loss:
+          type: number
+          nullable: true
+        take_profit:
+          type: number
+          nullable: true
+        status:
+          type: string
+          enum: [PENDING, CONFIRMED, EXECUTED, REJECTED, CANCELLED]
+        execution_price:
+          type: number
+          nullable: true
+        required_margin:
+          type: number
+          nullable: true
+        error_message:
+          type: string
+          nullable: true
+        submitted_at:
+          type: string
+          format: date-time
+        confirmed_at:
+          type: string
+          format: date-time
+          nullable: true
+        executed_at:
+          type: string
+          format: date-time
+          nullable: true
+        correlation_id:
+          type: string
+          format: uuid
+
+    MT4Position:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        order_id:
+          type: string
+          format: uuid
+          nullable: true
+        ticket_number:
+          type: integer
+        magic_number:
+          type: integer
+        symbol:
+          type: string
+        direction:
+          type: string
+          enum: [BUY, SELL]
+        volume:
+          type: number
+        open_price:
+          type: number
+        current_price:
+          type: number
+        unrealized_pnl:
+          type: number
+        stop_loss:
+          type: number
+          nullable: true
+        take_profit:
+          type: number
+          nullable: true
+        open_time:
+          type: string
+          format: date-time
+        last_updated:
+          type: string
+          format: date-time
+
+    PortfolioRiskState:
+      type: object
+      properties:
+        total_equity:
+          type: number
+        total_margin_used:
+          type: number
+        margin_level:
+          type: number
+        total_open_positions:
+          type: integer
+        exposure_by_symbol:
+          type: object
+          additionalProperties:
+            type: number
+        exposure_by_ea:
+          type: object
+          additionalProperties:
+            type: number
+        is_margin_critical:
+          type: boolean
+        available_margin_pct:
+          type: number
+        last_updated:
+          type: string
+          format: date-time
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+security:
+  - BearerAuth: []
+  - ApiKeyAuth: []

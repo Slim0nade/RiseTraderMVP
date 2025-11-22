@@ -1,0 +1,98 @@
+# MT4 Integration Configuration
+# Feature: 001-mt4-integration
+# Generated: 2025-11-21
+
+mt4_integration:
+  # Connection Settings
+  max_concurrent_eas: 100  # Maximum number of Expert Advisors
+
+  # Port Allocation Strategy
+  port_allocation:
+    base_rep_port: 5555  # Base port for REQ/REP sockets (commands)
+    base_pub_port: 5556  # Base port for PUB/SUB sockets (streaming)
+    port_increment: 2    # Port offset per EA (REP+2, PUB+2)
+
+  # CurveZMQ Encryption
+  encryption:
+    enabled: true  # REQUIRED for production
+    key_rotation_days: 90  # Recommended key rotation period
+
+  # Circuit Breaker Pattern
+  circuit_breaker:
+    failure_threshold: 5  # Open circuit after N consecutive failures
+    timeout_seconds: 60   # Time before attempting HALF_OPEN
+    success_threshold: 2  # Successes needed to close from HALF_OPEN
+
+  # Reconnection Strategy
+  reconnection:
+    initial_backoff_seconds: 1   # Initial retry delay
+    max_backoff_seconds: 60      # Maximum retry delay
+    max_retries: 10              # Max reconnection attempts before giving up
+
+  # Risk Management Limits
+  risk_limits:
+    max_margin_usage_pct: 80.0       # Maximum portfolio margin usage (%)
+    max_symbol_exposure: 100000.0    # Maximum exposure per symbol ($)
+    margin_warning_level_pct: 120.0  # Margin call warning threshold (%)
+
+  # Health Monitoring
+  health_monitoring:
+    heartbeat_interval_seconds: 30   # Ping interval to check EA connection
+    heartbeat_timeout_seconds: 90    # Timeout before marking EA as disconnected
+
+  # Performance Targets
+  performance:
+    order_confirmation_timeout_ms: 5000  # Order confirmation timeout (5s)
+    account_query_timeout_ms: 10000      # Account query timeout (10s)
+    market_tick_latency_target_ms: 50    # Target market data latency
+
+  # Message Serialization
+  serialization:
+    format: json  # json or msgpack
+    compression: false  # Enable gzip compression for large messages
+
+  # Event Publishing
+  events:
+    redis_channel_prefix: "mt4:"  # Prefix for Redis pub/sub channels
+    batch_size: 100  # Batch size for bulk event publishing
+
+  # Audit & Logging
+  audit:
+    log_all_commands: true  # Log every MT4 command
+    log_all_responses: true # Log every MT4 response
+    sensitive_fields:       # Fields to redact in logs
+      - password
+      - secret_key
+      - api_key
+
+  # Feature Flags
+  feature_flags:
+    enable_live_trading: false  # CRITICAL: Must be false until ready
+    enable_paper_trading: true  # Safe for testing
+    enable_backtesting: true    # Enable backtest mode
+
+  # Magic Number Registry
+  magic_numbers:
+    min_value: 100000  # Minimum magic number (reserved for RiseTrader)
+    max_value: 999999  # Maximum magic number
+    allocation_strategy: sequential  # sequential or random
+
+  # Symbol Configuration
+  symbols:
+    default_contract_size:
+      CrudeOIL: 1000  # 1 lot = 1000 barrels
+      EURUSD: 100000  # 1 lot = 100,000 EUR
+      GBPUSD: 100000  # 1 lot = 100,000 GBP
+      GOLD: 100       # 1 lot = 100 troy oz
+
+    min_lot_size:
+      CrudeOIL: 0.01
+      EURUSD: 0.01
+      GBPUSD: 0.01
+      GOLD: 0.01
+
+    max_lot_size:
+      CrudeOIL: 10.0
+      EURUSD: 10.0
+      GBPUSD: 10.0
+      GOLD: 10.0
