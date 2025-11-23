@@ -45,6 +45,20 @@ services:
     networks:
       - risetrader
 
+  # Development shell for testing and scripts
+  dev:
+    image: python:3.11-slim
+    container_name: risetrader-dev
+    working_dir: /app
+    volumes:
+      - .:/app
+    command: sleep infinity
+    network_mode: host  # Allows connection to MT4 on host network
+    environment:
+      - MT4_HOST=75.154.254.186
+      - MT4_REP_PORT=5555
+      - MT4_PUB_PORT=5556
+
   # Placeholder for FastAPI service (to be implemented)
   # api:
   #   build:

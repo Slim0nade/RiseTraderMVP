@@ -284,6 +284,10 @@ string HandleCommand(string commandJson)
    {
       response = HandleTestConnection(commandJson);
    }
+   else if(StringFind(commandJson, "\"command\":\"get_symbols\"") >= 0)
+   {
+      response = HandleGetSymbols(commandJson);
+   }
    else
    {
       response = ErrorResponse("Unknown command", 1000);
@@ -464,6 +468,42 @@ string HandleTestConnection(string commandJson)
       TradingSymbol,
       TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS)
    );
+}
+
+//+------------------------------------------------------------------+
+//| Handle get symbols command                                        |
+//+------------------------------------------------------------------+
+string HandleGetSymbols(string commandJson)
+{
+   // Get all symbols available in Market Watch
+   string symbolsList = "";
+   int symbolCount = 0;
+
+   // Iterate through all symbols in Market Watch
+   for(int i = 0; i < SymbolsTotal(true); i++)
+   {
+      string symbolName = SymbolName(i, true);
+      if(symbolName != "")
+      {
+         if(symbolCount > 0)
+         {
+            symbolsList += ",";
+         }
+         symbolsList += StringFormat("\"%s\"", symbolName);
+         symbolCount++;
+      }
+   }
+
+   // Return JSON response
+   string response = StringFormat(
+      "{\"success\":true,"
+      "\"symbols\":[%s],"
+      "\"count\":%d}",
+      symbolsList,
+      symbolCount
+   );
+
+   return response;
 }
 
 //+------------------------------------------------------------------+

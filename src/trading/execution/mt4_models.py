@@ -283,6 +283,13 @@ class ClosePositionCommand(MT4Command):
     volume: Optional[Decimal] = None  # None = close entire position
 
 
+class GetSymbolsCommand(MT4Command):
+    """Command to retrieve available trading symbols."""
+
+    command: Literal["get_symbols"] = "get_symbols"
+    magic_number: int
+
+
 class MT4Response(BaseModel):
     """Base model for responses from MT4."""
 
@@ -334,6 +341,13 @@ class PositionsResponse(MT4Response):
     """Response for open positions query."""
 
     positions: list[PositionInfo] = Field(default_factory=list)
+
+
+class SymbolsResponse(MT4Response):
+    """Response for get_symbols query."""
+
+    symbols: list[str] = Field(default_factory=list)
+    count: int = 0
 
 
 # =============================================================================
