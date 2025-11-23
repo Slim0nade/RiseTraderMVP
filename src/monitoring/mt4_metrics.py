@@ -321,11 +321,45 @@ def record_market_tick(symbol: str, latency_seconds: float):
     mt4_market_tick_latency_seconds.labels(symbol=symbol).observe(latency_seconds)
 
 
-def update_portfolio_metrics(equity: float, margin_used: float, margin_level: float):
-    """Update portfolio-level metrics."""
-    mt4_portfolio_equity.set(equity)
-    mt4_portfolio_margin_used.set(margin_used)
+# =============================================================================
+# Portfolio Metrics Functions (T074 - User Story 5)
+# =============================================================================
+
+def update_portfolio_metrics(
+    total_equity: float,
+    total_margin_used: float,
+    margin_level: float,
+    exposure_by_symbol: dict = None,
+    exposure_by_ea: dict = None
+):
+    """
+    Update portfolio-level metrics (T074).
+
+    Args:
+        total_equity: Total portfolio equity
+        total_margin_used: Total margin used
+        margin_level: Margin level percentage
+        exposure_by_symbol: Optional dict of symbol -> exposure
+        exposure_by_ea: Optional dict of ea_id -> margin usage
+    """
+    # Update portfolio gauges
+    mt4_portfolio_equity.set(total_equity)
+    mt4_portfolio_margin_used.set(total_margin_used)
     mt4_portfolio_margin_level.set(margin_level)
+
+    # Update symbol exposure if provided
+    if exposure_by_symbol:
+        for symbol, exposure in exposure_by_symbol.items():
+            mt4_portfolio_exposure.labels(symbol=symbol).set(float(exposure))
+
+    # Update EA margin usage if provided
+    if exposure_by_ea:
+        for ea_id, margin in exposure_by_ea.items():
+            magic_number = ea_id  # ea_id can be magic_number string
+            mt4_ea_margin_usage.labels(
+                ea_id=f"ea_{ea_id}",
+                magic_number=str(magic_number)
+            ).set(float(margin))
 
 
 def record_zmq_command(command_type: str, duration_seconds: float):

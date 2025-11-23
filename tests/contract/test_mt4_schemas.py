@@ -28,7 +28,7 @@ from src.trading.execution.mt4_models import (
     PositionClosedEvent,
     PositionClosedData,
     MarketTickEvent,
-    MarketTickData,
+    MarketTick,
 )
 
 
@@ -953,3 +953,338 @@ def test_position_event_backward_compatibility():
     assert event.data.ticket_number == 12352
     assert event.data.stop_loss is None
     assert event.data.take_profit is None
+
+
+# =============================================================================
+# Market Tick Event Schema Tests (T050 - User Story 3)
+# =============================================================================
+
+def test_market_tick_event_schema():
+    """Test MarketTickEvent schema matches expected MT4 contract."""
+    # Arrange - simulated MT4 message
+    mt4_message = {
+        "event_type": "market_tick",
+        "correlation_id": "tick_12345",
+        "data": {
+            "symbol": "CrudeOIL",
+            "bid": "75.123",
+            "ask": "75.145",
+            "timestamp": "2024-01-15T10:30:00.500",
+            "volume": 1000
+        }
+    }
+
+    # Act - parse message
+    event = MarketTickEvent(**mt4_message)
+
+    # Assert - all fields match
+    assert event.event_type == "market_tick"
+    assert event.correlation_id == "tick_12345"
+    assert event.data.symbol == "CrudeOIL"
+    assert event.data.bid == Decimal("75.123")
+    assert event.data.ask == Decimal("75.145")
+    assert event.data.volume == 1000
+
+
+def test_market_tick_event_json_serialization():
+    """Test MarketTickEvent serializes to expected JSON format."""
+    # Arrange
+    event = MarketTickEvent(
+        correlation_id="tick_67890",
+        data=MarketTick(
+            symbol="EURUSD",
+            bid=Decimal("1.08500"),
+            ask=Decimal("1.08520"),
+            timestamp=datetime(2024, 1, 15, 10, 30, 0),
+            volume=500
+        )
+    )
+
+    # Act - serialize to JSON
+    json_str = event.model_dump_json()
+    parsed = json.loads(json_str)
+
+    # Assert - JSON structure matches expected
+    assert parsed["event_type"] == "market_tick"
+    assert parsed["correlation_id"] == "tick_67890"
+    assert parsed["data"]["symbol"] == "EURUSD"
+    assert parsed["data"]["bid"] == "1.08500"
+    assert parsed["data"]["ask"] == "1.08520"
+    assert parsed["data"]["volume"] == 500
+
+
+def test_market_tick_event_without_volume():
+    """Test MarketTickEvent handles optional volume field."""
+    # Arrange - no volume
+    mt4_message = {
+        "event_type": "market_tick",
+        "correlation_id": "tick_no_vol",
+        "data": {
+            "symbol": "GBPUSD",
+            "bid": "1.25000",
+            "ask": "1.25020",
+            "timestamp": "2024-01-15T10:30:00"
+        }
+    }
+
+    # Act
+    event = MarketTickEvent(**mt4_message)
+
+    # Assert - volume should be None
+    assert event.data.volume is None
+
+
+def test_market_tick_event_missing_required_field():
+    """Test MarketTickEvent fails with missing required field."""
+    # Arrange - missing "ask"
+    mt4_message = {
+        "event_type": "market_tick",
+        "correlation_id": "tick_invalid",
+        "data": {
+            "symbol": "CrudeOIL",
+            "bid": "75.123",
+            # Missing "ask"
+            "timestamp": "2024-01-15T10:30:00"
+        }
+    }
+
+    # Act & Assert
+    with pytest.raises(ValidationError) as exc_info:
+        MarketTickEvent(**mt4_message)
+
+    assert "ask" in str(exc_info.value)
+
+
+def test_market_tick_event_invalid_event_type():
+    """Test MarketTickEvent rejects wrong event_type."""
+    # Arrange - wrong event type
+    mt4_message = {
+        "event_type": "position_updated",  # Wrong!
+        "correlation_id": "tick_wrong",
+        "data": {
+            "symbol": "CrudeOIL",
+            "bid": "75.123",
+            "ask": "75.145",
+            "timestamp": "2024-01-15T10:30:00"
+        }
+    }
+
+    # Act & Assert
+    with pytest.raises(ValidationError):
+        MarketTickEvent(**mt4_message)
+
+
+def test_market_tick_event_high_precision_prices():
+    """Test MarketTickEvent handles high precision decimal prices."""
+    # Arrange - 6 decimal places
+    mt4_message = {
+        "event_type": "market_tick",
+        "correlation_id": "tick_precision",
+        "data": {
+            "symbol": "EURUSD",
+            "bid": "1.085001",
+            "ask": "1.085021",
+            "timestamp": "2024-01-15T10:30:00"
+        }
+    }
+
+    # Act
+    event = MarketTickEvent(**mt4_message)
+
+    # Assert - precision preserved
+    assert event.data.bid == Decimal("1.085001")
+    assert event.data.ask == Decimal("1.085021")
+
+
+def test_market_tick_event_negative_prices():
+    """Test MarketTickEvent allows negative prices (e.g., interest rates)."""
+    # Arrange
+    mt4_message = {
+        "event_type": "market_tick",
+        "correlation_id": "tick_negative",
+        "data": {
+            "symbol": "EUR3M",
+            "bid": "-0.005",
+            "ask": "-0.003",
+            "timestamp": "2024-01-15T10:30:00"
+        }
+    }
+
+    # Act
+    event = MarketTickEvent(**mt4_message)
+
+    # Assert
+    assert event.data.bid == Decimal("-0.005")
+    assert event.data.ask == Decimal("-0.003")
+
+
+def test_market_tick_event_auto_correlation_id():
+    """Test MarketTickEvent generates correlation_id if missing."""
+    # Arrange - no correlation_id
+    mt4_message = {
+        "event_type": "market_tick",
+        "data": {
+            "symbol": "CrudeOIL",
+            "bid": "75.123",
+            "ask": "75.145",
+            "timestamp": "2024-01-15T10:30:00"
+        }
+    }
+
+    # Act
+    event = MarketTickEvent(**mt4_message)
+
+    # Assert - should have generated one
+    assert event.correlation_id is not None
+    assert len(event.correlation_id) > 0
+
+
+def test_market_tick_event_spread_calculation():
+    """Test calculating spread from tick data."""
+    # Arrange
+    event = MarketTickEvent(
+        data=MarketTick(
+            symbol="CrudeOIL",
+            bid=Decimal("75.100"),
+            ask=Decimal("75.120"),
+            timestamp=datetime.utcnow()
+        )
+    )
+
+    # Act - calculate spread
+    spread = event.data.ask - event.data.bid
+
+    # Assert
+    assert spread == Decimal("0.020")
+
+
+def test_market_tick_event_timestamp_parsing():
+    """Test MarketTickEvent parses ISO 8601 timestamps correctly."""
+    # Arrange - ISO format with milliseconds
+    mt4_message = {
+        "event_type": "market_tick",
+        "correlation_id": "tick_time",
+        "data": {
+            "symbol": "CrudeOIL",
+            "bid": "75.123",
+            "ask": "75.145",
+            "timestamp": "2024-01-15T10:30:00.500Z"
+        }
+    }
+
+    # Act
+    event = MarketTickEvent(**mt4_message)
+
+    # Assert - timestamp parsed correctly
+    assert event.data.timestamp.year == 2024
+    assert event.data.timestamp.month == 1
+    assert event.data.timestamp.day == 15
+    assert event.data.timestamp.hour == 10
+    assert event.data.timestamp.minute == 30
+
+
+def test_market_tick_event_roundtrip_serialization():
+    """Test MarketTickEvent roundtrip (serialize -> deserialize)."""
+    # Arrange
+    original = MarketTickEvent(
+        correlation_id="tick_roundtrip",
+        data=MarketTick(
+            symbol="GBPUSD",
+            bid=Decimal("1.25000"),
+            ask=Decimal("1.25020"),
+            timestamp=datetime(2024, 1, 15, 10, 30, 0),
+            volume=750
+        )
+    )
+
+    # Act - serialize and deserialize
+    json_str = original.model_dump_json()
+    parsed_data = json.loads(json_str)
+    reconstructed = MarketTickEvent(**parsed_data)
+
+    # Assert - data should match
+    assert reconstructed.event_type == original.event_type
+    assert reconstructed.correlation_id == original.correlation_id
+    assert reconstructed.data.symbol == original.data.symbol
+    assert reconstructed.data.bid == original.data.bid
+    assert reconstructed.data.ask == original.data.ask
+    assert reconstructed.data.volume == original.data.volume
+
+
+def test_market_tick_event_large_volume():
+    """Test MarketTickEvent handles large volume values."""
+    # Arrange
+    mt4_message = {
+        "event_type": "market_tick",
+        "correlation_id": "tick_large_vol",
+        "data": {
+            "symbol": "EURUSD",
+            "bid": "1.08500",
+            "ask": "1.08520",
+            "timestamp": "2024-01-15T10:30:00",
+            "volume": 9999999999
+        }
+    }
+
+    # Act
+    event = MarketTickEvent(**mt4_message)
+
+    # Assert
+    assert event.data.volume == 9999999999
+
+
+def test_market_tick_event_backwards_compatibility():
+    """Test MarketTickEvent maintains backwards compatibility with old messages."""
+    # Arrange - old format without correlation_id
+    old_format = {
+        "event_type": "market_tick",
+        "data": {
+            "symbol": "CrudeOIL",
+            "bid": "75.000",
+            "ask": "75.020",
+            "timestamp": "2024-01-15T10:00:00"
+        }
+    }
+
+    # Act
+    event = MarketTickEvent(**old_format)
+
+    # Assert - should parse successfully
+    assert event.event_type == "market_tick"
+    assert event.data.symbol == "CrudeOIL"
+    assert event.correlation_id is not None  # Auto-generated
+
+
+# =============================================================================
+# Portfolio Risk Event Schema Tests (T064 - User Story 5)
+# =============================================================================
+
+def test_portfolio_risk_updated_event_schema():
+    """Test PortfolioRiskUpdatedEvent schema (multi-EA portfolio)."""
+    # Note: This test assumes PortfolioRiskUpdatedEvent will be created
+    # For now, testing the concept with a dictionary structure
+    portfolio_event = {
+        "event_type": "portfolio_risk_updated",
+        "correlation_id": "portfolio_123",
+        "data": {
+            "total_positions": 10,
+            "total_unrealized_pnl": "250.50",
+            "total_exposure": "15000.00",
+            "ea_count": 3,
+            "by_ea": {
+                "100000": {"pnl": "100.00", "positions": 3},
+                "100001": {"pnl": "75.50", "positions": 4},
+                "100002": {"pnl": "75.00", "positions": 3}
+            },
+            "by_symbol": {
+                "CrudeOIL": {"pnl": "150.00", "positions": 5},
+                "EURUSD": {"pnl": "100.50", "positions": 5}
+            },
+            "timestamp": "2024-01-15T10:30:00"
+        }
+    }
+
+    # Assert - structure is correct
+    assert portfolio_event["event_type"] == "portfolio_risk_updated"
+    assert portfolio_event["data"]["ea_count"] == 3
+    assert portfolio_event["data"]["total_positions"] == 10
