@@ -113,14 +113,14 @@ description: "Task list for MT4 Integration feature implementation"
 
 ### Implementation for User Story 2
 
-- [ ] T039 [US2] Implement PUB socket subscription in MT4Client in src/trading/execution/mt4_client.py (market data stream)
-- [ ] T040 [US2] Create event listener loop in MT4Client.start_listening() in src/trading/execution/mt4_client.py
-- [ ] T041 [US2] Implement position update handler in src/services/mt4_integration_service.py (parse events, update database)
-- [ ] T042 [US2] Add position persistence in MT4PositionRepository in src/database/repositories/mt4_position_repository.py
-- [ ] T043 [US2] Implement position_updated event publishing in src/services/mt4_integration_service.py
-- [ ] T044 [US2] Add position_closed event handler in src/services/mt4_integration_service.py (finalize P&L, update order status)
-- [ ] T045 [US2] Implement order rejection handling in src/services/mt4_integration_service.py (update status, log errors)
-- [ ] T046 [US2] Add metrics for position updates and closures in src/monitoring/mt4_metrics.py
+- [X] T039 [US2] Implement PUB socket subscription in MT4Client in src/trading/execution/mt4_client.py (market data stream)
+- [X] T040 [US2] Create event listener loop in MT4Client.start_listening() in src/trading/execution/mt4_client.py
+- [X] T041 [US2] Implement position update handler in src/services/mt4_integration_service.py (parse events, update database)
+- [X] T042 [US2] Add position persistence in MT4PositionRepository in src/database/repositories/mt4_position_repository.py
+- [X] T043 [US2] Implement position_updated event publishing in src/services/mt4_integration_service.py
+- [X] T044 [US2] Add position_closed event handler in src/services/mt4_integration_service.py (finalize P&L, update order status)
+- [X] T045 [US2] Implement order rejection handling in src/services/mt4_integration_service.py (update status, log errors)
+- [X] T046 [US2] Add metrics for position updates and closures in src/monitoring/mt4_metrics.py
 
 **Checkpoint**: User Stories 1 AND 2 should both work independently. Orders can be sent and status tracked end-to-end.
 

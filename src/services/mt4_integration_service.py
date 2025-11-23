@@ -17,6 +17,8 @@ from src.utils.redis_client import (
     MT4RedisClient,
     CHANNEL_ORDER_CONFIRMED,
     CHANNEL_ORDER_REJECTED,
+    CHANNEL_POSITION_UPDATED,
+    CHANNEL_POSITION_CLOSED,
 )
 from src.trading.execution.mt4_client import MT4Client
 from src.trading.execution.mt4_encryption import MT4EncryptionManager
@@ -27,6 +29,10 @@ from src.trading.execution.mt4_models import (
     OrderConfirmedData,
     OrderRejectedEvent,
     OrderRejectedData,
+    PositionUpdatedEvent,
+    PositionUpdatedData,
+    PositionClosedEvent,
+    PositionClosedData,
 )
 from src.utils.mt4_helpers import (
     get_mt4_logger,
@@ -39,6 +45,8 @@ from src.monitoring.mt4_metrics import (
     record_order_submitted,
     record_order_confirmed,
     record_order_rejected,
+    update_position_pnl,
+    record_position_closed,
 )
 
 
@@ -410,6 +418,187 @@ class MT4IntegrationService:
         except Exception as e:
             self.logger.error(
                 "handle_order_rejected_error",
+                error=str(e),
+                event_data=event_data
+            )
+
+    async def handle_position_updated_event(
+        self,
+        event_data: dict,
+        position_repository=None
+    ) -> None:
+        """
+        Handle position_updated event from MT4 EA.
+
+        Updates position P&L and current price in the database.
+        Publishes event to Redis for monitoring and agent consumption.
+
+        Args:
+            event_data: Event data dictionary
+            position_repository: Optional MT4PositionRepository instance
+
+        Raises:
+            ValueError: If position_repository is not provided
+        """
+        if position_repository is None:
+            self.logger.error(
+                "position_repository_not_provided",
+                event_type="position_updated"
+            )
+            raise ValueError("position_repository is required for position update handling")
+
+        try:
+            # Parse event
+            event = PositionUpdatedEvent(**event_data)
+
+            self.logger.debug(
+                "position_updated_event_received",
+                ticket_number=event.data.ticket_number,
+                symbol=event.data.symbol,
+                unrealized_pnl=float(event.data.unrealized_pnl),
+                current_price=float(event.data.current_price)
+            )
+
+            # Upsert position in database
+            position = await position_repository.upsert_position(
+                ticket_number=event.data.ticket_number,
+                magic_number=event.data.magic_number,
+                symbol=event.data.symbol,
+                direction=event.data.direction,
+                volume=event.data.volume,
+                open_price=event.data.open_price,
+                current_price=event.data.current_price,
+                unrealized_pnl=event.data.unrealized_pnl,
+                stop_loss=event.data.stop_loss,
+                take_profit=event.data.take_profit,
+                open_time=event.data.open_time,
+                last_updated=event.data.last_updated
+            )
+
+            # Publish to Redis for monitoring
+            await self.redis_client.publish_event(
+                channel=CHANNEL_POSITION_UPDATED,
+                event=event.model_dump(mode='json')
+            )
+
+            # Update metrics
+            ea_id = f"ea_{event.data.magic_number}"
+            update_position_pnl(
+                ea_id=ea_id,
+                ticket_number=event.data.ticket_number,
+                symbol=event.data.symbol,
+                pnl=float(event.data.unrealized_pnl)
+            )
+
+            self.logger.info(
+                "position_updated_handled",
+                ticket_number=event.data.ticket_number,
+                position_id=str(position.id),
+                unrealized_pnl=float(event.data.unrealized_pnl)
+            )
+
+        except Exception as e:
+            self.logger.error(
+                "handle_position_updated_error",
+                error=str(e),
+                event_data=event_data
+            )
+
+    async def handle_position_closed_event(
+        self,
+        event_data: dict,
+        position_repository=None
+    ) -> None:
+        """
+        Handle position_closed event from MT4 EA.
+
+        Removes position from open positions table, updates related order status,
+        and publishes event to Redis.
+
+        Args:
+            event_data: Event data dictionary
+            position_repository: Optional MT4PositionRepository instance
+
+        Raises:
+            ValueError: If position_repository is not provided
+        """
+        if position_repository is None:
+            self.logger.error(
+                "position_repository_not_provided",
+                event_type="position_closed"
+            )
+            raise ValueError("position_repository is required for position close handling")
+
+        try:
+            # Parse event
+            event = PositionClosedEvent(**event_data)
+
+            self.logger.debug(
+                "position_closed_event_received",
+                ticket_number=event.data.ticket_number,
+                symbol=event.data.symbol,
+                realized_pnl=float(event.data.realized_pnl),
+                close_reason=event.data.close_reason
+            )
+
+            # Get position from database
+            position = await position_repository.get_by_ticket_number(
+                event.data.ticket_number
+            )
+
+            if not position:
+                self.logger.warning(
+                    "position_not_found_for_closure",
+                    ticket_number=event.data.ticket_number
+                )
+                # Still publish event even if position not found
+                await self.redis_client.publish_event(
+                    channel=CHANNEL_POSITION_CLOSED,
+                    event=event.model_dump(mode='json')
+                )
+                return
+
+            # Update related order status to CLOSED (if exists)
+            if position.order_id:
+                order = await self.order_repository.get_by_id(position.order_id)
+                if order and order.status == "CONFIRMED":
+                    await self.order_repository.update_status(
+                        order_id=str(position.order_id),
+                        status="CLOSED",
+                        realized_pnl=event.data.realized_pnl
+                    )
+
+            # Delete position from open positions
+            await position_repository.delete_position(event.data.ticket_number)
+
+            # Publish to Redis
+            await self.redis_client.publish_event(
+                channel=CHANNEL_POSITION_CLOSED,
+                event=event.model_dump(mode='json')
+            )
+
+            # Record metrics
+            ea_id = f"ea_{event.data.magic_number}"
+            holding_time_seconds = (
+                event.data.close_time - event.data.open_time
+            ).total_seconds()
+            record_position_closed(
+                ea_id=ea_id,
+                symbol=event.data.symbol,
+                close_reason=event.data.close_reason,
+                holding_time_seconds=holding_time_seconds
+            )
+
+            self.logger.info(
+                "position_closed_handled",
+                ticket_number=event.data.ticket_number,
+                realized_pnl=float(event.data.realized_pnl),
+                close_reason=event.data.close_reason
+            )
+
+        except Exception as e:
+            self.logger.error(
+                "handle_position_closed_error",
                 error=str(e),
                 event_data=event_data
             )

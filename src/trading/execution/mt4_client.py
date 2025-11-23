@@ -6,7 +6,7 @@ Handles low-level ZMQ socket operations for communicating with MT4 Expert Adviso
 import asyncio
 import json
 from decimal import Decimal
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Literal, Optional
 
 import zmq
 import zmq.asyncio
@@ -68,7 +68,9 @@ class MT4Client:
         # ZMQ context and sockets
         self._context: Optional[zmq.asyncio.Context] = None
         self._req_socket: Optional[zmq.asyncio.Socket] = None
+        self._sub_socket: Optional[zmq.asyncio.Socket] = None
         self._connected = False
+        self._listening = False
 
         logger.info(
             "mt4_client_initialized",
@@ -123,10 +125,20 @@ class MT4Client:
             return
 
         try:
+            # Stop listening if active
+            self._listening = False
+
+            # Close REQ socket
             if self._req_socket:
                 self._req_socket.close()
                 self._req_socket = None
 
+            # Close SUB socket
+            if self._sub_socket:
+                self._sub_socket.close()
+                self._sub_socket = None
+
+            # Terminate context
             if self._context:
                 self._context.term()
                 self._context = None
@@ -437,6 +449,188 @@ class MT4Client:
         )
 
         return response_data
+
+    async def subscribe_to_events(self, topics: Optional[List[str]] = None) -> None:
+        """
+        Subscribe to PUB socket for real-time events from MT4.
+
+        Args:
+            topics: Optional list of topics to subscribe to.
+                   If None or empty, subscribes to all topics.
+                   Valid topics: ["position_updated", "position_closed", "market_tick"]
+
+        Raises:
+            ConnectionError: If not connected to MT4
+        """
+        if not self._connected or not self._context:
+            raise ConnectionError("Must be connected before subscribing to events")
+
+        try:
+            # Create SUB socket if it doesn't exist
+            if not self._sub_socket:
+                self._sub_socket = self._context.socket(zmq.SUB)
+
+                # Configure encryption if enabled
+                if self.encryption_manager.encryption_enabled:
+                    self._sub_socket = self.encryption_manager.configure_socket(self._sub_socket)
+
+                # Connect to PUB socket
+                pub_endpoint = f"tcp://{self.host}:{self.pub_port}"
+                self._sub_socket.connect(pub_endpoint)
+
+                logger.info(
+                    "mt4_pub_socket_connected",
+                    endpoint=pub_endpoint,
+                    magic_number=self.magic_number
+                )
+
+            # Subscribe to topics
+            if not topics:
+                # Subscribe to all topics (empty filter)
+                self._sub_socket.subscribe(b"")
+                logger.info("mt4_subscribed_all_topics", magic_number=self.magic_number)
+            else:
+                # Subscribe to specific topics
+                for topic in topics:
+                    self._sub_socket.subscribe(topic.encode('utf-8'))
+                    logger.debug(
+                        "mt4_subscribed_topic",
+                        topic=topic,
+                        magic_number=self.magic_number
+                    )
+
+        except Exception as e:
+            logger.error(
+                "mt4_subscribe_error",
+                error=str(e),
+                host=self.host,
+                pub_port=self.pub_port
+            )
+            raise ConnectionError(f"Failed to subscribe to MT4 events: {e}")
+
+    async def unsubscribe_from_events(self, topics: Optional[List[str]] = None) -> None:
+        """
+        Unsubscribe from specific topics or all topics.
+
+        Args:
+            topics: Optional list of topics to unsubscribe from.
+                   If None, unsubscribes from all topics.
+        """
+        if not self._sub_socket:
+            return
+
+        try:
+            if not topics:
+                # Unsubscribe from all
+                self._sub_socket.unsubscribe(b"")
+            else:
+                for topic in topics:
+                    self._sub_socket.unsubscribe(topic.encode('utf-8'))
+
+            logger.debug("mt4_unsubscribed", topics=topics, magic_number=self.magic_number)
+
+        except Exception as e:
+            logger.error("mt4_unsubscribe_error", error=str(e))
+
+    async def receive_event(self, timeout_ms: Optional[int] = None) -> Optional[Dict[str, Any]]:
+        """
+        Receive a single event from the PUB socket.
+
+        Args:
+            timeout_ms: Timeout in milliseconds (default: self.timeout_ms)
+
+        Returns:
+            Event data as dictionary, or None if timeout
+
+        Raises:
+            ConnectionError: If SUB socket not initialized
+        """
+        if not self._sub_socket:
+            raise ConnectionError("SUB socket not initialized. Call subscribe_to_events() first.")
+
+        timeout = timeout_ms or self.timeout_ms
+
+        try:
+            # Poll for events with timeout
+            if await self._sub_socket.poll(timeout=timeout) == 0:
+                return None  # Timeout - no events available
+
+            # Receive event
+            event_json = await self._sub_socket.recv_string()
+            event_data = json.loads(event_json)
+
+            logger.debug(
+                "mt4_event_received",
+                event_type=event_data.get("event_type"),
+                magic_number=self.magic_number
+            )
+
+            return event_data
+
+        except json.JSONDecodeError as e:
+            logger.error(
+                "mt4_event_invalid_json",
+                error=str(e)
+            )
+            return None
+        except Exception as e:
+            logger.error(
+                "mt4_event_receive_error",
+                error=str(e)
+            )
+            raise
+
+    async def start_listening(
+        self,
+        event_handler: Callable[[Dict[str, Any]], Awaitable[None]]
+    ) -> None:
+        """
+        Start continuous event listener loop.
+
+        Args:
+            event_handler: Async callback function to handle each event
+
+        Raises:
+            ConnectionError: If SUB socket not initialized
+            asyncio.CancelledError: When listener is stopped
+        """
+        if not self._sub_socket:
+            raise ConnectionError("SUB socket not initialized. Call subscribe_to_events() first.")
+
+        self._listening = True
+
+        logger.info("mt4_event_listener_started", magic_number=self.magic_number)
+
+        try:
+            while self._listening:
+                # Receive event with timeout
+                event_data = await self.receive_event(timeout_ms=1000)
+
+                if event_data:
+                    # Call event handler
+                    try:
+                        await event_handler(event_data)
+                    except Exception as e:
+                        logger.error(
+                            "mt4_event_handler_error",
+                            error=str(e),
+                            event_type=event_data.get("event_type")
+                        )
+                        # Continue listening even if handler fails
+
+        except asyncio.CancelledError:
+            logger.info("mt4_event_listener_cancelled", magic_number=self.magic_number)
+            raise
+        except Exception as e:
+            logger.error("mt4_event_listener_error", error=str(e))
+            raise
+        finally:
+            self._listening = False
+
+    def stop_listening(self) -> None:
+        """Stop the event listener loop."""
+        self._listening = False
+        logger.info("mt4_event_listener_stopped", magic_number=self.magic_number)
 
     async def __aenter__(self):
         """Async context manager entry."""
