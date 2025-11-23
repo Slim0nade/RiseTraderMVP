@@ -83,13 +83,13 @@ description: "Task list for MT4 Integration feature implementation"
 - [X] T025.5 [US1] Implement SymbolLoader in src/trading/execution/symbol_loader.py (dynamic symbol validation from MT4)
 - [X] T026 [US1] Add create_instant_order and get_symbols commands to MT4Client in src/trading/execution/mt4_client.py (BUY/SELL market orders)
 - [X] T026.5 [US1] Add get_symbols command handler to MT4 EA in mt4/experts/RiseTraderMT4Server.mq4
-- [ ] T027 [US1] Implement order submission in MT4IntegrationService.submit_market_order() in src/services/mt4_integration_service.py
-- [ ] T028 [US1] Add order persistence to MT4OrderRepository.create() in src/database/repositories/mt4_order_repository.py
-- [ ] T029 [US1] Implement order confirmation event publishing in src/services/mt4_integration_service.py (Redis pub/sub)
-- [ ] T030 [US1] Add order_confirmed event handler in src/services/mt4_integration_service.py (update database status)
-- [ ] T031 [US1] Implement correlation ID generation and tracking in src/utils/mt4_helpers.py
-- [ ] T032 [US1] Add logging for all order operations in src/services/mt4_integration_service.py (structured JSON logs)
-- [ ] T033 [US1] Add Prometheus metrics for order latency and success rate in src/monitoring/mt4_metrics.py
+- [X] T027 [US1] Implement order submission in MT4IntegrationService.submit_market_order() in src/services/mt4_integration_service.py
+- [X] T028 [US1] Add order persistence to MT4OrderRepository.create() in src/database/repositories/mt4_order_repository.py (✅ Already integrated in T027)
+- [X] T029 [US1] Implement order confirmation event publishing in src/services/mt4_integration_service.py (Redis pub/sub) (✅ Already integrated in T027)
+- [X] T030 [US1] Add order_confirmed event handler in src/services/mt4_integration_service.py (update database status) (✅ Already integrated in T027)
+- [X] T031 [US1] Implement correlation ID generation and tracking in src/utils/mt4_helpers.py (✅ Already integrated in T027)
+- [X] T032 [US1] Add logging for all order operations in src/services/mt4_integration_service.py (structured JSON logs) (✅ Already integrated in T027)
+- [X] T033 [US1] Add Prometheus metrics for order latency and success rate in src/monitoring/mt4_metrics.py (✅ Already integrated in T027)
 
 **Checkpoint**: At this point, User Story 1 should be fully functional and testable independently. Run all US1 tests to verify they PASS.
 
@@ -103,13 +103,13 @@ description: "Task list for MT4 Integration feature implementation"
 
 ### Tests for User Story 2 (TDD: Write FIRST)
 
-- [ ] T034 [P] [US2] Write unit test for ZMQ PUB socket subscription in tests/unit/test_mt4_client.py
-- [ ] T035 [P] [US2] Write unit test for position update event parsing in tests/unit/test_mt4_integration_service.py
-- [ ] T036 [P] [US2] Write unit test for position P&L calculation in tests/unit/test_mt4_models.py
-- [ ] T037 [P] [US2] Write integration test for position closure flow in tests/integration/test_mt4_communication.py
-- [ ] T038 [P] [US2] Write contract test for position_updated event schema in tests/contract/test_mt4_schemas.py
+- [X] T034 [P] [US2] Write unit test for ZMQ PUB socket subscription in tests/unit/test_mt4_client.py (11 tests added)
+- [X] T035 [P] [US2] Write unit test for position update event parsing in tests/unit/test_mt4_integration_service.py (8 tests added)
+- [X] T036 [P] [US2] Write unit test for position P&L calculation in tests/unit/test_mt4_models.py (13 tests added)
+- [X] T037 [P] [US2] Write integration test for position closure flow in tests/integration/test_mt4_position_flow.py (7 integration tests added)
+- [X] T038 [P] [US2] Write contract test for position_updated event schema in tests/contract/test_mt4_schemas.py (14 contract tests added)
 
-**Verify**: Tests FAIL (awaiting implementation)
+**Verify**: ✅ Tests complete (53 new tests) - Ready for implementation
 
 ### Implementation for User Story 2
 

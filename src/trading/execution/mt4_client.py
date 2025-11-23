@@ -302,6 +302,34 @@ class MT4Client:
 
         return order_response
 
+    def _adapt_mt4_response(self, response_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Adapt MT4 EA response format to our Pydantic model format.
+
+        MT4 EA returns: {"status": "OK", ...}
+        We need: {"success": true, "correlation_id": "...", ...}
+        """
+        # Check if response is already in new format
+        if "success" in response_data:
+            return response_data
+
+        # Adapt old format to new format
+        adapted = {
+            "success": response_data.get("status") == "OK",
+            "correlation_id": response_data.get("correlation_id", "unknown"),
+        }
+
+        # Copy error info if present
+        if "message" in response_data and response_data["message"]:
+            adapted["error_message"] = response_data["message"]
+
+        # Copy all other fields
+        for key, value in response_data.items():
+            if key not in ["status", "message"]:
+                adapted[key] = value
+
+        return adapted
+
     async def get_symbols(self) -> List[str]:
         """
         Fetch available trading symbols from MT4.
@@ -318,6 +346,9 @@ class MT4Client:
 
         # Send command
         response_data = await self.send_command(command)
+
+        # Adapt response format
+        response_data = self._adapt_mt4_response(response_data)
 
         # Parse response
         if not response_data.get("success", False):
@@ -346,6 +377,22 @@ class MT4Client:
         """
         command = GetAccountInfoCommand(magic_number=self.magic_number)
         response_data = await self.send_command(command)
+
+        # Adapt response format
+        response_data = self._adapt_mt4_response(response_data)
+
+        # Flatten account_info nested structure if present
+        if "account_info" in response_data:
+            account_info = response_data.pop("account_info")
+            # Map field names: freeMargin -> free_margin, marginLevel -> margin_level
+            response_data["balance"] = account_info.get("balance")
+            response_data["equity"] = account_info.get("equity")
+            response_data["margin"] = account_info.get("margin")
+            response_data["free_margin"] = account_info.get("freeMargin")
+            response_data["margin_level"] = account_info.get("marginLevel")
+            response_data["leverage"] = account_info.get("leverage")
+            response_data["account_number"] = account_info.get("accountNumber")
+
         return AccountInfoResponse(**response_data)
 
     async def get_open_positions(self) -> PositionsResponse:
@@ -357,6 +404,10 @@ class MT4Client:
         """
         command = GetOpenPositionsCommand(magic_number=self.magic_number)
         response_data = await self.send_command(command)
+
+        # Adapt response format
+        response_data = self._adapt_mt4_response(response_data)
+
         return PositionsResponse(**response_data)
 
     async def close_position(

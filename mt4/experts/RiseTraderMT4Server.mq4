@@ -1,96 +1,65 @@
 //+------------------------------------------------------------------+
-//|                                        RiseTraderMT4Server.mq4   |
-//|                                    RiseTrader MT4 Integration    |
-//|                            Server-side EA for ZMQ communication  |
+//|                                      ExpertsRiseTraderServer.mq4 |
+//|                                   Copyright 2025, Tuniverse Ltd. |
+//|                                       https://www.tuniverses.com |
 //+------------------------------------------------------------------+
-#property copyright "RiseTrader"
-#property link      "https://github.com/risetrader"
+#property copyright "Copyright 2025, Tuniverse Ltd."
+#property link      "https://www.tuniverses.com"
 #property version   "1.00"
 #property strict
 
 // Import ZMQ library (requires mql-zmq library installation)
 // Download from: https://github.com/dingmaotu/mql-zmq
-#include <Zmq/Zmq.mqh>
+#include <ZMQ/Zmq.mqh>
 
-//--- Input Parameters
-input string   ServerSecretKey = "";        // Server Secret Key (Z85, 40 chars)
-input string   ServerPublicKey = "";        // Server Public Key (Z85, 40 chars)
-input string   ClientPublicKey = "";        // Client Public Key (Z85, 40 chars)
-input int      REP_PORT = 5555;             // REP socket port (commands)
-input int      PUB_PORT = 5556;             // PUB socket port (streaming)
-input int      MagicNumber = 100001;        // Magic number for this EA
-input string   TradingSymbol = "CrudeOIL";  // Primary trading symbol
-input bool     EnableEncryption = true;     // Enable CurveZMQ encryption
-input bool     EnableLogging = true;        // Enable debug logging
-input int      HeartbeatIntervalMs = 30000; // Heartbeat interval (30s)
+// Define a unique magic number for your EA
+#define MAGIC_NUMBER 123456
 
-//--- Global Variables
-Context context;
-Socket repSocket;     // REP socket for commands
-Socket pubSocket;     // PUB socket for streaming
-datetime lastHeartbeat = 0;
-bool isInitialized = false;
+// Global variables
+Context context("helloworld");
+Socket repSocket(context, ZMQ_REP);      // Renamed for clarity
+Socket pubSocket(context, ZMQ_PUB);      // Renamed for clarity
+string g_symbol = "CrudeOIL";            // Ensure this symbol exists in your MT4
+ENUM_TIMEFRAMES g_timeframe = PERIOD_M1; // Changed to ENUM_TIMEFRAMES for type safety
+datetime g_lastUpdateTime = 0;
 
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
 //+------------------------------------------------------------------+
 int OnInit()
 {
-   Print("RiseTrader MT4 Server EA initializing...");
-   Print("Magic Number: ", MagicNumber);
-   Print("REP Port: ", REP_PORT);
-   Print("PUB Port: ", PUB_PORT);
-   Print("Symbol: ", TradingSymbol);
-   Print("Encryption: ", EnableEncryption ? "ENABLED" : "DISABLED");
+    // Set timer for every 1 second to handle ZMQ requests frequently
+    EventSetTimer(1);  // Changed from 60 to 1 for more responsive request handling
 
-   // Validate encryption keys if encryption is enabled
-   if(EnableEncryption)
-   {
-      if(StringLen(ServerSecretKey) != 40)
-      {
-         Print("ERROR: Server Secret Key must be 40 characters (Z85-encoded)");
-         return(INIT_PARAMETERS_INCORRECT);
-      }
+    // Attempt to bind REP socket
+    if(!repSocket.bind("tcp://*:5555"))
+    {
+        Print("Error: Unable to bind REP socket to tcp://*:5555");
+        return(INIT_FAILED);
+    }
 
-      if(StringLen(ServerPublicKey) != 40)
-      {
-         Print("ERROR: Server Public Key must be 40 characters (Z85-encoded)");
-         return(INIT_PARAMETERS_INCORRECT);
-      }
+    // Attempt to bind PUB socket
+    if(!pubSocket.bind("tcp://*:5556"))
+    {
+        Print("Error: Unable to bind PUB socket to tcp://*:5556");
+        repSocket.unbind("tcp://*:5555"); // Clean up REP socket if PUB binding fails
+        return(INIT_FAILED);
+    }
 
-      if(StringLen(ClientPublicKey) != 40)
-      {
-         Print("ERROR: Client Public Key must be 40 characters (Z85-encoded)");
-         return(INIT_PARAMETERS_INCORRECT);
-      }
+    // Validate the symbol
+    if(!SymbolSelect(g_symbol, true))
+    {
+        Print("Error: Symbol ", g_symbol, " not found or failed to load.");
+        repSocket.unbind("tcp://*:5555");
+        pubSocket.unbind("tcp://*:5556");
+        return(INIT_FAILED);
+    }
 
-      Print("Encryption keys validated");
-   }
+    // Initialize lastBarTime
+    g_lastUpdateTime = iTime(g_symbol, g_timeframe, 0);
 
-   // Initialize ZMQ context
-   context = new Context();
-
-   // Setup REP socket (for commands)
-   if(!SetupRepSocket())
-   {
-      Print("ERROR: Failed to setup REP socket");
-      return(INIT_FAILED);
-   }
-
-   // Setup PUB socket (for streaming)
-   if(!SetupPubSocket())
-   {
-      Print("ERROR: Failed to setup PUB socket");
-      return(INIT_FAILED);
-   }
-
-   isInitialized = true;
-   Print("RiseTrader MT4 Server EA initialized successfully");
-
-   // Send initial connection event
-   PublishConnectionStatus("ACTIVE", "");
-
-   return(INIT_SUCCEEDED);
+    Print("MT4 Server Initialized and ZMQ Sockets Bound.");
+    return(INIT_SUCCEEDED);
 }
 
 //+------------------------------------------------------------------+
@@ -98,664 +67,839 @@ int OnInit()
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason)
 {
-   Print("RiseTrader MT4 Server EA shutting down...");
+    // Kill the timer
+    EventKillTimer();
 
-   // Send disconnection event
-   if(isInitialized)
-   {
-      PublishConnectionStatus("INACTIVE", "EA stopped");
-   }
+    // Attempt to unbind REP socket
+    if(!repSocket.unbind("tcp://*:5555"))
+    {
+        Print("Warning: Failed to unbind REP socket.");
+    }
 
-   // Close sockets
-   if(CheckPointer(repSocket) == POINTER_DYNAMIC)
-   {
-      repSocket.disconnect(StringFormat("tcp://*:%d", REP_PORT));
-      repSocket.unbind(StringFormat("tcp://*:%d", REP_PORT));
-      delete repSocket;
-   }
+    // Attempt to unbind PUB socket
+    if(!pubSocket.unbind("tcp://*:5556"))
+    {
+        Print("Warning: Failed to unbind PUB socket.");
+    }
 
-   if(CheckPointer(pubSocket) == POINTER_DYNAMIC)
-   {
-      pubSocket.disconnect(StringFormat("tcp://*:%d", PUB_PORT));
-      pubSocket.unbind(StringFormat("tcp://*:%d", PUB_PORT));
-      delete pubSocket;
-   }
-
-   // Destroy context
-   if(CheckPointer(context) == POINTER_DYNAMIC)
-   {
-      delete context;
-   }
-
-   Print("RiseTrader MT4 Server EA shut down complete");
+    Print("MT4 Server Deinitialized and ZMQ Sockets Closed.");
 }
 
 //+------------------------------------------------------------------+
-//| Expert tick function                                              |
+//| Expert tick function                                             |
 //+------------------------------------------------------------------+
 void OnTick()
 {
-   if(!isInitialized) return;
-
-   // Process incoming commands (non-blocking)
-   ProcessCommands();
-
-   // Publish market tick data
-   PublishMarketTick();
-
-   // Send heartbeat periodically
-   if(TimeCurrent() - lastHeartbeat >= HeartbeatIntervalMs / 1000)
-   {
-      PublishHeartbeat();
-      lastHeartbeat = TimeCurrent();
-   }
-
-   // Check for position updates
-   CheckPositionUpdates();
+    datetime currentBarTime = iTime(g_symbol, g_timeframe, 0);
+    if(currentBarTime != g_lastUpdateTime)
+    {
+        sendRealTimeUpdate();
+        g_lastUpdateTime = currentBarTime;
+    }
 }
 
 //+------------------------------------------------------------------+
-//| Setup REP socket for commands                                     |
+//| Timer function to handle ZeroMQ requests and send fallback updates|
 //+------------------------------------------------------------------+
-bool SetupRepSocket()
+void OnTimer()
 {
-   repSocket = context.socket(ZMQ_REP);
+    // Handle incoming ZMQ requests
+    handleZmqRequests();
 
-   if(CheckPointer(repSocket) != POINTER_DYNAMIC)
-   {
-      Print("ERROR: Failed to create REP socket");
-      return false;
-   }
+    // Send fallback updates every minute
+    if(TimeCurrent() - g_lastUpdateTime >= 60)
+    {
+        sendRealTimeUpdate();
+        g_lastUpdateTime = TimeCurrent();
+    }
 
-   // Configure encryption
-   if(EnableEncryption)
-   {
-      repSocket.setCurveServer(true);
-      repSocket.setCurveSecretKey(ServerSecretKey);
-   }
-
-   // Bind socket
-   string address = StringFormat("tcp://*:%d", REP_PORT);
-   if(!repSocket.bind(address))
-   {
-      Print("ERROR: Failed to bind REP socket to ", address);
-      return false;
-   }
-
-   // Set socket options
-   repSocket.setReceiveTimeout(0);  // Non-blocking
-
-   Print("REP socket bound to ", address);
-   return true;
+    // Optional: Send a test message every 5 minutes for debugging
+    if(TimeMinute(TimeCurrent()) % 5 == 0 && TimeSeconds(TimeCurrent()) == 0)
+    {
+        sendTestMessage();
+    }
 }
 
 //+------------------------------------------------------------------+
-//| Setup PUB socket for streaming                                    |
+//| Function to handle ZeroMQ requests                              |
 //+------------------------------------------------------------------+
-bool SetupPubSocket()
+void handleZmqRequests()
 {
-   pubSocket = context.socket(ZMQ_PUB);
+    ZmqMsg request;
 
-   if(CheckPointer(pubSocket) != POINTER_DYNAMIC)
-   {
-      Print("ERROR: Failed to create PUB socket");
-      return false;
-   }
+    // Continuously receive all pending requests without blocking
+    while(repSocket.recv(request, ZMQ_DONTWAIT))
+    {
+        string requestString = request.getData();
+        Print("Received request: ", requestString);
 
-   // Configure encryption
-   if(EnableEncryption)
-   {
-      pubSocket.setCurveServer(true);
-      pubSocket.setCurveSecretKey(ServerSecretKey);
-   }
+        string response = processRequest(requestString);
 
-   // Bind socket
-   string address = StringFormat("tcp://*:%d", PUB_PORT);
-   if(!pubSocket.bind(address))
-   {
-      Print("ERROR: Failed to bind PUB socket to ", address);
-      return false;
-   }
-
-   Print("PUB socket bound to ", address);
-   return true;
+        // Send reply
+        ZmqMsg replyMsg(response);
+        if(!repSocket.send(replyMsg))
+        {
+            Print("Error: Failed to send reply for request: ", requestString);
+        }
+        else
+        {
+            Print("Reply sent: ", response);
+        }
+    }
 }
 
 //+------------------------------------------------------------------+
-//| Process incoming commands from RiseTrader                         |
+//| Function to process incoming requests                            |
 //+------------------------------------------------------------------+
-void ProcessCommands()
+string processRequest(string requestString)
 {
-   ZmqMsg request;
+    string command = extractValue(requestString, "command");
+    string response;
 
-   // Non-blocking receive
-   if(!repSocket.recv(request, true))
-   {
-      return;  // No messages waiting
-   }
+    if(command == "test_connection")
+    {
+        response = createJsonResponse("OK", "Connection successful");
+    }
+    else if(command == "login")
+    {
+        // Implement actual login logic with security measures
+        response = createJsonResponse("OK", "Login successful");
+    }
+    else if(command == "loadPair")
+    {
+        string symbol = extractValue(requestString, "symbol");
+        if(SymbolSelect(symbol, true))
+        {
+            response = createJsonResponse("OK", StringFormat("Symbol %s loaded", symbol));
+        }
+        else
+        {
+            response = createJsonResponse("ERROR", StringFormat("Failed to load symbol %s", symbol));
+        }
+    }
+    else if(command == "iClose" || command == "iOpen" || command == "iHigh" || command == "iLow" || command == "iTime" || command == "iVolume")
+    {
+        string symbol = extractValue(requestString, "symbol");
+        string timeframeStr = extractValue(requestString, "timeframe");
+        string timeStr = extractValue(requestString, "time");
 
-   string message = request.getData();
+        ENUM_TIMEFRAMES timeframe = stringToTimeframe(timeframeStr);
+        datetime time = StringToTime(timeStr);
 
-   if(EnableLogging)
-   {
-      Print("Received command: ", message);
-   }
+        int shift = iBarShift(symbol, timeframe, time, false);
+        if(shift == -1)
+        {
+            response = createJsonResponse("ERROR", "Invalid time or symbol.");
+        }
+        else
+        {
+            double value = 0;
+            if(command == "iClose")
+                value = iClose(symbol, timeframe, shift);
+            else if(command == "iOpen")
+                value = iOpen(symbol, timeframe, shift);
+            else if(command == "iHigh")
+                value = iHigh(symbol, timeframe, shift);
+            else if(command == "iLow")
+                value = iLow(symbol, timeframe, shift);
+            else if(command == "iTime")
+                value = (double)iTime(symbol, timeframe, shift);
+            else if(command == "iVolume")
+                value = (double)iVolume(symbol, timeframe, shift);
 
-   // Parse JSON command
-   string response = HandleCommand(message);
+            response = createJsonResponse("OK", "", StringFormat("\"return\":%d", (long)value));
+        }
+    }
+    else if(command == "close_position")
+    {
+        string ticketStr = extractValue(requestString, "ticket");
+        int ticket = StringToInteger(ticketStr);
+       
+        if(OrderSelect(ticket, SELECT_BY_TICKET))
+        {
+           bool result = OrderClose(ticket, OrderLots(), OrderClosePrice(), 3);
+           if(result)
+               response = createJsonResponse("OK", StringFormat("Position %d closed successfully", ticket));
+           else
+               response = createJsonResponse("ERROR", StringFormat("Failed to close position %d. Error: %d", ticket, GetLastError()));
+        }
+        else
+        {
+           response = createJsonResponse("ERROR", StringFormat("Position %d not found", ticket));
+        }
+    }
+    else if(command == "getOHLCV")
+    {
+        string symbol = extractValue(requestString, "symbol");
+        string timeframeStr = extractValue(requestString, "timeframe");
+        string timeStr = extractValue(requestString, "time");
 
-   // Send response
-   ZmqMsg reply(response);
-   repSocket.send(reply);
+        ENUM_TIMEFRAMES timeframe = stringToTimeframe(timeframeStr);
+        datetime time = StringToTime(timeStr);
 
-   if(EnableLogging)
-   {
-      Print("Sent response: ", response);
-   }
+        string ohlcvData = getOHLCV(symbol, timeframe, time);
+        if(StringLen(ohlcvData) == 0)
+            response = createJsonResponse("ERROR", "Invalid time or symbol.");
+        else
+            response = createJsonResponse("OK", "", StringFormat("\"ohlcv\":{%s}", ohlcvData));
+    }
+    else if(command == "get_open_positions")
+    {
+        string positions = getOpenPositions();
+        response = createJsonResponse("OK", "", StringFormat("\"positions\":%s", positions));
+    }
+    else if(command == "get_symbols")
+    {
+        string symbols = getSymbols();
+        response = createJsonResponse("OK", "", StringFormat("\"symbols\":%s", symbols));
+    }
+    else if(command == "create_instant_order")
+    {
+        string symbol = extractValue(requestString, "symbol");
+        string orderTypeStr = extractValue(requestString, "order_type");
+        string volumeStr = extractValue(requestString, "volume");
+        string stopLossStr = extractValue(requestString, "stop_loss");
+        string takeProfitStr = extractValue(requestString, "take_profit");
+
+        // Convert strings to appropriate types
+        int orderType;
+        if(orderTypeStr == "BUY")
+            orderType = OP_BUY;
+        else if(orderTypeStr == "SELL")
+            orderType = OP_SELL;
+        else
+        {
+            response = createJsonResponse("ERROR", "Invalid order type.");
+            Print("Invalid order type received: ", orderTypeStr);
+            return response;
+        }
+
+        double volume = StringToDouble(volumeStr);
+        double stopLoss = StringToDouble(stopLossStr);
+        double takeProfit = StringToDouble(takeProfitStr);
+
+        int ticket = createInstantOrder(symbol, orderType, volume, stopLoss, takeProfit);
+        if(ticket > 0)
+            response = createJsonResponse("OK", StringFormat("Order created with ticket %d", ticket));
+        else
+            response = createJsonResponse("ERROR", StringFormat("Failed to create order. Error: %d", GetLastError()));
+    }
+    else if(command == "create_pending_order")
+    {
+        string symbol = extractValue(requestString, "symbol");
+        string orderTypeStr = extractValue(requestString, "order_type");
+        string volumeStr = extractValue(requestString, "volume");
+        string priceStr = extractValue(requestString, "price");
+        string stopLossStr = extractValue(requestString, "stop_loss");
+        string takeProfitStr = extractValue(requestString, "take_profit");
+
+        // Convert strings to appropriate types
+        int orderType;
+        if(orderTypeStr == "BUY_LIMIT")
+            orderType = OP_BUYLIMIT;
+        else if(orderTypeStr == "SELL_LIMIT")
+            orderType = OP_SELLLIMIT;
+        else if(orderTypeStr == "BUY_STOP")
+            orderType = OP_BUYSTOP;
+        else if(orderTypeStr == "SELL_STOP")
+            orderType = OP_SELLSTOP;
+        else
+        {
+            response = createJsonResponse("ERROR", "Invalid pending order type.");
+            Print("Invalid pending order type received: ", orderTypeStr);
+            return response;
+        }
+
+        double volume = StringToDouble(volumeStr);
+        double price = StringToDouble(priceStr);
+        double stopLoss = StringToDouble(stopLossStr);
+        double takeProfit = StringToDouble(takeProfitStr);
+
+        int ticket = createPendingOrder(symbol, orderType, volume, price, stopLoss, takeProfit);
+        if(ticket > 0)
+            response = createJsonResponse("OK", StringFormat("Pending order created with ticket %d", ticket));
+        else
+            response = createJsonResponse("ERROR", StringFormat("Failed to create pending order. Error: %d", GetLastError()));
+    }
+    else if(command == "get_account_info")
+    {
+        string accountInfo = getAccountInfo();
+        response = createJsonResponse("OK", "", StringFormat("\"account_info\":{%s}", accountInfo));
+    }
+    else
+    {
+        response = createJsonResponse("ERROR", "Unknown command");
+    }
+
+    return response;
 }
 
 //+------------------------------------------------------------------+
-//| Handle command and generate response                              |
+//| Function to create a JSON string                                 |
 //+------------------------------------------------------------------+
-string HandleCommand(string commandJson)
+string createJsonResponse(string status, string message, string additional = "")
 {
-   // Parse command type from JSON
-   // Simplified JSON parsing - production should use proper JSON library
-
-   string response = "";
-
-   if(StringFind(commandJson, "\"command\":\"create_instant_order\"") >= 0)
-   {
-      response = HandleCreateInstantOrder(commandJson);
-   }
-   else if(StringFind(commandJson, "\"command\":\"get_account_info\"") >= 0)
-   {
-      response = HandleGetAccountInfo(commandJson);
-   }
-   else if(StringFind(commandJson, "\"command\":\"get_open_positions\"") >= 0)
-   {
-      response = HandleGetOpenPositions(commandJson);
-   }
-   else if(StringFind(commandJson, "\"command\":\"close_position\"") >= 0)
-   {
-      response = HandleClosePosition(commandJson);
-   }
-   else if(StringFind(commandJson, "\"command\":\"test_connection\"") >= 0)
-   {
-      response = HandleTestConnection(commandJson);
-   }
-   else if(StringFind(commandJson, "\"command\":\"get_symbols\"") >= 0)
-   {
-      response = HandleGetSymbols(commandJson);
-   }
-   else
-   {
-      response = ErrorResponse("Unknown command", 1000);
-   }
-
-   return response;
+    if (additional == "")
+        return StringFormat("{\"status\":\"%s\",\"message\":\"%s\"}", status, message);
+    else
+        return StringFormat("{\"status\":\"%s\",\"message\":\"%s\",%s}", status, message, additional);
 }
 
 //+------------------------------------------------------------------+
-//| Handle create instant order command                               |
+//| Simple function to extract value from JSON-like string           |
 //+------------------------------------------------------------------+
-string HandleCreateInstantOrder(string commandJson)
+string extractValue(string jsonString, string key)
 {
-   // Parse parameters (simplified - use proper JSON parser in production)
-   string symbol = ExtractJsonString(commandJson, "symbol");
-   string direction = ExtractJsonString(commandJson, "direction");
-   double volume = ExtractJsonDouble(commandJson, "volume");
-   double stopLoss = ExtractJsonDouble(commandJson, "stop_loss");
-   double takePro fit = ExtractJsonDouble(commandJson, "take_profit");
-
-   if(symbol == "") symbol = TradingSymbol;
-
-   // Determine order type
-   int orderType = (direction == "BUY") ? OP_BUY : OP_SELL;
-
-   // Get current price
-   double price = (orderType == OP_BUY) ? Ask : Bid;
-
-   // Place order
-   int ticket = OrderSend(
-      symbol,
-      orderType,
-      volume,
-      price,
-      3,  // 3 pip slippage
-      stopLoss,
-      takeProfit,
-      StringFormat("RiseTrader_%d", MagicNumber),
-      MagicNumber,
-      0,
-      clrNone
-   );
-
-   if(ticket > 0)
-   {
-      // Success - publish order_confirmed event
-      PublishOrderConfirmed(ticket, symbol, direction, volume, price);
-
-      return SuccessResponse(ticket, price);
-   }
-   else
-   {
-      // Error
-      int errorCode = GetLastError();
-      string errorMsg = ErrorDescription(errorCode);
-
-      return ErrorResponse(errorMsg, errorCode);
-   }
+    int keyPos = StringFind(jsonString, "\"" + key + "\"");
+    if (keyPos == -1) return "";
+    int colonPos = StringFind(jsonString, ":", keyPos);
+    if (colonPos == -1) return "";
+    int valueStart = colonPos + 1;
+    int valueEnd = StringFind(jsonString, ",", valueStart);
+    if (valueEnd == -1) valueEnd = StringFind(jsonString, "}", valueStart);
+    if (valueEnd == -1) return ""; // Prevent error if neither ',' nor '}' is found
+    string value = StringSubstr(jsonString, valueStart, valueEnd - valueStart);
+    value = StringTrimLeft(StringTrimRight(value));
+    if (StringLen(value) > 0 && StringGetCharacter(value, 0) == '\"')
+        value = StringSubstr(value, 1, StringLen(value) - 2);
+    return value;
 }
 
 //+------------------------------------------------------------------+
-//| Handle get account info command                                   |
+//| Function to get open positions                                   |
 //+------------------------------------------------------------------+
-string HandleGetAccountInfo(string commandJson)
+string getOpenPositions()
 {
-   string response = StringFormat(
-      "{\"success\":true,"
-      "\"account_number\":%d,"
-      "\"balance\":%.2f,"
-      "\"equity\":%.2f,"
-      "\"margin\":%.2f,"
-      "\"free_margin\":%.2f,"
-      "\"margin_level\":%.2f,"
-      "\"leverage\":%d}",
-      AccountNumber(),
-      AccountBalance(),
-      AccountEquity(),
-      AccountMargin(),
-      AccountFreeMargin(),
-      AccountMargin() > 0 ? AccountEquity() / AccountMargin() * 100 : 999.99,
-      AccountLeverage()
-   );
+    string positions = "";
+    for(int i = 0; i < OrdersTotal(); i++)
+    {
+        if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+        {
+            string orderTypeStr;
+            switch(OrderType())
+            {
+                case OP_BUY: orderTypeStr = "BUY"; break;
+                case OP_SELL: orderTypeStr = "SELL"; break;
+                default: orderTypeStr = "OTHER"; break;
+            }
 
-   return response;
-}
-
-//+------------------------------------------------------------------+
-//| Handle get open positions command                                 |
-//+------------------------------------------------------------------+
-string HandleGetOpenPositions(string commandJson)
-{
-   string positions = "[";
-   bool first = true;
-
-   for(int i = 0; i < OrdersTotal(); i++)
-   {
-      if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
-      {
-         if(OrderMagicNumber() == MagicNumber)
-         {
-            if(!first) positions += ",";
-
-            positions += StringFormat(
-               "{\"ticket\":%d,"
-               "\"symbol\":\"%s\","
-               "\"direction\":\"%s\","
-               "\"volume\":%.2f,"
-               "\"open_price\":%.5f,"
-               "\"current_price\":%.5f,"
-               "\"unrealized_pnl\":%.2f,"
-               "\"stop_loss\":%.5f,"
-               "\"take_profit\":%.5f}",
-               OrderTicket(),
-               OrderSymbol(),
-               (OrderType() == OP_BUY) ? "BUY" : "SELL",
-               OrderLots(),
-               OrderOpenPrice(),
-               OrderClosePrice(),
-               OrderProfit(),
-               OrderStopLoss(),
-               OrderTakeProfit()
+            string position = StringFormat(
+                "{\"ticket\":%d,\"symbol\":\"%s\",\"type\":\"%s\",\"lots\":%.2f,\"openPrice\":%.5f,\"curPrice\":%.5f,\"sl\":%.5f,\"tp\":%.5f}",
+                OrderTicket(), OrderSymbol(), orderTypeStr, OrderLots(), OrderOpenPrice(), OrderClosePrice(), OrderStopLoss(), OrderTakeProfit()
             );
 
-            first = false;
-         }
-      }
-   }
-
-   positions += "]";
-
-   return StringFormat("{\"success\":true,\"positions\":%s}", positions);
+            if(positions != "") positions += ",";
+            positions += position;
+        }
+    }
+    return "[" + positions + "]";
 }
 
 //+------------------------------------------------------------------+
-//| Handle close position command                                     |
+//| Function to get all available symbols                            |
 //+------------------------------------------------------------------+
-string HandleClosePosition(string commandJson)
+string getSymbols()
 {
-   int ticket = ExtractJsonInt(commandJson, "ticket_number");
-
-   if(OrderSelect(ticket, SELECT_BY_TICKET))
-   {
-      if(OrderMagicNumber() == MagicNumber)
-      {
-         bool result = OrderClose(
-            OrderTicket(),
-            OrderLots(),
-            OrderClosePrice(),
-            3,
-            clrNone
-         );
-
-         if(result)
-         {
-            // Publish position_closed event
-            PublishPositionClosed(ticket);
-
-            return StringFormat("{\"success\":true,\"ticket\":%d}", ticket);
-         }
-      }
-   }
-
-   return ErrorResponse("Failed to close position", GetLastError());
+    Print("Getting symbols...");
+    string symbols = "";
+    int totalSymbols = SymbolsTotal(true);
+    Print("Total symbols: ", totalSymbols);
+    for(int i = 0; i < totalSymbols; i++)
+    {
+        string symbol = SymbolName(i, true);
+        Print("Symbol ", i, ": ", symbol);
+        if(symbols != "") symbols += ",";
+        symbols += "\"" + symbol + "\"";
+    }
+    string result = "[" + symbols + "]";
+    Print("Symbols result: ", result);
+    return result;
 }
 
 //+------------------------------------------------------------------+
-//| Handle test connection command                                    |
+//| Function to create an instant order                              |
 //+------------------------------------------------------------------+
-string HandleTestConnection(string commandJson)
+int createInstantOrder(string symbol, int orderType, double volume, double stopLoss, double takeProfit)
 {
-   return StringFormat(
-      "{\"success\":true,"
-      "\"message\":\"Connection OK\","
-      "\"magic_number\":%d,"
-      "\"symbol\":\"%s\","
-      "\"server_time\":\"%s\"}",
-      MagicNumber,
-      TradingSymbol,
-      TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS)
-   );
+    double price = (orderType == OP_BUY) ? MarketInfo(symbol, MODE_ASK) : MarketInfo(symbol, MODE_BID);
+    int slippage = 3;
+    string comment = "Instant Order";
+
+    int ticket = OrderSend(symbol, orderType, volume, price, slippage, stopLoss, takeProfit, comment, MAGIC_NUMBER, 0, clrNONE);
+    if(ticket < 0)
+    {
+        Print("OrderSend failed with error #", GetLastError());
+    }
+    return ticket;
 }
 
 //+------------------------------------------------------------------+
-//| Handle get symbols command                                        |
+//| Function to create a pending order                              |
 //+------------------------------------------------------------------+
-string HandleGetSymbols(string commandJson)
+int createPendingOrder(string symbol, int orderType, double volume, double price, double stopLoss, double takeProfit)
 {
-   // Get all symbols available in Market Watch
-   string symbolsList = "";
-   int symbolCount = 0;
+    int slippage = 3;
+    string comment = "Pending Order";
 
-   // Iterate through all symbols in Market Watch
-   for(int i = 0; i < SymbolsTotal(true); i++)
-   {
-      string symbolName = SymbolName(i, true);
-      if(symbolName != "")
-      {
-         if(symbolCount > 0)
-         {
-            symbolsList += ",";
-         }
-         symbolsList += StringFormat("\"%s\"", symbolName);
-         symbolCount++;
-      }
-   }
-
-   // Return JSON response
-   string response = StringFormat(
-      "{\"success\":true,"
-      "\"symbols\":[%s],"
-      "\"count\":%d}",
-      symbolsList,
-      symbolCount
-   );
-
-   return response;
+    int ticket = OrderSend(symbol, orderType, volume, price, slippage, stopLoss, takeProfit, comment, MAGIC_NUMBER, 0, clrNONE);
+    if(ticket < 0)
+    {
+        Print("OrderSend (Pending) failed with error #", GetLastError());
+    }
+    return ticket;
 }
 
 //+------------------------------------------------------------------+
-//| Publish market tick event                                         |
+//| Function to convert string timeframe to ENUM_TIMEFRAMES          |
 //+------------------------------------------------------------------+
-void PublishMarketTick()
+ENUM_TIMEFRAMES stringToTimeframe(string timeframeStr)
 {
-   string event = StringFormat(
-      "{\"event_type\":\"market_tick\","
-      "\"version\":\"1.0.0\","
-      "\"timestamp\":\"%s\","
-      "\"data\":{"
-      "\"symbol\":\"%s\","
-      "\"bid\":%.5f,"
-      "\"ask\":%.5f\"}}",
-      TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS),
-      TradingSymbol,
-      Bid,
-      Ask
-   );
-
-   ZmqMsg msg(event);
-   pubSocket.send(msg);
+    if(timeframeStr == "PERIOD_M1")   return PERIOD_M1;
+    if(timeframeStr == "PERIOD_M5")   return PERIOD_M5;
+    if(timeframeStr == "PERIOD_M15")  return PERIOD_M15;
+    if(timeframeStr == "PERIOD_M30")  return PERIOD_M30;
+    if(timeframeStr == "PERIOD_H1")   return PERIOD_H1;
+    if(timeframeStr == "PERIOD_H4")   return PERIOD_H4;
+    if(timeframeStr == "PERIOD_D1")   return PERIOD_D1;
+    if(timeframeStr == "PERIOD_W1")   return PERIOD_W1;
+    if(timeframeStr == "PERIOD_MN1")  return PERIOD_MN1;
+    return PERIOD_CURRENT; // Default to current timeframe if not recognized
 }
 
 //+------------------------------------------------------------------+
-//| Publish order confirmed event                                     |
+//| Function to get OHLCV data for a specific bar                     |
 //+------------------------------------------------------------------+
-void PublishOrderConfirmed(int ticket, string symbol, string direction, double volume, double price)
+string getOHLCV(string symbol, ENUM_TIMEFRAMES timeframe, datetime time)
 {
-   string event = StringFormat(
-      "{\"event_type\":\"order_confirmed\","
-      "\"version\":\"1.0.0\","
-      "\"timestamp\":\"%s\","
-      "\"data\":{"
-      "\"ticket_number\":%d,"
-      "\"magic_number\":%d,"
-      "\"symbol\":\"%s\","
-      "\"direction\":\"%s\","
-      "\"volume\":%.2f,"
-      "\"execution_price\":%.5f}}",
-      TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS),
-      ticket,
-      MagicNumber,
-      symbol,
-      direction,
-      volume,
-      price
-   );
+    int shift = iBarShift(symbol, timeframe, time, false);
+    if(shift == -1) return "";
+    
+    double open = iOpen(symbol, timeframe, shift);
+    double high = iHigh(symbol, timeframe, shift);
+    double low = iLow(symbol, timeframe, shift);
+    double close = iClose(symbol, timeframe, shift);
+    double volume = iVolume(symbol, timeframe, shift);
+    datetime barTime = iTime(symbol, timeframe, shift);
 
-   ZmqMsg msg(event);
-   pubSocket.send(msg);
+    // Convert broker time to UTC
+    datetime utcTime = barTime;
+    datetime pstTime = barTime - TimeGMTOffset();
+    
+    // Debug print
+    //Print("Bar Time (Broker): ", TimeToString(barTime));
+    //Print("GMT Offset: ", TimeGMTOffset());
+    //Print("UTC Time: ", TimeToString(utcTime));
+    //Print("PST Time: ", TimeToString(pstTime));
 
-   Print("Published order_confirmed event for ticket ", ticket);
+    // barTime is already in UTC, no conversion needed
+    return StringFormat(
+        "\"open\":%.5f,\"high\":%.5f,\"low\":%.5f,\"close\":%.5f,\"volume\":%.2f,\"time\":%d",
+        open, high, low, close, volume, barTime
+    );
 }
 
 //+------------------------------------------------------------------+
-//| Publish position closed event                                     |
+//| Function to get account information                              |
 //+------------------------------------------------------------------+
-void PublishPositionClosed(int ticket)
+string getAccountInfo()
 {
-   string event = StringFormat(
-      "{\"event_type\":\"position_closed\","
-      "\"version\":\"1.0.0\","
-      "\"timestamp\":\"%s\","
-      "\"data\":{\"ticket_number\":%d,\"magic_number\":%d}}",
-      TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS),
-      ticket,
-      MagicNumber
-   );
-
-   ZmqMsg msg(event);
-   pubSocket.send(msg);
+    double marginLevel = (AccountMargin() != 0) ? (AccountEquity() / AccountMargin() * 100) : 0;
+    return StringFormat("\"balance\":%.2f,\"equity\":%.2f,\"margin\":%.2f,\"freeMargin\":%.2f,\"marginLevel\":%.2f",
+                        AccountBalance(), AccountEquity(), AccountMargin(), AccountFreeMargin(), marginLevel);
 }
 
 //+------------------------------------------------------------------+
-//| Publish connection status event                                   |
+//| New function to get CCI signal                                   |
 //+------------------------------------------------------------------+
-void PublishConnectionStatus(string status, string error)
+string getCCISignal(string symbol, ENUM_TIMEFRAMES timeframe)
 {
-   string event = StringFormat(
-      "{\"event_type\":\"connection_status_changed\","
-      "\"version\":\"1.0.0\","
-      "\"timestamp\":\"%s\","
-      "\"data\":{\"magic_number\":%d,\"status\":\"%s\",\"error_message\":\"%s\"}}",
-      TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS),
-      MagicNumber,
-      status,
-      error
-   );
+    int cciPeriod = 14;
+    double cci = iCCI(symbol, timeframe, cciPeriod, PRICE_TYPICAL, 0);
 
-   ZmqMsg msg(event);
-   pubSocket.send(msg);
+    if(cci < -100) return "BUY";
+    else if(cci > 100) return "SELL";
+    else return "NONE";
 }
 
 //+------------------------------------------------------------------+
-//| Publish heartbeat                                                 |
+//| New function to get Bollinger Bands signal                       |
 //+------------------------------------------------------------------+
-void PublishHeartbeat()
+string getBollingerBandsSignal(string symbol, ENUM_TIMEFRAMES timeframe)
 {
-   string event = StringFormat(
-      "{\"event_type\":\"heartbeat\","
-      "\"version\":\"1.0.0\","
-      "\"timestamp\":\"%s\","
-      "\"data\":{\"magic_number\":%d}}",
-      TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS),
-      MagicNumber
-   );
+    int bbPeriod = 20;
+    double deviation = 2.0;
+    double upperBand = iBands(symbol, timeframe, bbPeriod, deviation, 0, PRICE_CLOSE, MODE_UPPER, 0);
+    double lowerBand = iBands(symbol, timeframe, bbPeriod, deviation, 0, PRICE_CLOSE, MODE_LOWER, 0);
+    double closePrice = iClose(symbol, timeframe, 0);
 
-   ZmqMsg msg(event);
-   pubSocket.send(msg);
+    if(closePrice <= lowerBand) return "BUY";
+    else if(closePrice >= upperBand) return "SELL";
+    else return "NONE";
 }
 
+
+
 //+------------------------------------------------------------------+
-//| Check for position updates                                        |
+//| New function to get calculate VWAP                       |
 //+------------------------------------------------------------------+
-void CheckPositionUpdates()
+double calculateVWAP()
 {
-   // Check all open positions and publish updates if P&L changed
-   for(int i = 0; i < OrdersTotal(); i++)
-   {
-      if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
-      {
-         if(OrderMagicNumber() == MagicNumber)
-         {
-            // Publish position update
-            PublishPositionUpdate(
-               OrderTicket(),
-               OrderSymbol(),
-               OrderType() == OP_BUY ? "BUY" : "SELL",
-               OrderLots(),
-               OrderOpenPrice(),
-               OrderClosePrice(),
-               OrderProfit()
-            );
-         }
-      }
-   }
+    double cumTypicalPrice = 0;
+    double cumVolume = 0;
+    
+    for(int i = 0; i < 20; i++)  // Calculate VWAP for last 20 bars
+    {
+        double typicalPrice = (High[i] + Low[i] + Close[i]) / 3;
+        cumTypicalPrice += typicalPrice * Volume[i];
+        cumVolume += Volume[i];
+    }
+    
+    return cumVolume > 0 ? cumTypicalPrice / cumVolume : Close[0];
 }
 
 //+------------------------------------------------------------------+
-//| Publish position update event                                     |
+//| New function to get MACD signal                                   |
 //+------------------------------------------------------------------+
-void PublishPositionUpdate(int ticket, string symbol, string direction,
-                          double volume, double openPrice, double currentPrice, double pnl)
+string getMACDSignal(string symbol, ENUM_TIMEFRAMES timeframe)
 {
-   string event = StringFormat(
-      "{\"event_type\":\"position_updated\","
-      "\"version\":\"1.0.0\","
-      "\"timestamp\":\"%s\","
-      "\"data\":{"
-      "\"ticket_number\":%d,"
-      "\"magic_number\":%d,"
-      "\"symbol\":\"%s\","
-      "\"direction\":\"%s\","
-      "\"volume\":%.2f,"
-      "\"open_price\":%.5f,"
-      "\"current_price\":%.5f,"
-      "\"unrealized_pnl\":%.2f}}",
-      TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS),
-      ticket,
-      MagicNumber,
-      symbol,
-      direction,
-      volume,
-      openPrice,
-      currentPrice,
-      pnl
-   );
+    int fastEMA = 12;
+    int slowEMA = 26;
+    int signalSMA = 9;
+    double macd = iMACD(symbol, timeframe, fastEMA, slowEMA, signalSMA, PRICE_CLOSE, MODE_MAIN, 0);
+    double signal = iMACD(symbol, timeframe, fastEMA, slowEMA, signalSMA, PRICE_CLOSE, MODE_SIGNAL, 0);
 
-   ZmqMsg msg(event);
-   pubSocket.send(msg);
+    if(macd > signal) return "BUY";
+    else if(macd < signal) return "SELL";
+    else return "NONE";
 }
 
 //+------------------------------------------------------------------+
-//| Helper: Success response                                          |
+//| New function to combine signals                                  |
 //+------------------------------------------------------------------+
-string SuccessResponse(int ticket, double price)
+string getTradingSignals(string symbol, ENUM_TIMEFRAMES timeframe)
 {
-   return StringFormat(
-      "{\"success\":true,"
-      "\"ticket_number\":%d,"
-      "\"execution_price\":%.5f,"
-      "\"execution_time\":\"%s\"}",
-      ticket,
-      price,
-      TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS)
-   );
+    string cciSignal = getCCISignal(symbol, timeframe);
+    string bbSignal = getBollingerBandsSignal(symbol, timeframe);
+    string macdSignal = getMACDSignal(symbol, timeframe);
+
+    string signals = StringFormat("{\"cci_signal\":\"%s\",\"bb_signal\":\"%s\",\"macd_signal\":\"%s\"}", 
+                                  cciSignal, bbSignal, macdSignal);
+    return signals;
 }
 
 //+------------------------------------------------------------------+
-//| Helper: Error response                                            |
+//| Function to check if market is open                               |
 //+------------------------------------------------------------------+
-string ErrorResponse(string message, int code)
+//bool IsMarketOpen(string symbol)
+//{
+    // Get current server time
+//    datetime serverTime = TimeCurrent();
+    
+    // Check if it's weekend
+//    int dayOfWeek = TimeDayOfWeek(serverTime);
+//    if(dayOfWeek == 0 || dayOfWeek == 6)
+//        return false;
+        
+    // Check if symbol is actually trading
+//    double currentBid = MarketInfo(symbol, MODE_BID);
+ //   double currentAsk = MarketInfo(symbol, MODE_ASK);
+    
+    // If either bid or ask is 0 or invalid, market is likely closed
+//    if(currentBid == 0 || currentAsk == 0 || currentBid == EMPTY_VALUE || currentAsk == EMPTY_VALUE)
+ //       return false;
+        
+    // Check if symbol is selected/available
+//    if(!SymbolSelect(symbol, true))
+//        return false;
+        
+    // If we got here, market should be open
+//    return true;
+//}
+
+bool IsMarketOpen(string symbol)
 {
-   return StringFormat(
-      "{\"success\":false,"
-      "\"error_code\":%d,"
-      "\"error_message\":\"%s\"}",
-      code,
-      message
-   );
+    // Get current server time
+    datetime serverTime = TimeCurrent();
+    
+    // Check if it's weekend
+    int dayOfWeek = TimeDayOfWeek(serverTime);
+    if(dayOfWeek == 0 || dayOfWeek == 6)
+    {
+        Print("Market closed: Weekend (Day ", dayOfWeek, " - ", 
+              dayOfWeek == 0 ? "Sunday" : "Saturday", 
+              "), except for specific Sunday hours");
+    }
+        
+    // Get current hour and minute
+    int hour = TimeHour(serverTime);
+    int minute = TimeMinute(serverTime);
+    int currentTime = hour * 100 + minute;  // Convert to HHMM format
+    
+    Print("Current server time: ", TimeToStr(serverTime), 
+          " (Day: ", dayOfWeek, 
+          ", Hour: ", hour, 
+          ", Minute: ", minute, 
+          ", HHMM: ", currentTime, ")");
+    
+    // Check trading sessions based on day of week
+    switch(dayOfWeek)
+    {
+        case 1: // Monday
+        case 2: // Tuesday
+        case 3: // Wednesday
+        case 4: // Thursday
+            // Trading hours: 00:00-21:59, 23:01-24:00
+            if((currentTime >= 0 && currentTime <= 2159) || 
+               (currentTime >= 2301 && currentTime <= 2400))
+            {
+                Print("Market should be open: Regular trading day within valid hours");
+                
+                // Additional safety checks
+                double currentBid = MarketInfo(symbol, MODE_BID);
+                double currentAsk = MarketInfo(symbol, MODE_ASK);
+                
+                Print("Current Bid: ", currentBid, ", Ask: ", currentAsk);
+                
+                if(currentBid == 0 || currentAsk == 0 || currentBid == EMPTY_VALUE || currentAsk == EMPTY_VALUE)
+                {
+                    Print("Market closed: Invalid Bid/Ask prices despite being within trading hours");
+                    return false;
+                }
+                
+                if(!SymbolSelect(symbol, true))
+                {
+                    Print("Market closed: Symbol selection failed");
+                    return false;
+                }
+                
+                return true;
+            }
+            else
+            {
+                Print("Market closed: Outside trading hours for weekday (", currentTime, 
+                      "). Valid hours are 00:00-21:59 and 23:01-24:00");
+            }
+            break;
+            
+        case 5: // Friday
+            // Trading hours: 00:00-21:59
+            if(currentTime >= 0 && currentTime <= 2159)
+            {
+                Print("Market should be open: Friday within valid hours");
+                
+                // Additional safety checks
+                double currentBid = MarketInfo(symbol, MODE_BID);
+                double currentAsk = MarketInfo(symbol, MODE_ASK);
+                
+                Print("Current Bid: ", currentBid, ", Ask: ", currentAsk);
+                
+                if(currentBid == 0 || currentAsk == 0 || currentBid == EMPTY_VALUE || currentAsk == EMPTY_VALUE)
+                {
+                    Print("Market closed: Invalid Bid/Ask prices despite being within trading hours");
+                    return false;
+                }
+                
+                if(!SymbolSelect(symbol, true))
+                {
+                    Print("Market closed: Symbol selection failed");
+                    return false;
+                }
+                
+                return true;
+            }
+            else
+            {
+                Print("Market closed: Outside trading hours for Friday (", currentTime, 
+                      "). Valid hours are 00:00-21:59");
+            }
+            break;
+            
+        case 0: // Sunday
+            // Trading hours: 23:01-24:00
+            if(currentTime >= 2301 && currentTime <= 2400)
+            {
+                Print("Market should be open: Sunday within valid hours");
+                
+                // Additional safety checks
+                double currentBid = MarketInfo(symbol, MODE_BID);
+                double currentAsk = MarketInfo(symbol, MODE_ASK);
+                
+                Print("Current Bid: ", currentBid, ", Ask: ", currentAsk);
+                
+                if(currentBid == 0 || currentAsk == 0 || currentBid == EMPTY_VALUE || currentAsk == EMPTY_VALUE)
+                {
+                    Print("Market closed: Invalid Bid/Ask prices despite being within trading hours");
+                    return false;
+                }
+                
+                if(!SymbolSelect(symbol, true))
+                {
+                    Print("Market closed: Symbol selection failed");
+                    return false;
+                }
+                
+                return true;
+            }
+            else
+            {
+                Print("Market closed: Outside trading hours for Sunday (", currentTime, 
+                      "). Valid hours are 23:01-24:00");
+            }
+            break;
+    }
+    
+    // Additional safety checks for logging purposes
+    double finalBid = MarketInfo(symbol, MODE_BID);
+    double finalAsk = MarketInfo(symbol, MODE_ASK);
+    Print("Final check - Bid: ", finalBid, ", Ask: ", finalAsk);
+    
+    if(!SymbolSelect(symbol, true))
+    {
+        Print("Final check - Symbol selection failed");
+    }
+    
+    Print("Market closed: No valid trading session found");
+    return false;
 }
 
 //+------------------------------------------------------------------+
-//| Helper: Extract string from JSON                                  |
+//| Function to send real-time updates including price data and signals|
 //+------------------------------------------------------------------+
-string ExtractJsonString(string json, string key)
+void sendRealTimeUpdate()
 {
-   // Simplified JSON extraction - use proper parser in production
-   int startPos = StringFind(json, "\"" + key + "\":\"");
-   if(startPos < 0) return "";
 
-   startPos += StringLen(key) + 4;
-   int endPos = StringFind(json, "\"", startPos);
-
-   if(endPos < 0) return "";
-
-   return StringSubstr(json, startPos, endPos - startPos);
+    // Add market open check at the start
+    bool isMarketOpen = IsMarketOpen(g_symbol);
+          
+    // Ensure there are enough bars to calculate indicators
+    int requiredBars = MathMax(50, 26); // 50 for MA_50 and 26 for MACD slow EMA
+    if(Bars < requiredBars)
+    {
+        Print("Not enough bars to calculate all indicators. Required: ", requiredBars, ", Available: ", Bars);
+        return;
+    }
+    
+    // Calculate Technical Indicators
+    double MA_20 = iMA(g_symbol, g_timeframe, 20, 0, MODE_SMA, PRICE_CLOSE, 0);
+    double MA_50 = iMA(g_symbol, g_timeframe, 50, 0, MODE_SMA, PRICE_CLOSE, 0);
+    
+    // Calculate MA_200
+    double MA_200 = iMA(g_symbol, g_timeframe, 200, 0, MODE_SMA, PRICE_CLOSE, 0);
+    
+    // Calculate RSI
+    double RSI_14 = iRSI(g_symbol, g_timeframe, 14, PRICE_CLOSE, 0);
+    
+    // Calculate MACD Components
+    double MACD_main = iMACD(g_symbol, g_timeframe, 12, 26, 9, PRICE_CLOSE, MODE_MAIN, 0);
+    double MACD_signal = iMACD(g_symbol, g_timeframe, 12, 26, 9, PRICE_CLOSE, MODE_SIGNAL, 0);
+    // double MACD_hist = iMACD(g_symbol, g_timeframe, 12, 26, 9, PRICE_CLOSE, MODE_HIST, 0); // Uncomment if needed
+    
+    // Calculate Bollinger Bands
+    double BB_upper = iBands(g_symbol, g_timeframe, 20, 2.0, 0, PRICE_CLOSE, MODE_UPPER, 0);
+    double BB_middle = iBands(g_symbol, g_timeframe, 20, 2.0, 0, PRICE_CLOSE, MODE_MAIN, 0);
+    double BB_lower = iBands(g_symbol, g_timeframe, 20, 2.0, 0, PRICE_CLOSE, MODE_LOWER, 0);
+    
+    // Retrieve Price Data
+    string priceData = getOHLCV(g_symbol, g_timeframe, TimeCurrent());
+    string signals = getTradingSignals(g_symbol, g_timeframe);
+    
+    // Check if priceData is valid
+    if(StringLen(priceData) == 0)
+    {
+        Print("Invalid price data. Skipping update.");
+        return;
+    }
+    
+    // Calculate additional indicators
+    double ATR = iATR(g_symbol, g_timeframe, 14, 0);  // 14-period ATR
+    double SAR = iSAR(g_symbol, g_timeframe, 0.02, 0.2, 0);  // Parabolic SAR
+    double VWAP = calculateVWAP();  // You'll need to implement this
+    
+    
+    // Calculate Fibonacci levels
+    double high = High[iHighest(g_symbol, g_timeframe, MODE_HIGH, 20, 0)];
+    double low = Low[iLowest(g_symbol, g_timeframe, MODE_LOW, 20, 0)];
+    
+    double fib_236 = high - ((high - low) * 0.236);
+    double fib_382 = high - ((high - low) * 0.382);
+    double fib_500 = high - ((high - low) * 0.500);
+    double fib_618 = high - ((high - low) * 0.618);
+    double fib_786 = high - ((high - low) * 0.786);
+        
+    // Check if all indicators have valid values
+    if(MA_20 == EMPTY_VALUE || MA_50 == EMPTY_VALUE || RSI_14 == EMPTY_VALUE ||
+       MACD_main == EMPTY_VALUE || MACD_signal == EMPTY_VALUE ||
+       BB_upper == EMPTY_VALUE || BB_middle == EMPTY_VALUE || BB_lower == EMPTY_VALUE)
+    {
+        Print("One or more indicators returned EMPTY_VALUE. Skipping update.");
+        return;
+    }
+    
+    // Prepare TA Indicators JSON
+    string taIndicators = StringFormat(
+        "\"MA_20\":%.5f,\"MA_50\":%.5f,\"MA_200\":%.5f,\"RSI_14\":%.2f,\"MACD\":%.5f,\"MACD_signal\":%.5f,\"BB_upper\":%.5f,\"BB_middle\":%.5f,\"BB_lower\":%.5f,\"ATR\":%.5f,\"SAR\":%.5f,\"VWAP\":%.5f,\"FIB_236\":%.5f,\"FIB_382\":%.5f,\"FIB_500\":%.5f,\"FIB_618\":%.5f,\"FIB_786\":%.5f,\"FIB_HIGH\":%.5f,\"FIB_LOW\":%.5f",
+        MA_20,
+        MA_50,
+        MA_200,
+        RSI_14,
+        MACD_main,
+        MACD_signal,
+        BB_upper,
+        BB_middle,
+        BB_lower,
+        ATR,
+        SAR,
+        VWAP,
+        fib_236, fib_382, fib_500, fib_618, fib_786,
+        high, low
+    );
+    
+    // Modify the JSON message to include new indicators
+    //string taIndicators = StringFormat(
+     //   "\"MA_20\":%.5f,\"MA_50\":%.5f,\"RSI_14\":%.2f,\"MACD\":%.5f,\"MACD_signal\":%.5f," 
+     //   "\"BB_upper\":%.5f,\"BB_middle\":%.5f,\"BB_lower\":%.5f,"
+     //   "\"ATR\":%.5f,\"SAR\":%.5f,\"VWAP\":%.5f",
+     //   ma20, ma50, rsi, macd, macdSignal,
+     //   bbUpper, bbMiddle, bbLower,
+     //   atr, sar, vwap
+   // );
+    
+    // Construct the JSON message
+    string message = StringFormat(
+        "{\"type\":\"real_time_update\",\"symbol\":\"%s\",\"timeframe\":%d,\"market_open\":%s,\"price_data\":{%s},\"signals\":%s,\"ta_indicators\":{%s}}",
+        g_symbol,
+        g_timeframe,
+        isMarketOpen ? "true" : "false",  // Add market_open status
+        priceData,
+        signals,
+        taIndicators
+    );
+    
+    // Send the message via ZeroMQ PUB socket
+    ZmqMsg updateMsg(message);
+    if(!pubSocket.send(updateMsg))
+    {
+        Print("Error: Failed to send real-time update.");
+    }
+    else
+    {
+        Print("Sent real-time update: ", message);
+    }
 }
 
 //+------------------------------------------------------------------+
-//| Helper: Extract double from JSON                                  |
+//| Function to send test messages (optional, for debugging)         |
 //+------------------------------------------------------------------+
-double ExtractJsonDouble(string json, string key)
+void sendTestMessage()
 {
-   int startPos = StringFind(json, "\"" + key + "\":");
-   if(startPos < 0) return 0.0;
-
-   startPos += StringLen(key) + 3;
-
-   // Skip whitespace
-   while(startPos < StringLen(json) && StringGetCharacter(json, startPos) == ' ')
-      startPos++;
-
-   int endPos = startPos;
-   while(endPos < StringLen(json))
-   {
-      ushort ch = StringGetCharacter(json, endPos);
-      if(ch == ',' || ch == '}' || ch == ' ') break;
-      endPos++;
-   }
-
-   string value = StringSubstr(json, startPos, endPos - startPos);
-   return StringToDouble(value);
+    string message = "{\"type\":\"test_message\",\"content\":\"Hello from MT4!\"}";
+    ZmqMsg testMsg(message);
+    if(!pubSocket.send(testMsg))
+    {
+        Print("Error: Failed to send test message.");
+    }
+    else
+    {
+        Print("Sent test message: ", message);
+    }
 }
-
-//+------------------------------------------------------------------+
-//| Helper: Extract int from JSON                                     |
-//+------------------------------------------------------------------+
-int ExtractJsonInt(string json, string key)
-{
-   return (int)ExtractJsonDouble(json, key);
-}
-//+------------------------------------------------------------------+

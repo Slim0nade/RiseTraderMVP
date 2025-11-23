@@ -593,3 +593,363 @@ def test_source_field_included():
     # Assert
     assert "source" in json_data
     assert json_data["source"] == "mt4_integration_service"
+
+
+# =============================================================================
+# Position Event Schema Tests (T038 - User Story 2)
+# =============================================================================
+
+def test_position_updated_event_required_fields():
+    """Test that PositionUpdatedEvent requires all mandatory fields."""
+    # Act & Assert - Missing required fields should raise ValidationError
+    with pytest.raises(ValidationError) as exc_info:
+        PositionUpdatedEvent(
+            data=PositionUpdatedData(
+                ticket_number=12345,
+                magic_number=100001,
+                symbol="CrudeOIL",
+                direction="BUY",
+                volume=Decimal("0.1"),
+                open_price=Decimal("75.00"),
+                # Missing: current_price, unrealized_pnl, open_time, last_updated
+            )
+        )
+
+    errors = exc_info.value.errors()
+    required_fields = {'current_price', 'unrealized_pnl', 'open_time', 'last_updated'}
+    error_fields = {error['loc'][1] for error in errors if 'loc' in error}
+
+    assert required_fields.issubset(error_fields)
+
+
+def test_position_updated_event_optional_fields():
+    """Test PositionUpdatedEvent with optional fields (stop_loss, take_profit)."""
+    # Arrange - Create event without optional fields
+    event = PositionUpdatedEvent(
+        data=PositionUpdatedData(
+            ticket_number=12345,
+            magic_number=100001,
+            symbol="CrudeOIL",
+            direction="BUY",
+            volume=Decimal("0.1"),
+            open_price=Decimal("75.00"),
+            current_price=Decimal("75.50"),
+            unrealized_pnl=Decimal("50.00"),
+            open_time=datetime.utcnow(),
+            last_updated=datetime.utcnow()
+            # stop_loss and take_profit omitted
+        )
+    )
+
+    # Act
+    json_data = event.model_dump(mode='json')
+
+    # Assert - Optional fields should be None
+    data = json_data["data"]
+    assert data["stop_loss"] is None
+    assert data["take_profit"] is None
+
+
+def test_position_updated_event_serialization():
+    """Test PositionUpdatedEvent can be serialized to JSON and deserialized."""
+    # Arrange
+    original_event = PositionUpdatedEvent(
+        correlation_id="test-corr-123",
+        data=PositionUpdatedData(
+            ticket_number=12345,
+            magic_number=100001,
+            symbol="CrudeOIL",
+            direction="BUY",
+            volume=Decimal("0.1"),
+            open_price=Decimal("75.00"),
+            current_price=Decimal("75.75"),
+            unrealized_pnl=Decimal("75.00"),
+            stop_loss=Decimal("74.00"),
+            take_profit=Decimal("77.00"),
+            open_time=datetime(2025, 11, 22, 10, 0, 0),
+            last_updated=datetime(2025, 11, 22, 10, 5, 0)
+        )
+    )
+
+    # Act - Serialize to JSON
+    json_str = json.dumps(original_event.model_dump(mode='json'))
+
+    # Parse back from JSON
+    parsed_data = json.loads(json_str)
+    reconstructed_event = PositionUpdatedEvent(**parsed_data)
+
+    # Assert - Data preserved
+    assert reconstructed_event.event_type == "position_updated"
+    assert reconstructed_event.correlation_id == "test-corr-123"
+    assert reconstructed_event.data.ticket_number == 12345
+    assert reconstructed_event.data.unrealized_pnl == Decimal("75.00")
+
+
+def test_position_closed_event_required_fields():
+    """Test that PositionClosedEvent requires all mandatory fields."""
+    # Act & Assert
+    with pytest.raises(ValidationError) as exc_info:
+        PositionClosedEvent(
+            data=PositionClosedData(
+                ticket_number=12345,
+                magic_number=100001,
+                symbol="CrudeOIL",
+                direction="BUY",
+                volume=Decimal("0.1"),
+                open_price=Decimal("75.00"),
+                # Missing: close_price, realized_pnl, open_time, close_time, close_reason
+            )
+        )
+
+    errors = exc_info.value.errors()
+    required_fields = {'close_price', 'realized_pnl', 'open_time', 'close_time', 'close_reason'}
+    error_fields = {error['loc'][1] for error in errors if 'loc' in error}
+
+    assert required_fields.issubset(error_fields)
+
+
+def test_position_closed_event_close_reasons():
+    """Test PositionClosedEvent with different close reasons."""
+    close_reasons = ["manual", "stop_loss", "take_profit", "margin_call"]
+
+    for reason in close_reasons:
+        # Arrange & Act
+        event = PositionClosedEvent(
+            data=PositionClosedData(
+                ticket_number=12345,
+                magic_number=100001,
+                symbol="CrudeOIL",
+                direction="BUY",
+                volume=Decimal("0.1"),
+                open_price=Decimal("75.00"),
+                close_price=Decimal("75.50"),
+                realized_pnl=Decimal("50.00"),
+                open_time=datetime.utcnow(),
+                close_time=datetime.utcnow(),
+                close_reason=reason
+            )
+        )
+
+        # Assert
+        json_data = event.model_dump(mode='json')
+        assert json_data["data"]["close_reason"] == reason
+
+
+def test_position_closed_event_serialization():
+    """Test PositionClosedEvent can be serialized and deserialized."""
+    # Arrange
+    original_event = PositionClosedEvent(
+        correlation_id="close-corr-456",
+        data=PositionClosedData(
+            ticket_number=12346,
+            magic_number=100001,
+            symbol="CrudeOIL",
+            direction="SELL",
+            volume=Decimal("0.2"),
+            open_price=Decimal("76.00"),
+            close_price=Decimal("75.50"),
+            realized_pnl=Decimal("100.00"),
+            open_time=datetime(2025, 11, 22, 10, 0, 0),
+            close_time=datetime(2025, 11, 22, 11, 0, 0),
+            close_reason="take_profit"
+        )
+    )
+
+    # Act
+    json_str = json.dumps(original_event.model_dump(mode='json'))
+    parsed_data = json.loads(json_str)
+    reconstructed_event = PositionClosedEvent(**parsed_data)
+
+    # Assert
+    assert reconstructed_event.event_type == "position_closed"
+    assert reconstructed_event.correlation_id == "close-corr-456"
+    assert reconstructed_event.data.ticket_number == 12346
+    assert reconstructed_event.data.realized_pnl == Decimal("100.00")
+    assert reconstructed_event.data.close_reason == "take_profit"
+
+
+def test_position_event_decimal_precision():
+    """Test that position events preserve decimal precision for prices and P&L."""
+    # Arrange - Use precise decimal values
+    event = PositionUpdatedEvent(
+        data=PositionUpdatedData(
+            ticket_number=12347,
+            magic_number=100001,
+            symbol="EURUSD",
+            direction="BUY",
+            volume=Decimal("1.00"),
+            open_price=Decimal("1.10050"),  # 5 decimal places
+            current_price=Decimal("1.10125"),
+            unrealized_pnl=Decimal("75.00"),
+            open_time=datetime.utcnow(),
+            last_updated=datetime.utcnow()
+        )
+    )
+
+    # Act
+    json_data = event.model_dump(mode='json')
+
+    # Assert - Precision preserved
+    data = json_data["data"]
+    assert data["open_price"] == 1.10050
+    assert data["current_price"] == 1.10125
+
+
+def test_position_updated_invalid_direction():
+    """Test that PositionUpdatedEvent rejects invalid direction."""
+    # Act & Assert
+    with pytest.raises(ValidationError) as exc_info:
+        PositionUpdatedEvent(
+            data=PositionUpdatedData(
+                ticket_number=12348,
+                magic_number=100001,
+                symbol="CrudeOIL",
+                direction="HOLD",  # Invalid
+                volume=Decimal("0.1"),
+                open_price=Decimal("75.00"),
+                current_price=Decimal("75.50"),
+                unrealized_pnl=Decimal("50.00"),
+                open_time=datetime.utcnow(),
+                last_updated=datetime.utcnow()
+            )
+        )
+
+    assert "direction" in str(exc_info.value)
+
+
+def test_position_event_negative_pnl():
+    """Test position events handle negative P&L correctly."""
+    # Arrange - Losing position
+    update_event = PositionUpdatedEvent(
+        data=PositionUpdatedData(
+            ticket_number=12349,
+            magic_number=100001,
+            symbol="CrudeOIL",
+            direction="BUY",
+            volume=Decimal("0.1"),
+            open_price=Decimal("76.00"),
+            current_price=Decimal("75.00"),  # Down $1.00
+            unrealized_pnl=Decimal("-100.00"),  # Loss
+            open_time=datetime.utcnow(),
+            last_updated=datetime.utcnow()
+        )
+    )
+
+    close_event = PositionClosedEvent(
+        data=PositionClosedData(
+            ticket_number=12349,
+            magic_number=100001,
+            symbol="CrudeOIL",
+            direction="BUY",
+            volume=Decimal("0.1"),
+            open_price=Decimal("76.00"),
+            close_price=Decimal("75.00"),
+            realized_pnl=Decimal("-100.00"),  # Realized loss
+            open_time=datetime.utcnow(),
+            close_time=datetime.utcnow(),
+            close_reason="stop_loss"
+        )
+    )
+
+    # Act
+    update_json = update_event.model_dump(mode='json')
+    close_json = close_event.model_dump(mode='json')
+
+    # Assert - Negative P&L preserved
+    assert update_json["data"]["unrealized_pnl"] == -100.00
+    assert close_json["data"]["realized_pnl"] == -100.00
+
+
+def test_position_event_timestamp_format():
+    """Test that position events use correct timestamp format."""
+    # Arrange
+    open_time = datetime(2025, 11, 22, 10, 0, 0)
+    last_updated = datetime(2025, 11, 22, 10, 5, 0)
+
+    event = PositionUpdatedEvent(
+        data=PositionUpdatedData(
+            ticket_number=12350,
+            magic_number=100001,
+            symbol="CrudeOIL",
+            direction="BUY",
+            volume=Decimal("0.1"),
+            open_price=Decimal("75.00"),
+            current_price=Decimal("75.50"),
+            unrealized_pnl=Decimal("50.00"),
+            open_time=open_time,
+            last_updated=last_updated
+        )
+    )
+
+    # Act
+    json_data = event.model_dump(mode='json')
+
+    # Assert - Timestamps are ISO format strings
+    data = json_data["data"]
+    assert isinstance(data["open_time"], str)
+    assert isinstance(data["last_updated"], str)
+    # Should be ISO 8601 format
+    assert "2025-11-22" in data["open_time"]
+    assert "10:00:00" in data["open_time"]
+
+
+def test_position_event_correlation_id():
+    """Test that position events include correlation_id."""
+    # Arrange
+    correlation_id = str(uuid.uuid4())
+
+    event = PositionUpdatedEvent(
+        correlation_id=correlation_id,
+        data=PositionUpdatedData(
+            ticket_number=12351,
+            magic_number=100001,
+            symbol="CrudeOIL",
+            direction="BUY",
+            volume=Decimal("0.1"),
+            open_price=Decimal("75.00"),
+            current_price=Decimal("75.50"),
+            unrealized_pnl=Decimal("50.00"),
+            open_time=datetime.utcnow(),
+            last_updated=datetime.utcnow()
+        )
+    )
+
+    # Act
+    json_data = event.model_dump(mode='json')
+
+    # Assert
+    assert "correlation_id" in json_data
+    assert json_data["correlation_id"] == correlation_id
+    # Validate it's a UUID format
+    assert len(correlation_id.split('-')) == 5
+
+
+def test_position_event_backward_compatibility():
+    """Test that position events can be parsed from older schema versions."""
+    # Arrange - Simulate old event format (without some optional fields)
+    old_format = {
+        "event_type": "position_updated",
+        "correlation_id": "old-corr-123",
+        "data": {
+            "ticket_number": 12352,
+            "magic_number": 100001,
+            "symbol": "CrudeOIL",
+            "direction": "BUY",
+            "volume": "0.1",
+            "open_price": "75.00",
+            "current_price": "75.50",
+            "unrealized_pnl": "50.00",
+            "open_time": "2025-11-22T10:00:00",
+            "last_updated": "2025-11-22T10:05:00"
+            # stop_loss, take_profit omitted (None)
+        }
+    }
+
+    # Act - Parse old format
+    event = PositionUpdatedEvent(**old_format)
+
+    # Assert - Successfully parsed
+    assert event.event_type == "position_updated"
+    assert event.data.ticket_number == 12352
+    assert event.data.stop_loss is None
+    assert event.data.take_profit is None

@@ -566,3 +566,309 @@ async def test_multiple_magic_numbers(mt4_integration_service):
         # Assert
         assert len(mt4_integration_service._clients) == 3
         assert all(client in mock_instances for client in clients)
+
+
+# =============================================================================
+# Position Update Event Parsing Tests (T035 - User Story 2)
+# =============================================================================
+
+@pytest.mark.asyncio
+async def test_handle_position_updated_event_success(mt4_integration_service):
+    """Test successful handling of position_updated event."""
+    # Arrange
+    event_data = {
+        "event_type": "position_updated",
+        "correlation_id": "test-123",
+        "data": {
+            "ticket_number": 12345,
+            "magic_number": 100001,
+            "symbol": "CrudeOIL",
+            "direction": "BUY",
+            "volume": Decimal("0.1"),
+            "open_price": Decimal("75.50"),
+            "current_price": Decimal("75.75"),
+            "unrealized_pnl": Decimal("25.00"),
+            "stop_loss": None,
+            "take_profit": None,
+            "open_time": datetime(2025, 11, 22, 10, 0, 0),
+            "last_updated": datetime(2025, 11, 22, 10, 5, 0)
+        }
+    }
+
+    # Mock repository methods
+    mock_position_repo = AsyncMock()
+    mock_position_repo.get_by_ticket_number = AsyncMock(return_value=None)
+    mock_position_repo.create = AsyncMock()
+    mock_position_repo.update = AsyncMock()
+
+    # Act
+    await mt4_integration_service.handle_position_updated_event(event_data)
+
+    # Assert - should create new position if not found
+    mock_position_repo.create.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_handle_position_updated_event_update_existing(mt4_integration_service):
+    """Test updating existing position with new P&L data."""
+    # Arrange
+    from src.database.models.mt4_positions import MT4Position
+
+    existing_position = MT4Position(
+        ticket_number=12345,
+        magic_number=100001,
+        symbol="CrudeOIL",
+        direction="BUY",
+        volume=Decimal("0.1"),
+        open_price=Decimal("75.50"),
+        current_price=Decimal("75.60"),
+        unrealized_pnl=Decimal("10.00"),
+        open_time=datetime(2025, 11, 22, 10, 0, 0),
+        last_updated=datetime(2025, 11, 22, 10, 1, 0)
+    )
+
+    event_data = {
+        "event_type": "position_updated",
+        "correlation_id": "test-456",
+        "data": {
+            "ticket_number": 12345,
+            "magic_number": 100001,
+            "symbol": "CrudeOIL",
+            "direction": "BUY",
+            "volume": Decimal("0.1"),
+            "open_price": Decimal("75.50"),
+            "current_price": Decimal("75.85"),  # Updated price
+            "unrealized_pnl": Decimal("35.00"),  # Updated P&L
+            "stop_loss": None,
+            "take_profit": None,
+            "open_time": datetime(2025, 11, 22, 10, 0, 0),
+            "last_updated": datetime(2025, 11, 22, 10, 10, 0)
+        }
+    }
+
+    # Mock repository
+    mock_position_repo = AsyncMock()
+    mock_position_repo.get_by_ticket_number = AsyncMock(return_value=existing_position)
+    mock_position_repo.update = AsyncMock()
+
+    # Act
+    await mt4_integration_service.handle_position_updated_event(event_data)
+
+    # Assert - should update existing position
+    mock_position_repo.update.assert_called_once()
+    call_args = mock_position_repo.update.call_args[1]
+    assert call_args['current_price'] == Decimal("75.85")
+    assert call_args['unrealized_pnl'] == Decimal("35.00")
+
+
+@pytest.mark.asyncio
+async def test_handle_position_closed_event_success(mt4_integration_service):
+    """Test successful handling of position_closed event."""
+    # Arrange
+    from src.database.models.mt4_positions import MT4Position
+
+    existing_position = MT4Position(
+        ticket_number=12345,
+        magic_number=100001,
+        symbol="CrudeOIL",
+        direction="BUY",
+        volume=Decimal("0.1"),
+        open_price=Decimal("75.50"),
+        current_price=Decimal("76.00"),
+        unrealized_pnl=Decimal("50.00"),
+        open_time=datetime(2025, 11, 22, 10, 0, 0),
+        last_updated=datetime(2025, 11, 22, 11, 0, 0)
+    )
+
+    event_data = {
+        "event_type": "position_closed",
+        "correlation_id": "test-789",
+        "data": {
+            "ticket_number": 12345,
+            "magic_number": 100001,
+            "symbol": "CrudeOIL",
+            "direction": "BUY",
+            "volume": Decimal("0.1"),
+            "open_price": Decimal("75.50"),
+            "close_price": Decimal("76.00"),
+            "realized_pnl": Decimal("50.00"),
+            "open_time": datetime(2025, 11, 22, 10, 0, 0),
+            "close_time": datetime(2025, 11, 22, 11, 0, 0),
+            "close_reason": "take_profit"
+        }
+    }
+
+    # Mock repositories
+    mock_position_repo = AsyncMock()
+    mock_position_repo.get_by_ticket_number = AsyncMock(return_value=existing_position)
+    mock_position_repo.delete = AsyncMock()
+
+    mock_order_repo = AsyncMock()
+    mock_order_repo.get_by_ticket_number = AsyncMock()
+    mock_order_repo.update_status = AsyncMock()
+
+    # Act
+    await mt4_integration_service.handle_position_closed_event(event_data)
+
+    # Assert - should delete position and update order
+    mock_position_repo.delete.assert_called_once_with(ticket_number=12345)
+
+
+@pytest.mark.asyncio
+async def test_handle_position_event_with_invalid_data(mt4_integration_service):
+    """Test handling position event with invalid/missing data."""
+    # Arrange
+    invalid_event_data = {
+        "event_type": "position_updated",
+        "correlation_id": "test-invalid",
+        "data": {
+            "ticket_number": 12345,
+            # Missing required fields
+        }
+    }
+
+    # Act & Assert - should handle gracefully without crashing
+    with pytest.raises(Exception):  # ValidationError from Pydantic
+        await mt4_integration_service.handle_position_updated_event(invalid_event_data)
+
+
+@pytest.mark.asyncio
+async def test_position_event_publishes_to_redis(mt4_integration_service):
+    """Test that position_updated event is published to Redis."""
+    # Arrange
+    event_data = {
+        "event_type": "position_updated",
+        "correlation_id": "test-redis",
+        "data": {
+            "ticket_number": 12345,
+            "magic_number": 100001,
+            "symbol": "CrudeOIL",
+            "direction": "BUY",
+            "volume": Decimal("0.1"),
+            "open_price": Decimal("75.50"),
+            "current_price": Decimal("75.75"),
+            "unrealized_pnl": Decimal("25.00"),
+            "stop_loss": None,
+            "take_profit": None,
+            "open_time": datetime(2025, 11, 22, 10, 0, 0),
+            "last_updated": datetime(2025, 11, 22, 10, 5, 0)
+        }
+    }
+
+    # Mock Redis client
+    mock_redis = AsyncMock()
+    mock_redis.publish_event = AsyncMock()
+    mt4_integration_service.redis_client = mock_redis
+
+    # Act
+    await mt4_integration_service.handle_position_updated_event(event_data)
+
+    # Assert - should publish to Redis
+    mock_redis.publish_event.assert_called_once()
+    call_args = mock_redis.publish_event.call_args
+    assert call_args[1]['channel'] == 'mt4:events:position_updated'
+
+
+@pytest.mark.asyncio
+async def test_position_closed_updates_order_status(mt4_integration_service):
+    """Test that position_closed event updates associated order to CLOSED."""
+    # Arrange
+    from src.database.models.mt4_orders import MT4Order
+    from src.database.models.mt4_positions import MT4Position
+
+    existing_order = MT4Order(
+        order_id="order-123",
+        ticket_number=12345,
+        magic_number=100001,
+        symbol="CrudeOIL",
+        direction="BUY",
+        volume=Decimal("0.1"),
+        order_type="MARKET",
+        status="CONFIRMED"
+    )
+
+    existing_position = MT4Position(
+        ticket_number=12345,
+        magic_number=100001,
+        symbol="CrudeOIL",
+        direction="BUY",
+        volume=Decimal("0.1"),
+        open_price=Decimal("75.50"),
+        current_price=Decimal("76.00"),
+        unrealized_pnl=Decimal("50.00"),
+        open_time=datetime(2025, 11, 22, 10, 0, 0),
+        last_updated=datetime(2025, 11, 22, 11, 0, 0)
+    )
+
+    event_data = {
+        "event_type": "position_closed",
+        "correlation_id": "test-close-order",
+        "data": {
+            "ticket_number": 12345,
+            "magic_number": 100001,
+            "symbol": "CrudeOIL",
+            "direction": "BUY",
+            "volume": Decimal("0.1"),
+            "open_price": Decimal("75.50"),
+            "close_price": Decimal("76.00"),
+            "realized_pnl": Decimal("50.00"),
+            "open_time": datetime(2025, 11, 22, 10, 0, 0),
+            "close_time": datetime(2025, 11, 22, 11, 0, 0),
+            "close_reason": "manual"
+        }
+    }
+
+    # Mock repositories
+    mock_position_repo = AsyncMock()
+    mock_position_repo.get_by_ticket_number = AsyncMock(return_value=existing_position)
+    mock_position_repo.delete = AsyncMock()
+
+    mock_order_repo = AsyncMock()
+    mock_order_repo.get_by_ticket_number = AsyncMock(return_value=existing_order)
+    mock_order_repo.update_status = AsyncMock()
+
+    mt4_integration_service.order_repository = mock_order_repo
+
+    # Act
+    await mt4_integration_service.handle_position_closed_event(event_data)
+
+    # Assert - order should be updated to CLOSED
+    mock_order_repo.update_status.assert_called_once()
+    call_args = mock_order_repo.update_status.call_args[1]
+    assert call_args['status'] == 'CLOSED'
+    assert call_args['realized_pnl'] == Decimal("50.00")
+
+
+@pytest.mark.asyncio
+async def test_position_event_records_metrics(mt4_integration_service):
+    """Test that position events record Prometheus metrics."""
+    # Arrange
+    event_data = {
+        "event_type": "position_updated",
+        "correlation_id": "test-metrics",
+        "data": {
+            "ticket_number": 12345,
+            "magic_number": 100001,
+            "symbol": "CrudeOIL",
+            "direction": "BUY",
+            "volume": Decimal("0.1"),
+            "open_price": Decimal("75.50"),
+            "current_price": Decimal("75.75"),
+            "unrealized_pnl": Decimal("25.00"),
+            "stop_loss": None,
+            "take_profit": None,
+            "open_time": datetime(2025, 11, 22, 10, 0, 0),
+            "last_updated": datetime(2025, 11, 22, 10, 5, 0)
+        }
+    }
+
+    # Mock metrics recording
+    with patch('src.services.mt4_integration_service.record_position_update') as mock_record:
+        # Act
+        await mt4_integration_service.handle_position_updated_event(event_data)
+
+        # Assert - metrics should be recorded
+        mock_record.assert_called_once()
+        call_args = mock_record.call_args[1]
+        assert call_args['symbol'] == 'CrudeOIL'
+        assert call_args['unrealized_pnl'] == Decimal("25.00")
