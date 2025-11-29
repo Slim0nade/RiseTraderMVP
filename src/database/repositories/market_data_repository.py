@@ -136,6 +136,59 @@ class MarketDataRepository(BaseRepository[MarketData]):
         result = await self.session.execute(query)
         return result.scalar_one_or_none()
 
+    async def upsert(self, data: Dict[str, Any]) -> MarketData:
+        """
+        Insert or update market data based on unique constraint.
+
+        Checks for existing record by (time, source, timeframe, symbol).
+        Updates if exists and values changed, inserts if new.
+
+        Args:
+            data: Dictionary of market data attributes
+
+        Returns:
+            MarketData instance (created or updated)
+        """
+        # Check for existing record using unique constraint fields
+        existing_query = select(MarketData).where(
+            and_(
+                MarketData.time == data['time'],
+                cast(MarketData.source, Text) == data['source'],
+                cast(MarketData.timeframe, Text) == data['timeframe'],
+                MarketData.symbol == data['symbol']
+            )
+        )
+
+        result = await self.session.execute(existing_query)
+        existing = result.scalar_one_or_none()
+
+        if existing:
+            # Check if any OHLC values are different
+            has_changes = any(
+                getattr(existing, key) != data[key]
+                for key in ['open', 'high', 'low', 'last', 'change', 'change_percent', 'volume']
+                if key in data
+            )
+
+            if has_changes:
+                # Update existing record
+                for key, value in data.items():
+                    if key not in ['time', 'symbol', 'source', 'timeframe']:  # Don't update PK fields
+                        setattr(existing, key, value)
+                await self.session.flush()
+                await self.session.refresh(existing)
+                return existing
+            else:
+                # No changes, return existing
+                return existing
+        else:
+            # Create new record
+            instance = MarketData(**data)
+            self.session.add(instance)
+            await self.session.flush()
+            await self.session.refresh(instance)
+            return instance
+
     async def bulk_insert_ticks(self, ticks: List[Dict[str, Any]]) -> int:
         """
         Bulk insert market data ticks.
@@ -329,3 +382,249 @@ class MarketDataRepository(BaseRepository[MarketData]):
 
         result = await self.session.execute(query)
         return result.scalar() or 0
+
+    # =============================================================================
+    # Keyset Pagination Methods (T026-T028)
+    # =============================================================================
+
+    async def get_latest_by_symbol(
+        self,
+        symbol: str,
+        timeframe: str,
+        limit: int = 500,
+        cursor: Optional[str] = None,
+    ) -> tuple[List[MarketData], Optional[str]]:
+        """
+        Get latest market data for symbol and timeframe with pagination (T027).
+
+        Uses the composite index for optimal performance.
+
+        Args:
+            symbol: Trading symbol
+            timeframe: Timeframe (M1, M5, M15, M30, H1, H4, D1, W1, MN1)
+            limit: Number of most recent records to retrieve (default 500)
+            cursor: Optional cursor for pagination (format: "timestamp_id")
+
+        Returns:
+            Tuple of (list of MarketData records, next_cursor)
+
+        Example:
+            # Get latest 500 candlesticks for CrudeOIL M5
+            data, cursor = await repo.get_latest_by_symbol("CrudeOIL", "M5", 500)
+        """
+        query = (
+            select(MarketData)
+            .where(
+                and_(
+                    MarketData.symbol == symbol,
+                    cast(MarketData.timeframe, Text) == timeframe,
+                )
+            )
+        )
+
+        # Apply keyset pagination if cursor provided
+        if cursor:
+            try:
+                cursor_parts = cursor.split("_")
+                cursor_time = datetime.fromisoformat(cursor_parts[0])
+                cursor_id = int(cursor_parts[1])
+
+                query = query.where(
+                    (MarketData.time < cursor_time) |
+                    (
+                        (MarketData.time == cursor_time) &
+                        (MarketData.id < cursor_id)
+                    )
+                )
+            except (ValueError, IndexError):
+                # Invalid cursor - ignore
+                pass
+
+        query = query.order_by(
+            desc(MarketData.time),
+            desc(MarketData.id)
+        ).limit(limit + 1)  # Fetch one extra
+
+        result = await self.session.execute(query)
+        records = list(result.scalars().all())
+
+        # Calculate next cursor
+        next_cursor = None
+        if len(records) > limit:
+            last_record = records[limit - 1]
+            next_cursor = f"{last_record.time.isoformat()}_{last_record.id}"
+            records = records[:limit]
+
+        # Return in chronological order (oldest first)
+        return list(reversed(records)), next_cursor
+
+    async def get_by_time_range(
+        self,
+        symbol: str,
+        timeframe: str,
+        start: datetime,
+        end: datetime,
+        cursor: Optional[str] = None,
+        limit: int = 500,
+    ) -> tuple[List[MarketData], Optional[str]]:
+        """
+        Get market data for time range with keyset pagination (T028).
+
+        Args:
+            symbol: Trading symbol
+            timeframe: Timeframe
+            start: Start time (inclusive)
+            end: End time (inclusive)
+            cursor: Keyset pagination cursor (format: "timestamp_id")
+            limit: Number of records per page
+
+        Returns:
+            Tuple of (list of MarketData records, next_cursor)
+
+        Example:
+            # First page
+            data, next_cursor = await repo.get_by_time_range(
+                "CrudeOIL", "M5",
+                start=datetime(2024, 11, 1),
+                end=datetime(2024, 11, 26),
+                limit=500
+            )
+
+            # Next page
+            more_data, cursor = await repo.get_by_time_range(
+                "CrudeOIL", "M5",
+                start=datetime(2024, 11, 1),
+                end=datetime(2024, 11, 26),
+                cursor=next_cursor,
+                limit=500
+            )
+        """
+        query = select(MarketData).where(
+            and_(
+                MarketData.symbol == symbol,
+                cast(MarketData.timeframe, Text) == timeframe,
+                MarketData.time >= start,
+                MarketData.time <= end,
+            )
+        )
+
+        # Apply keyset pagination
+        if cursor:
+            try:
+                # Cursor format: "timestamp_id"
+                cursor_parts = cursor.split("_")
+                cursor_time = datetime.fromisoformat(cursor_parts[0])
+                cursor_id = int(cursor_parts[1])
+
+                # Continue from cursor position (descending order)
+                query = query.where(
+                    (MarketData.time < cursor_time) |
+                    (
+                        (MarketData.time == cursor_time) &
+                        (MarketData.id < cursor_id)
+                    )
+                )
+            except (ValueError, IndexError):
+                # Invalid cursor - ignore and start from beginning
+                pass
+
+        # Order by time DESC, id DESC for consistent pagination
+        query = query.order_by(
+            desc(MarketData.time),
+            desc(MarketData.id)
+        ).limit(limit + 1)  # Fetch one extra to determine if there's a next page
+
+        result = await self.session.execute(query)
+        records = list(result.scalars().all())
+
+        # Calculate next cursor
+        next_cursor = None
+        if len(records) > limit:
+            # There's a next page
+            last_record = records[limit - 1]
+            next_cursor = f"{last_record.time.isoformat()}_{last_record.id}"
+            records = records[:limit]  # Trim the extra record
+
+        # Return in chronological order (oldest first)
+        return list(reversed(records)), next_cursor
+
+    async def count_by_symbol(self, symbol: str, timeframe: str) -> int:
+        """
+        Count total records for symbol/timeframe.
+
+        Args:
+            symbol: Trading symbol
+            timeframe: Timeframe
+
+        Returns:
+            Total count of records
+        """
+        query = select(func.count()).select_from(MarketData).where(
+            and_(
+                MarketData.symbol == symbol,
+                cast(MarketData.timeframe, Text) == timeframe,
+            )
+        )
+
+        result = await self.session.execute(query)
+        return result.scalar() or 0
+
+    async def count_by_time_range(
+        self,
+        symbol: str,
+        timeframe: str,
+        start: datetime,
+        end: datetime,
+    ) -> int:
+        """
+        Count records in time range for symbol/timeframe.
+
+        Args:
+            symbol: Trading symbol
+            timeframe: Timeframe
+            start: Start time
+            end: End time
+
+        Returns:
+            Count of records in range
+        """
+        query = select(func.count()).select_from(MarketData).where(
+            and_(
+                MarketData.symbol == symbol,
+                cast(MarketData.timeframe, Text) == timeframe,
+                MarketData.time >= start,
+                MarketData.time <= end,
+            )
+        )
+
+        result = await self.session.execute(query)
+        return result.scalar() or 0
+
+    async def get_symbols_with_metadata(
+        self, timeframe: Optional[str] = None
+    ) -> List[Any]:
+        """
+        Get symbols with metadata (count, latest price, time range).
+
+        Args:
+            timeframe: Optional timeframe filter
+
+        Returns:
+            List of symbol metadata objects
+        """
+        from sqlalchemy import literal_column
+
+        # Build query for symbol metadata
+        # Group by symbol and aggregate metadata
+        query = select(
+            MarketData.symbol,
+            func.count(MarketData.id).label("data_points_count"),
+            func.max(MarketData.time).label("latest_time"),
+            func.min(MarketData.time).label("first_time"),
+        ).group_by(MarketData.symbol)
+
+        if timeframe:
+            query = query.where(cast(MarketData.timeframe, Text) == timeframe)
+
+        result = await self.session.execute(query)
+        return list(result.all())

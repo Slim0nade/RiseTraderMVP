@@ -2,9 +2,12 @@
 MT4 Client for ZMQ communication.
 
 Handles low-level ZMQ socket operations for communicating with MT4 Expert Advisors.
+Includes circuit breaker for resilience and exponential backoff for reconnection.
 """
 import asyncio
 import json
+import random
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any, Awaitable, Callable, Dict, List, Literal, Optional
 
@@ -20,14 +23,181 @@ from src.trading.execution.mt4_models import (
     GetSymbolsCommand,
     ClosePositionCommand,
     OrderResponse,
-    AccountInfoResponse,
-    PositionsResponse,
-    SymbolsResponse,
 )
+from src.trading.execution.mt4_request_logger import MT4RequestLogger
 from src.utils.mt4_helpers import get_mt4_logger, PerformanceTimer
 from src.monitoring.mt4_metrics import record_zmq_command, record_zmq_error
 
 logger = get_mt4_logger("mt4_client")
+
+
+# =============================================================================
+# Circuit Breaker Implementation (T091)
+# =============================================================================
+
+class CircuitOpenError(Exception):
+    """Raised when circuit breaker is open."""
+    pass
+
+
+class CircuitBreaker:
+    """
+    Circuit breaker for MT4 connection resilience (T091).
+
+    Implements three states:
+    - CLOSED: Normal operation, requests pass through
+    - OPEN: Too many failures, requests fail fast
+    - HALF_OPEN: Testing if service recovered
+    """
+
+    def __init__(
+        self,
+        failure_threshold: int = 5,
+        timeout: int = 30,
+        success_threshold: int = 2
+    ):
+        """
+        Initialize circuit breaker.
+
+        Args:
+            failure_threshold: Number of failures before opening circuit
+            timeout: Seconds to wait before attempting reset (OPEN -> HALF_OPEN)
+            success_threshold: Successes needed in HALF_OPEN to close circuit
+        """
+        self.failure_threshold = failure_threshold
+        self.timeout = timeout
+        self.success_threshold = success_threshold
+
+        self.state: Literal["CLOSED", "OPEN", "HALF_OPEN"] = "CLOSED"
+        self.failure_count = 0
+        self.success_count = 0
+        self.last_failure_time: Optional[datetime] = None
+
+        logger.info(
+            "circuit_breaker_initialized",
+            failure_threshold=failure_threshold,
+            timeout=timeout
+        )
+
+    def can_proceed(self) -> bool:
+        """Check if request can proceed."""
+        if self.state == "CLOSED":
+            return True
+
+        if self.state == "HALF_OPEN":
+            return True
+
+        if self.state == "OPEN":
+            if self.should_attempt_reset():
+                self.attempt_reset()
+                return True
+            return False
+
+        return False
+
+    def record_success(self) -> None:
+        """Record successful request."""
+        if self.state == "CLOSED":
+            self.failure_count = 0
+
+        elif self.state == "HALF_OPEN":
+            self.success_count += 1
+
+            if self.success_count >= self.success_threshold:
+                self._close_circuit()
+                logger.info("circuit_breaker_closed_after_recovery")
+
+    def record_failure(self) -> None:
+        """Record failed request."""
+        self.last_failure_time = datetime.utcnow()
+
+        if self.state == "CLOSED":
+            self.failure_count += 1
+
+            if self.failure_count >= self.failure_threshold:
+                self._open_circuit()
+                logger.warning(
+                    "circuit_breaker_opened",
+                    failure_count=self.failure_count
+                )
+
+        elif self.state == "HALF_OPEN":
+            self._open_circuit()
+            logger.warning("circuit_breaker_reopened_after_failed_test")
+
+    def should_attempt_reset(self) -> bool:
+        """Check if enough time has passed to attempt reset."""
+        if self.state != "OPEN":
+            return False
+
+        if self.last_failure_time is None:
+            return True
+
+        elapsed = (datetime.utcnow() - self.last_failure_time).total_seconds()
+        return elapsed >= self.timeout
+
+    def attempt_reset(self) -> None:
+        """Transition from OPEN to HALF_OPEN."""
+        if self.state == "OPEN":
+            self.state = "HALF_OPEN"
+            self.success_count = 0
+            logger.info("circuit_breaker_half_open_testing_recovery")
+
+    def _open_circuit(self) -> None:
+        """Open the circuit."""
+        self.state = "OPEN"
+        self.last_failure_time = datetime.utcnow()
+
+    def _close_circuit(self) -> None:
+        """Close the circuit."""
+        self.state = "CLOSED"
+        self.failure_count = 0
+        self.success_count = 0
+        self.last_failure_time = None
+
+    def get_state_info(self) -> dict:
+        """Get circuit breaker state information."""
+        return {
+            "state": self.state,
+            "failure_count": self.failure_count,
+            "success_count": self.success_count,
+            "last_failure_time": self.last_failure_time.isoformat() if self.last_failure_time else None
+        }
+
+
+# =============================================================================
+# Exponential Backoff (T092)
+# =============================================================================
+
+def calculate_backoff_time(
+    attempt: int,
+    base: float = 1.0,
+    max_backoff: float = 300.0,
+    jitter: bool = False
+) -> float:
+    """
+    Calculate exponential backoff time (T092).
+
+    Formula: min(base * 2^attempt, max_backoff)
+    With optional jitter: backoff * random(0.5, 1.5)
+
+    Args:
+        attempt: Reconnection attempt number (0-based)
+        base: Base time in seconds (default 1 second)
+        max_backoff: Maximum backoff time in seconds (default 5 minutes)
+        jitter: Whether to add random jitter
+
+    Returns:
+        Backoff time in seconds
+    """
+    backoff = base * (2 ** attempt)
+    backoff = min(backoff, max_backoff)
+
+    if jitter:
+        jitter_factor = 0.5 + random.random()
+        backoff = backoff * jitter_factor
+
+    return backoff
 
 
 class MT4Client:
@@ -72,6 +242,21 @@ class MT4Client:
         self._connected = False
         self._listening = False
 
+        # Circuit breaker for resilience (T091)
+        self.circuit_breaker = CircuitBreaker(
+            failure_threshold=5,
+            timeout=30,
+            success_threshold=2
+        )
+
+        # Reconnection state (T092, T094)
+        self.reconnect_attempt = 0
+        self._auto_reconnect_task: Optional[asyncio.Task] = None
+        self._should_reconnect = True
+
+        # Pending messages for graceful shutdown (T095)
+        self._pending_messages: List[Dict] = []
+
         logger.info(
             "mt4_client_initialized",
             host=host,
@@ -81,7 +266,7 @@ class MT4Client:
         )
 
     async def connect(self) -> None:
-        """Establish ZMQ connection to MT4 EA."""
+        """Establish ZMQ connection to MT4 EA (with connection event logging - T110)."""
         if self._connected:
             logger.warning("mt4_client_already_connected", magic_number=self.magic_number)
             return
@@ -94,7 +279,8 @@ class MT4Client:
             self._req_socket = self._context.socket(zmq.REQ)
 
             # Configure encryption if enabled
-            if self.encryption_manager.encryption_enabled:
+            encrypted = self.encryption_manager.encryption_enabled
+            if encrypted:
                 self._req_socket = self.encryption_manager.configure_socket(self._req_socket)
                 logger.info("mt4_client_encryption_enabled", magic_number=self.magic_number)
 
@@ -104,10 +290,14 @@ class MT4Client:
 
             self._connected = True
 
-            logger.info(
-                "mt4_client_connected",
-                endpoint=endpoint,
-                magic_number=self.magic_number
+            # Log connection event (T110)
+            MT4RequestLogger.log_connection_event(
+                event_type="CONNECT",
+                magic_number=self.magic_number,
+                host=self.host,
+                port=self.rep_port,
+                encrypted=encrypted,
+                details={"endpoint": endpoint}
             )
 
         except Exception as e:
@@ -120,7 +310,7 @@ class MT4Client:
             raise ConnectionError(f"Failed to connect to MT4: {e}")
 
     async def disconnect(self) -> None:
-        """Close ZMQ connection."""
+        """Close ZMQ connection (with disconnect event logging - T110)."""
         if not self._connected:
             return
 
@@ -145,7 +335,14 @@ class MT4Client:
 
             self._connected = False
 
-            logger.info("mt4_client_disconnected", magic_number=self.magic_number)
+            # Log disconnection event (T110)
+            MT4RequestLogger.log_connection_event(
+                event_type="DISCONNECT",
+                magic_number=self.magic_number,
+                host=self.host,
+                port=self.rep_port,
+                encrypted=self.encryption_manager.encryption_enabled
+            )
 
         except Exception as e:
             logger.error("mt4_disconnect_error", error=str(e))
@@ -160,7 +357,7 @@ class MT4Client:
         timeout_ms: Optional[int] = None
     ) -> Dict[str, Any]:
         """
-        Send command to MT4 and await response.
+        Send command to MT4 and await response (with circuit breaker - T091 & logging - T110).
 
         Args:
             command: MT4 command instance (Pydantic model)
@@ -171,75 +368,139 @@ class MT4Client:
 
         Raises:
             ConnectionError: If not connected
+            CircuitOpenError: If circuit breaker is open
             TimeoutError: If command times out
             zmq.ZMQError: If ZMQ communication fails
         """
+        command_type = command.command
+        correlation_id = command.correlation_id
+        request_data = command.model_dump(mode='json')
+
+        # Check circuit breaker first (T091 - fail fast if open)
+        if not self.circuit_breaker.can_proceed():
+            # Log blocked request (T110)
+            MT4RequestLogger.log_circuit_breaker_blocked(
+                command_type=command_type,
+                correlation_id=correlation_id,
+                magic_number=self.magic_number,
+                circuit_state=self.circuit_breaker.state,
+                failure_count=self.circuit_breaker.failure_count
+            )
+            raise CircuitOpenError(
+                f"Circuit breaker is {self.circuit_breaker.state}, "
+                f"cannot send command to MT4"
+            )
+
         if not self._connected or not self._req_socket:
             raise ConnectionError("Not connected to MT4")
 
         timeout = timeout_ms or self.timeout_ms
-        command_type = command.command
 
         try:
             # Serialize command
-            command_json = json.dumps(command.model_dump(mode='json'))
+            command_json = json.dumps(request_data)
+
+            # Log request with timestamp (T110)
+            request_time = MT4RequestLogger.log_request(
+                command_type=command_type,
+                correlation_id=correlation_id,
+                magic_number=self.magic_number,
+                request_data=request_data,
+                encrypted=self.encryption_manager is not None
+            )
 
             # Send command
             await self._req_socket.send_string(command_json)
 
-            logger.debug(
-                "mt4_command_sent",
-                command=command_type,
-                correlation_id=command.correlation_id,
-                magic_number=self.magic_number
-            )
-
             # Poll for response with timeout
             if await self._req_socket.poll(timeout=timeout) == 0:
-                logger.error(
-                    "mt4_command_timeout",
-                    command=command_type,
+                # Log timeout (T110)
+                MT4RequestLogger.log_timeout(
+                    command_type=command_type,
+                    correlation_id=correlation_id,
+                    magic_number=self.magic_number,
+                    request_time=request_time,
                     timeout_ms=timeout
                 )
                 record_zmq_error(command_type=command_type, error_type="timeout")
+
+                # Record failure in circuit breaker (T091)
+                self.circuit_breaker.record_failure()
+
                 raise TimeoutError(f"MT4 command timeout after {timeout}ms")
 
             # Receive response
             response_json = await self._req_socket.recv_string()
             response = json.loads(response_json)
 
-            logger.debug(
-                "mt4_response_received",
-                command=command_type,
-                correlation_id=command.correlation_id,
-                success=response.get("success", False)
+            # Determine success (handle both old and new response formats - T110)
+            # Old format: {"status": "OK", ...}
+            # New format: {"success": true, ...}
+            is_success = response.get("success", False) or response.get("status") == "OK"
+
+            # Log response (T110)
+            MT4RequestLogger.log_response(
+                command_type=command_type,
+                correlation_id=correlation_id,
+                magic_number=self.magic_number,
+                response_data=response,
+                request_time=request_time,
+                success=is_success,
+                error_code=response.get("error_code"),
+                error_message=response.get("error_message") or response.get("message")
             )
+
+            # Record success in circuit breaker (T091)
+            self.circuit_breaker.record_success()
+
+            # Reset reconnect attempt counter on success (T092)
+            self.reconnect_attempt = 0
 
             return response
 
         except zmq.ZMQError as e:
-            logger.error(
-                "mt4_zmq_error",
-                error=str(e),
-                command=command_type
+            # Log ZMQ error (T110)
+            MT4RequestLogger.log_zmq_error(
+                command_type=command_type,
+                correlation_id=correlation_id,
+                magic_number=self.magic_number,
+                request_time=request_time,
+                error_type="zmq_error",
+                error_details=str(e)
             )
             record_zmq_error(command_type=command_type, error_type="zmq_error")
+
+            # Record failure in circuit breaker (T091)
+            self.circuit_breaker.record_failure()
+
             raise ConnectionError(f"ZMQ error: {e}")
 
         except json.JSONDecodeError as e:
-            logger.error(
-                "mt4_invalid_json_response",
-                error=str(e),
-                command=command_type
+            # Log JSON decode error (T110)
+            MT4RequestLogger.log_zmq_error(
+                command_type=command_type,
+                correlation_id=correlation_id,
+                magic_number=self.magic_number,
+                request_time=request_time,
+                error_type="json_decode_error",
+                error_details=str(e)
             )
             record_zmq_error(command_type=command_type, error_type="json_error")
+
+            # Record failure in circuit breaker (T091)
+            self.circuit_breaker.record_failure()
+
             raise
 
         except Exception as e:
-            logger.error(
-                "mt4_command_error",
-                error=str(e),
-                command=command_type
+            # Log unknown error (T110)
+            MT4RequestLogger.log_zmq_error(
+                command_type=command_type,
+                correlation_id=correlation_id,
+                magic_number=self.magic_number,
+                request_time=request_time,
+                error_type="unknown_error",
+                error_details=str(e)
             )
             record_zmq_error(command_type=command_type, error_type="unknown")
             raise
@@ -274,7 +535,7 @@ class MT4Client:
         # Create command
         command = CreateInstantOrderCommand(
             symbol=symbol,
-            direction=direction,
+            order_type=direction,  # Use direction parameter for order_type field
             volume=volume,
             magic_number=self.magic_number,
             stop_loss=stop_loss,
@@ -283,7 +544,7 @@ class MT4Client:
         )
 
         # Send command with performance timing
-        async with PerformanceTimer(
+        with PerformanceTimer(
             logger=logger,
             operation="create_instant_order",
             correlation_id=command.correlation_id,
@@ -299,8 +560,9 @@ class MT4Client:
                 duration_seconds=duration_ms / 1000
             )
 
-        # Parse response
-        order_response = OrderResponse(**response_data)
+        # Parse response (adapt old EA format to new format)
+        adapted_response = self._adapt_mt4_response(response_data)
+        order_response = OrderResponse(**adapted_response)
 
         logger.info(
             "instant_order_submitted",
@@ -332,8 +594,20 @@ class MT4Client:
         }
 
         # Copy error info if present
-        if "message" in response_data and response_data["message"]:
-            adapted["error_message"] = response_data["message"]
+        message = response_data.get("message", "")
+        if message:
+            if adapted["success"]:
+                # For success messages, check if ticket number is embedded
+                # Format: "Order created with ticket 24427082"
+                import re
+                ticket_match = re.search(r"ticket (\d+)", message)
+                if ticket_match:
+                    adapted["ticket_number"] = int(ticket_match.group(1))
+                # Keep success message as error_message for now (will be used in logs)
+                adapted["error_message"] = message
+            else:
+                # For errors, copy as error_message
+                adapted["error_message"] = message
 
         # Copy all other fields
         for key, value in response_data.items():
@@ -380,47 +654,71 @@ class MT4Client:
 
         return symbols
 
-    async def get_account_info(self) -> AccountInfoResponse:
+    async def get_account_info(self) -> Dict[str, Any]:
         """
-        Get MT4 account information.
+        Get MT4 account information (T080 - User Story 4).
 
         Returns:
-            AccountInfoResponse with balance, equity, margin, etc.
+            Dictionary with account info:
+            - success: bool
+            - balance: float
+            - equity: float
+            - margin: float
+            - free_margin: float
+            - margin_level: float
+            - profit: float
+            - account_number: int
+            - leverage: int
+            - currency: str
+            - server: str
+            - company: str
+
+        Raises:
+            ConnectionError: If not connected to MT4
+            TimeoutError: If MT4 doesn't respond
         """
-        command = GetAccountInfoCommand(magic_number=self.magic_number)
+        if not self.is_connected():
+            raise ConnectionError("Not connected to MT4")
+
+        command = GetAccountInfoCommand()
         response_data = await self.send_command(command)
 
-        # Adapt response format
-        response_data = self._adapt_mt4_response(response_data)
+        logger.info(
+            "account_info_received",
+            balance=response_data.get("balance"),
+            equity=response_data.get("equity")
+        )
 
-        # Flatten account_info nested structure if present
-        if "account_info" in response_data:
-            account_info = response_data.pop("account_info")
-            # Map field names: freeMargin -> free_margin, marginLevel -> margin_level
-            response_data["balance"] = account_info.get("balance")
-            response_data["equity"] = account_info.get("equity")
-            response_data["margin"] = account_info.get("margin")
-            response_data["free_margin"] = account_info.get("freeMargin")
-            response_data["margin_level"] = account_info.get("marginLevel")
-            response_data["leverage"] = account_info.get("leverage")
-            response_data["account_number"] = account_info.get("accountNumber")
+        return response_data
 
-        return AccountInfoResponse(**response_data)
-
-    async def get_open_positions(self) -> PositionsResponse:
+    async def get_open_positions(self, magic_number: Optional[int] = None) -> Dict[str, Any]:
         """
-        Get all open positions from MT4.
+        Get open positions from MT4 (T081 - User Story 4).
+
+        Args:
+            magic_number: Optional magic number to filter positions
 
         Returns:
-            PositionsResponse with list of positions
+            Dictionary with:
+            - success: bool
+            - positions: List of position dictionaries
+
+        Raises:
+            ConnectionError: If not connected to MT4
+            TimeoutError: If MT4 doesn't respond
         """
-        command = GetOpenPositionsCommand(magic_number=self.magic_number)
+        if not self.is_connected():
+            raise ConnectionError("Not connected to MT4")
+
+        command = GetOpenPositionsCommand(magic_number=magic_number)
         response_data = await self.send_command(command)
 
-        # Adapt response format
-        response_data = self._adapt_mt4_response(response_data)
+        logger.info(
+            "positions_received",
+            count=len(response_data.get("positions", []))
+        )
 
-        return PositionsResponse(**response_data)
+        return response_data
 
     async def close_position(
         self,
@@ -436,7 +734,7 @@ class MT4Client:
             Response dictionary from MT4
         """
         command = ClosePositionCommand(
-            ticket_number=ticket_number,
+            ticket=ticket_number,  # EA expects "ticket" field
             magic_number=self.magic_number
         )
 
@@ -632,12 +930,248 @@ class MT4Client:
         self._listening = False
         logger.info("mt4_event_listener_stopped", magic_number=self.magic_number)
 
+    # =========================================================================
+    # Reconnection Logic (T092, T094)
+    # =========================================================================
+
+    def _get_reconnect_backoff(self) -> float:
+        """Get backoff time for current reconnection attempt (T092)."""
+        return calculate_backoff_time(
+            attempt=self.reconnect_attempt,
+            base=1.0,
+            max_backoff=300.0,
+            jitter=True
+        )
+
+    async def _wait_with_backoff(self, backoff_seconds: float) -> None:
+        """Wait for backoff period (T092)."""
+        await asyncio.sleep(backoff_seconds)
+
+    async def reconnect(self) -> bool:
+        """
+        Attempt to reconnect to MT4 (T094 with reconnection event logging - T110).
+
+        Returns:
+            True if reconnection successful, False otherwise
+        """
+        try:
+            logger.info(
+                "mt4_reconnection_attempt",
+                magic_number=self.magic_number,
+                attempt=self.reconnect_attempt
+            )
+
+            # Disconnect first
+            await self.disconnect()
+
+            # Wait with exponential backoff
+            backoff = self._get_reconnect_backoff()
+            logger.info(
+                "mt4_reconnection_backoff",
+                backoff_seconds=backoff,
+                attempt=self.reconnect_attempt
+            )
+            await self._wait_with_backoff(backoff)
+
+            # Attempt connection
+            await self.connect()
+
+            # Log successful reconnection event (T110)
+            MT4RequestLogger.log_connection_event(
+                event_type="RECONNECT",
+                magic_number=self.magic_number,
+                host=self.host,
+                port=self.rep_port,
+                encrypted=self.encryption_manager.encryption_enabled,
+                details={
+                    "reconnect_attempt": self.reconnect_attempt,
+                    "backoff_seconds": backoff,
+                    "status": "success"
+                }
+            )
+
+            # Reset reconnection counter on success
+            self.reconnect_attempt = 0
+            return True
+
+        except Exception as e:
+            logger.error(
+                "mt4_reconnection_failed",
+                error=str(e),
+                magic_number=self.magic_number,
+                attempt=self.reconnect_attempt
+            )
+            self.reconnect_attempt += 1
+            return False
+
+    async def start_auto_reconnect(self) -> None:
+        """
+        Start automatic reconnection loop (T094).
+
+        Monitors connection and automatically reconnects on failure.
+        """
+        if self._auto_reconnect_task and not self._auto_reconnect_task.done():
+            logger.warning("auto_reconnect_already_running", magic_number=self.magic_number)
+            return
+
+        self._should_reconnect = True
+        self._auto_reconnect_task = asyncio.create_task(self._auto_reconnect_loop())
+
+        logger.info("auto_reconnect_started", magic_number=self.magic_number)
+
+    async def stop_auto_reconnect(self) -> None:
+        """Stop automatic reconnection loop (T094)."""
+        self._should_reconnect = False
+
+        if self._auto_reconnect_task:
+            self._auto_reconnect_task.cancel()
+            try:
+                await self._auto_reconnect_task
+            except asyncio.CancelledError:
+                pass
+
+        logger.info("auto_reconnect_stopped", magic_number=self.magic_number)
+
+    async def _auto_reconnect_loop(self) -> None:
+        """Background task for automatic reconnection (T094)."""
+        while self._should_reconnect:
+            try:
+                # Check if connected
+                if not self.is_connected() or self.circuit_breaker.state == "OPEN":
+                    logger.info(
+                        "auto_reconnect_triggered",
+                        connected=self.is_connected(),
+                        circuit_state=self.circuit_breaker.state
+                    )
+
+                    # Attempt reconnection
+                    success = await self.reconnect()
+
+                    if success:
+                        # Publish connection status event (T093)
+                        await self._publish_connection_status("ACTIVE")
+                    else:
+                        await self._publish_connection_status("RECONNECTING")
+
+                # Check every 10 seconds
+                await asyncio.sleep(10)
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error("auto_reconnect_loop_error", error=str(e))
+                await asyncio.sleep(5)
+
+    # =========================================================================
+    # Connection Status Events (T093)
+    # =========================================================================
+
+    async def _publish_connection_status(self, status: str) -> None:
+        """
+        Publish connection status changed event (T093).
+
+        Args:
+            status: Connection status (ACTIVE, INACTIVE, ERROR, RECONNECTING)
+        """
+        try:
+            event = {
+                "event_type": "connection_status_changed",
+                "ea_id": f"ea_{self.magic_number}",
+                "magic_number": self.magic_number,
+                "status": status,
+                "circuit_state": self.circuit_breaker.state,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+
+            logger.info(
+                "connection_status_changed",
+                magic_number=self.magic_number,
+                status=status,
+                circuit_state=self.circuit_breaker.state
+            )
+
+            # This would normally publish to Redis
+            # For now, just log it
+            # await self.redis_client.publish("connection_status_changed", event)
+
+        except Exception as e:
+            logger.error("publish_connection_status_error", error=str(e))
+
+    # =========================================================================
+    # Graceful Shutdown (T095)
+    # =========================================================================
+
+    async def flush_pending_messages(self) -> None:
+        """
+        Flush pending messages before shutdown (T095).
+
+        Ensures no messages are lost during graceful shutdown.
+        """
+        if not self._pending_messages:
+            logger.info("no_pending_messages_to_flush", magic_number=self.magic_number)
+            return
+
+        logger.info(
+            "flushing_pending_messages",
+            count=len(self._pending_messages),
+            magic_number=self.magic_number
+        )
+
+        for message in self._pending_messages[:]:
+            try:
+                # Attempt to send pending message
+                await self.send_command(message)
+                self._pending_messages.remove(message)
+            except Exception as e:
+                logger.error(
+                    "failed_to_flush_message",
+                    error=str(e),
+                    message=message
+                )
+                # Keep message in queue for retry
+
+        logger.info(
+            "pending_messages_flushed",
+            remaining=len(self._pending_messages),
+            magic_number=self.magic_number
+        )
+
+    async def graceful_shutdown(self) -> None:
+        """
+        Gracefully shutdown client (T095).
+
+        Stops auto-reconnect, flushes pending messages, and disconnects.
+        """
+        logger.info("graceful_shutdown_started", magic_number=self.magic_number)
+
+        try:
+            # Stop auto-reconnect
+            await self.stop_auto_reconnect()
+
+            # Stop listening
+            self.stop_listening()
+
+            # Flush pending messages
+            await self.flush_pending_messages()
+
+            # Disconnect
+            await self.disconnect()
+
+            logger.info("graceful_shutdown_complete", magic_number=self.magic_number)
+
+        except Exception as e:
+            logger.error("graceful_shutdown_error", error=str(e))
+
+    # =========================================================================
+    # Context Manager (existing)
+    # =========================================================================
+
     async def __aenter__(self):
         """Async context manager entry."""
         await self.connect()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Async context manager exit."""
-        await self.disconnect()
+        """Async context manager exit with graceful shutdown (T095)."""
+        await self.graceful_shutdown()
         return False

@@ -107,13 +107,13 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Include routers
-app.include_router(agents.router, prefix="/api/v1")
-app.include_router(trading.router, prefix="/api/v1")
-app.include_router(market_data.router, prefix="/api/v1")
-app.include_router(forecasts.router, prefix="/api/v1")
-app.include_router(performance.router, prefix="/api/v1")
-app.include_router(strategies.router, prefix="/api/v1")
-app.include_router(system.router, prefix="/api/v1")
+app.include_router(agents.router, prefix="/api")
+app.include_router(trading.router, prefix="/api")
+app.include_router(market_data.router, prefix="/api")
+app.include_router(forecasts.router, prefix="/api")
+app.include_router(performance.router, prefix="/api")
+app.include_router(strategies.router, prefix="/api")
+app.include_router(system.router, prefix="/api")
 
 # Mount Prometheus metrics endpoint
 if settings.prometheus_enabled:
@@ -135,7 +135,7 @@ async def root():
         "version": settings.app_version,
         "description": settings.app_description,
         "docs": "/docs",
-        "health": "/api/v1/system/health",
+        "health": "/api/system/health",
     }
 
 

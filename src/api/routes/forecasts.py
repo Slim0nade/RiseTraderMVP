@@ -1,100 +1,159 @@
 """
 ML Forecasts API Routes
+
+Endpoints for retrieving ML price forecasts with caching and pagination.
 """
 import structlog
-from datetime import datetime
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from redis.asyncio import Redis
 
-from src.database.models import Forecast
-from ..dependencies import get_db, get_pagination_params, PaginationParams
-from ..models import (
-    ForecastListResponse,
-    ForecastResponse,
-    GenerateForecastRequest,
-    GenerateForecastResponse,
-    LatestForecastsResponse,
-)
+from src.api.models.forecasts import ForecastResponse, ForecastListResponse
+from src.api.models.common import ErrorResponse
+from src.api.dependencies import get_db, get_redis
+from src.services.forecast_service import ForecastService
 
 logger = structlog.get_logger(__name__)
-router = APIRouter(prefix="/forecasts", tags=["forecasts"])
+router = APIRouter(prefix="/api/forecasts", tags=["forecasts"])
 
 
-@router.get("/{symbol}", response_model=LatestForecastsResponse)
+@router.get(
+    "/latest",
+    response_model=ForecastListResponse,
+    responses={
+        200: {"description": "Latest forecasts retrieved successfully"},
+        500: {"model": ErrorResponse, "description": "Internal server error"}
+    }
+)
 async def get_latest_forecasts(
-    symbol: str,
+    symbol: Optional[str] = Query(None, description="Filter by symbol"),
+    horizon: Optional[str] = Query(None, description="Filter by forecast horizon (e.g., 1h, 4h, 24h)"),
     db: AsyncSession = Depends(get_db),
-) -> LatestForecastsResponse:
-    """Get latest forecasts for a symbol."""
-    try:
-        query = (
-            select(Forecast)
-            .where(Forecast.symbol == symbol)
-            .order_by(desc(Forecast.prediction_timestamp))
-            .limit(10)
-        )
-        result = await db.execute(query)
-        forecasts = result.scalars().all()
-
-        return LatestForecastsResponse(
-            symbol=symbol,
-            timestamp=datetime.utcnow(),
-            forecasts=[ForecastResponse(**f.to_dict()) for f in forecasts],
-        )
-    except Exception as e:
-        logger.error("get_latest_forecasts_failed", symbol=symbol, error=str(e))
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/{symbol}/history", response_model=ForecastListResponse)
-async def get_forecast_history(
-    symbol: str,
-    model_type: str = Query(None, description="Filter by model type"),
-    pagination: PaginationParams = Depends(get_pagination_params),
-    db: AsyncSession = Depends(get_db),
+    redis: Optional[Redis] = Depends(get_redis),
 ) -> ForecastListResponse:
-    """Get historical forecasts."""
+    """
+    Get latest forecasts across all symbols or filtered by symbol/horizon.
+
+    This endpoint returns the most recent forecasts, optionally filtered by
+    trading symbol and/or forecast horizon. Results are cached for 1 hour.
+
+    Args:
+        symbol: Optional symbol filter (e.g., 'CrudeOIL', 'GOLD')
+        horizon: Optional horizon filter (e.g., '1h', '4h', '24h')
+        db: Database session
+        redis: Redis client for caching
+
+    Returns:
+        ForecastListResponse with list of forecasts and metadata
+    """
     try:
-        query = select(Forecast).where(Forecast.symbol == symbol)
-        if model_type:
-            query = query.where(Forecast.model_type == model_type)
-        query = query.order_by(desc(Forecast.prediction_timestamp))
+        logger.info(
+            "get_latest_forecasts",
+            symbol=symbol,
+            horizon=horizon
+        )
 
-        count_query = select(func.count()).select_from(Forecast).where(Forecast.symbol == symbol)
-        if model_type:
-            count_query = count_query.where(Forecast.model_type == model_type)
-
-        total_result = await db.execute(count_query)
-        total = total_result.scalar() or 0
-
-        query = query.offset(pagination.offset).limit(pagination.limit)
-        result = await db.execute(query)
-        forecasts = result.scalars().all()
+        service = ForecastService(db, redis)
+        forecasts = await service.get_latest_forecasts(symbol=symbol, horizon=horizon)
 
         return ForecastListResponse(
-            forecasts=[ForecastResponse(**f.to_dict()) for f in forecasts],
-            total=total,
-            page=pagination.page,
-            page_size=pagination.page_size,
+            data=[ForecastResponse.model_validate(f) for f in forecasts],
+            total=len(forecasts),
+            page=1,
+            page_size=len(forecasts),
+            next_cursor=None
+        )
+
+    except Exception as e:
+        logger.error(
+            "get_latest_forecasts_failed",
             symbol=symbol,
-            model_type=model_type,
+            horizon=horizon,
+            error=str(e),
+            exc_info=True
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve latest forecasts: {str(e)}"
+        )
+
+
+@router.get(
+    "/{symbol}",
+    response_model=ForecastListResponse,
+    responses={
+        200: {"description": "Symbol forecasts retrieved successfully"},
+        400: {"model": ErrorResponse, "description": "Invalid cursor format"},
+        500: {"model": ErrorResponse, "description": "Internal server error"}
+    }
+)
+async def get_forecasts_by_symbol(
+    symbol: str,
+    cursor: Optional[str] = Query(None, description="Pagination cursor (ISO timestamp)"),
+    page_size: int = Query(50, ge=1, le=1000, description="Number of forecasts per page"),
+    db: AsyncSession = Depends(get_db),
+    redis: Optional[Redis] = Depends(get_redis),
+) -> ForecastListResponse:
+    """
+    Get forecasts for a specific symbol with keyset pagination.
+
+    Returns forecasts for the specified symbol, ordered by creation time (most recent first).
+    Supports keyset pagination using cursor-based pagination for efficient large dataset traversal.
+
+    Args:
+        symbol: Trading symbol (e.g., 'CrudeOIL', 'GOLD', 'EUR_USD')
+        cursor: Optional pagination cursor (ISO timestamp from previous response)
+        page_size: Number of items per page (1-1000, default 50)
+        db: Database session
+        redis: Redis client for caching
+
+    Returns:
+        ForecastListResponse with paginated forecasts and next_cursor
+    """
+    try:
+        logger.info(
+            "get_forecasts_by_symbol",
+            symbol=symbol,
+            cursor=cursor,
+            page_size=page_size
+        )
+
+        service = ForecastService(db, redis)
+        forecasts, next_cursor = await service.get_forecasts_by_symbol(
+            symbol=symbol,
+            cursor=cursor,
+            limit=page_size
+        )
+
+        return ForecastListResponse(
+            data=[ForecastResponse.model_validate(f) for f in forecasts],
+            total=len(forecasts),  # Note: Total across all pages not available with keyset pagination
+            page=1,
+            page_size=page_size,
+            next_cursor=next_cursor
+        )
+
+    except ValueError as e:
+        logger.warning(
+            "invalid_cursor_format",
+            symbol=symbol,
+            cursor=cursor,
+            error=str(e)
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid cursor format: {str(e)}"
         )
     except Exception as e:
-        logger.error("get_forecast_history_failed", error=str(e))
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/generate", response_model=GenerateForecastResponse)
-async def generate_forecasts(
-    request: GenerateForecastRequest,
-    db: AsyncSession = Depends(get_db),
-) -> GenerateForecastResponse:
-    """Trigger forecast generation (placeholder - requires MLPredictionAgent)."""
-    logger.warning("generate_forecasts_not_implemented", symbol=request.symbol)
-    return GenerateForecastResponse(
-        success=False,
-        message="Forecast generation not implemented - requires MLPredictionAgent integration",
-        symbol=request.symbol,
-        forecasts_generated=0,
-    )
+        logger.error(
+            "get_forecasts_by_symbol_failed",
+            symbol=symbol,
+            cursor=cursor,
+            error=str(e),
+            exc_info=True
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve forecasts for symbol {symbol}: {str(e)}"
+        )

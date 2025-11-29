@@ -16,6 +16,7 @@ from .news import NewsEvent
 from .optimal_trades import OptimalTrade
 from .positions import OpenPosition
 from .simulations import TradingSimulation
+from .strategy import Strategy, StrategyAllocation, StrategyPerformance, StrategyStatus, PerformancePeriod
 from .trading_history import TradingHistory
 
 __all__ = [
@@ -34,4 +35,9 @@ __all__ = [
     "MT4Connection",
     "MT4Order",
     "MT4Position",
+    "Strategy",
+    "StrategyAllocation",
+    "StrategyPerformance",
+    "StrategyStatus",
+    "PerformancePeriod",
 ]

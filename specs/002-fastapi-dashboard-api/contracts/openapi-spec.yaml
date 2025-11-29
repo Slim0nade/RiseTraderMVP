@@ -1,0 +1,967 @@
+openapi: 3.0.3
+info:
+  title: RiseTrader Dashboard API
+  description: |
+    FastAPI service serving market data, forecasts, account information, and strategy allocations
+    from PostgreSQL database to React dashboard with real-time MT4 integration.
+
+    ## Real-Time Updates
+    The API provides Server-Sent Events (SSE) endpoints for real-time data streaming:
+    - `/api/stream/market-data` - Price updates
+    - `/api/stream/account` - Account balance and positions
+    - `/api/stream/forecasts` - New forecast availability
+
+    ## Authentication
+    ⚠️ Currently NO authentication implemented. API key + JWT authentication will be added in Phase 8-9.
+
+    ## Rate Limiting
+    Rate limiting is enforced via slowapi middleware. Default limits apply per IP address.
+
+    ## Pagination
+    List endpoints use keyset (cursor-based) pagination for consistent performance:
+    - `page`: Page number (1-indexed)
+    - `page_size`: Items per page (default: 50, max: 500)
+    - `cursor`: Opaque cursor for next page (returned in `next_cursor` field)
+  version: 1.0.0
+  contact:
+    name: RiseTrader Team
+    email: support@risetrader.com
+  license:
+    name: Proprietary
+
+servers:
+  - url: http://localhost:8003/api
+    description: Local development server
+  - url: https://api.risetrader.com/api
+    description: Production server (future)
+
+tags:
+  - name: market-data
+    description: Market data and price information
+  - name: trading
+    description: Trading account, positions, and history
+  - name: forecasts
+    description: AI-generated price forecasts
+  - name: strategies
+    description: Trading strategy allocations and performance
+  - name: performance
+    description: Performance metrics and analytics
+  - name: agents
+    description: Agent system status and control
+  - name: system
+    description: System health and monitoring
+
+paths:
+  # ==========================================
+  # MARKET DATA ENDPOINTS
+  # ==========================================
+  /market-data/{symbol}:
+    get:
+      tags:
+        - market-data
+      summary: Get market data for symbol
+      description: |
+        Retrieve latest market data ticks for a specific trading symbol.
+        Supports filtering by timeframe and pagination.
+
+        **Performance**: <2 seconds for 500 candlesticks (success criteria SC-002)
+      operationId: getMarketData
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          description: Trading symbol (e.g., CrudeOIL, EURUSD)
+          schema:
+            type: string
+            example: CrudeOIL
+        - name: timeframe
+          in: query
+          required: false
+          description: Timeframe filter
+          schema:
+            type: string
+            enum: [M1, M5, M15, M30, H1, H4, D1, W1, MN1]
+            example: M5
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of records to return
+          schema:
+            type: integer
+            default: 500
+            minimum: 1
+            maximum: 1000
+        - name: page
+          in: query
+          required: false
+          description: Page number (1-indexed)
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: page_size
+          in: query
+          required: false
+          description: Items per page
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 500
+        - name: cursor
+          in: query
+          required: false
+          description: Cursor for pagination (keyset pagination)
+          schema:
+            type: string
+            example: "2024-11-24T10:30:00Z"
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketDataListResponse'
+        '400':
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Symbol not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /market-data/{symbol}/range:
+    get:
+      tags:
+        - market-data
+      summary: Get market data for time range
+      description: Retrieve market data for a specific time range
+      operationId: getMarketDataRange
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: start_time
+          in: query
+          required: true
+          description: Start timestamp (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+            example: "2024-11-24T00:00:00Z"
+        - name: end_time
+          in: query
+          required: true
+          description: End timestamp (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+            example: "2024-11-24T23:59:59Z"
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketDataListResponse'
+        '400':
+          description: Invalid date range
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /market-data/symbols:
+    get:
+      tags:
+        - market-data
+      summary: Get list of available symbols
+      description: Retrieve all available trading symbols with metadata
+      operationId: getSymbols
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SymbolListResponse'
+
+  # ==========================================
+  # TRADING ENDPOINTS
+  # ==========================================
+  /trading/account:
+    get:
+      tags:
+        - trading
+      summary: Get account information
+      description: |
+        Retrieve current account balance, equity, margin, and other account details.
+
+        **Performance**: <1 second page load (success criteria SC-001)
+      operationId: getAccount
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountResponse'
+
+  /trading/positions:
+    get:
+      tags:
+        - trading
+      summary: Get open positions
+      description: |
+        Retrieve all currently open trading positions.
+
+        **Real-time**: Updates within 3 seconds of MT4 changes (success criteria SC-003)
+      operationId: getPositions
+      parameters:
+        - name: symbol
+          in: query
+          required: false
+          description: Filter by symbol
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PositionListResponse'
+
+  /trading/history:
+    get:
+      tags:
+        - trading
+      summary: Get trading history
+      description: |
+        Retrieve completed trading transactions with pagination.
+
+        **Data Retention**: 90 days minimum (success criteria SC-007)
+      operationId: getTradingHistory
+      parameters:
+        - name: symbol
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: start_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: end_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: trade_type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [BUY, SELL]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TradeListResponse'
+
+  # ==========================================
+  # FORECASTS ENDPOINTS
+  # ==========================================
+  /forecasts/latest:
+    get:
+      tags:
+        - forecasts
+      summary: Get latest forecasts
+      description: Retrieve the latest price forecasts for all symbols
+      operationId: getLatestForecasts
+      parameters:
+        - name: symbol
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: horizon
+          in: query
+          required: false
+          description: Forecast horizon filter
+          schema:
+            type: string
+            enum: ["1h", "4h", "24h"]
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForecastListResponse'
+
+  /forecasts/{symbol}:
+    get:
+      tags:
+        - forecasts
+      summary: Get forecasts for specific symbol
+      description: Retrieve all forecasts for a specific symbol
+      operationId: getSymbolForecasts
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForecastListResponse'
+
+  # ==========================================
+  # STRATEGIES ENDPOINTS
+  # ==========================================
+  /strategies:
+    get:
+      tags:
+        - strategies
+      summary: Get all strategies
+      description: Retrieve all trading strategies with their current status
+      operationId: getStrategies
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StrategyListResponse'
+
+  /strategies/{strategy_id}/allocations:
+    get:
+      tags:
+        - strategies
+      summary: Get strategy allocations
+      description: Retrieve capital allocation history for a strategy
+      operationId: getStrategyAllocations
+      parameters:
+        - name: strategy_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StrategyAllocationListResponse'
+
+  /strategies/{strategy_id}/performance:
+    get:
+      tags:
+        - strategies
+      summary: Get strategy performance
+      description: Retrieve performance metrics for a strategy
+      operationId: getStrategyPerformance
+      parameters:
+        - name: strategy_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: period
+          in: query
+          required: false
+          description: Performance period
+          schema:
+            type: string
+            enum: [daily, weekly, monthly, all_time]
+            default: monthly
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StrategyPerformanceResponse'
+
+  # ==========================================
+  # STREAMING ENDPOINTS (SSE)
+  # ==========================================
+  /stream/market-data:
+    get:
+      tags:
+        - market-data
+      summary: Stream real-time market data (SSE)
+      description: |
+        Server-Sent Events endpoint for real-time market data updates.
+
+        **Latency**: <5 seconds from MT4 to dashboard (success criteria SC-006)
+      operationId: streamMarketData
+      parameters:
+        - name: symbols
+          in: query
+          required: true
+          description: Comma-separated list of symbols to stream
+          schema:
+            type: string
+            example: "CrudeOIL,EURUSD"
+      responses:
+        '200':
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: Server-Sent Events stream
+
+  /stream/account:
+    get:
+      tags:
+        - trading
+      summary: Stream real-time account updates (SSE)
+      description: Server-Sent Events endpoint for account balance and position updates
+      operationId: streamAccount
+      responses:
+        '200':
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
+  # ==========================================
+  # SYSTEM ENDPOINTS
+  # ==========================================
+  /system/health:
+    get:
+      tags:
+        - system
+      summary: Health check
+      description: Comprehensive health check with dependency status
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Service healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: Service unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+components:
+  schemas:
+    # ==========================================
+    # MARKET DATA SCHEMAS
+    # ==========================================
+    MarketDataResponse:
+      type: object
+      required:
+        - id
+        - time
+        - symbol
+        - timeframe
+        - open
+        - high
+        - low
+        - close
+        - volume
+      properties:
+        id:
+          type: integer
+          example: 12345
+        time:
+          type: string
+          format: date-time
+          example: "2024-11-24T10:30:00Z"
+        symbol:
+          type: string
+          example: "CrudeOIL"
+        timeframe:
+          type: string
+          enum: [M1, M5, M15, M30, H1, H4, D1, W1, MN1]
+          example: "M5"
+        source:
+          type: string
+          enum: [BARCHART, MT4]
+          example: "MT4"
+        open:
+          type: number
+          format: double
+          example: 75.25
+        high:
+          type: number
+          format: double
+          example: 75.50
+        low:
+          type: number
+          format: double
+          example: 75.20
+        close:
+          type: number
+          format: double
+          example: 75.45
+        volume:
+          type: integer
+          example: 1523
+        change:
+          type: number
+          format: double
+          example: 0.20
+        change_percent:
+          type: number
+          format: double
+          example: 0.27
+
+    MarketDataListResponse:
+      type: object
+      required:
+        - data
+        - total
+        - page
+        - page_size
+        - symbol
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/MarketDataResponse'
+        total:
+          type: integer
+          example: 1523
+        page:
+          type: integer
+          example: 1
+        page_size:
+          type: integer
+          example: 50
+        next_cursor:
+          type: string
+          nullable: true
+          example: "2024-11-24T09:00:00Z"
+        symbol:
+          type: string
+          example: "CrudeOIL"
+        start_time:
+          type: string
+          format: date-time
+          nullable: true
+        end_time:
+          type: string
+          format: date-time
+          nullable: true
+
+    SymbolInfoResponse:
+      type: object
+      properties:
+        symbol:
+          type: string
+          example: "CrudeOIL"
+        latest_price:
+          type: number
+          format: double
+          example: 75.45
+        latest_timestamp:
+          type: string
+          format: date-time
+        data_points_count:
+          type: integer
+          example: 13500000
+        last_timestamp:
+          type: string
+          format: date-time
+
+    SymbolListResponse:
+      type: object
+      properties:
+        symbols:
+          type: array
+          items:
+            $ref: '#/components/schemas/SymbolInfoResponse'
+        total:
+          type: integer
+
+    # ==========================================
+    # TRADING SCHEMAS
+    # ==========================================
+    AccountResponse:
+      type: object
+      properties:
+        account_number:
+          type: string
+          example: "12345678"
+        broker:
+          type: string
+          example: "MetaTrader Demo"
+        balance:
+          type: number
+          format: double
+          example: 10000.00
+        equity:
+          type: number
+          format: double
+          example: 10250.00
+        margin:
+          type: number
+          format: double
+          example: 500.00
+        free_margin:
+          type: number
+          format: double
+          example: 9750.00
+        margin_level:
+          type: number
+          format: double
+          example: 2050.00
+        currency:
+          type: string
+          example: "USD"
+        profit:
+          type: number
+          format: double
+          example: 250.00
+        last_updated:
+          type: string
+          format: date-time
+
+    PositionResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        ticket:
+          type: integer
+          example: 123456
+        symbol:
+          type: string
+          example: "CrudeOIL"
+        type:
+          type: string
+          enum: [BUY, SELL]
+        lots:
+          type: number
+          format: double
+          example: 0.1
+        open_price:
+          type: number
+          format: double
+          example: 75.00
+        current_price:
+          type: number
+          format: double
+          example: 75.45
+        profit:
+          type: number
+          format: double
+          example: 45.00
+        open_time:
+          type: string
+          format: date-time
+        stop_loss:
+          type: number
+          format: double
+          nullable: true
+        take_profit:
+          type: number
+          format: double
+          nullable: true
+
+    PositionListResponse:
+      type: object
+      properties:
+        positions:
+          type: array
+          items:
+            $ref: '#/components/schemas/PositionResponse'
+        total:
+          type: integer
+
+    TradeResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        ticket:
+          type: integer
+        symbol:
+          type: string
+        type:
+          type: string
+          enum: [BUY, SELL]
+        lots:
+          type: number
+          format: double
+        entry_price:
+          type: number
+          format: double
+        exit_price:
+          type: number
+          format: double
+        entry_time:
+          type: string
+          format: date-time
+        exit_time:
+          type: string
+          format: date-time
+        profit:
+          type: number
+          format: double
+        commission:
+          type: number
+          format: double
+          nullable: true
+        swap:
+          type: number
+          format: double
+          nullable: true
+        duration_seconds:
+          type: integer
+
+    TradeListResponse:
+      type: object
+      properties:
+        trades:
+          type: array
+          items:
+            $ref: '#/components/schemas/TradeResponse'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+
+    # ==========================================
+    # FORECAST SCHEMAS
+    # ==========================================
+    ForecastResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        model_type:
+          type: string
+          example: "XGBoost"
+        symbol:
+          type: string
+        forecast_horizon:
+          type: string
+          enum: ["1h", "4h", "24h"]
+        predicted_price:
+          type: number
+          format: double
+        confidence_level:
+          type: number
+          format: double
+          example: 0.95
+        prediction_timestamp:
+          type: string
+          format: date-time
+        target_timestamp:
+          type: string
+          format: date-time
+        actual_price:
+          type: number
+          format: double
+          nullable: true
+        prediction_error:
+          type: number
+          format: double
+          nullable: true
+
+    ForecastListResponse:
+      type: object
+      properties:
+        forecasts:
+          type: array
+          items:
+            $ref: '#/components/schemas/ForecastResponse'
+        total:
+          type: integer
+
+    # ==========================================
+    # STRATEGY SCHEMAS
+    # ==========================================
+    StrategyResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum: [ACTIVE, PAUSED, DISABLED]
+        allocated_capital:
+          type: number
+          format: double
+
+    StrategyListResponse:
+      type: object
+      properties:
+        strategies:
+          type: array
+          items:
+            $ref: '#/components/schemas/StrategyResponse'
+        total:
+          type: integer
+
+    StrategyAllocationResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        strategy_id:
+          type: integer
+        allocated_percentage:
+          type: number
+          format: double
+        allocated_amount:
+          type: number
+          format: double
+        allocation_date:
+          type: string
+          format: date-time
+
+    StrategyAllocationListResponse:
+      type: object
+      properties:
+        allocations:
+          type: array
+          items:
+            $ref: '#/components/schemas/StrategyAllocationResponse'
+
+    StrategyPerformanceResponse:
+      type: object
+      properties:
+        strategy_id:
+          type: integer
+        period_start:
+          type: string
+          format: date-time
+        period_end:
+          type: string
+          format: date-time
+        total_trades:
+          type: integer
+        win_rate:
+          type: number
+          format: double
+        total_return:
+          type: number
+          format: double
+        sharpe_ratio:
+          type: number
+          format: double
+          nullable: true
+        max_drawdown:
+          type: number
+          format: double
+          nullable: true
+
+    # ==========================================
+    # COMMON SCHEMAS
+    # ==========================================
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - timestamp
+      properties:
+        error:
+          type: string
+          example: "Symbol not found"
+        detail:
+          type: string
+          nullable: true
+          example: "No data available for symbol INVALID"
+        timestamp:
+          type: string
+          format: date-time
+        request_id:
+          type: string
+          example: "req_1234567890"
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+        version:
+          type: string
+          example: "1.0.0"
+        uptime_seconds:
+          type: number
+          format: double
+        dependencies:
+          type: object
+          properties:
+            database:
+              type: string
+              enum: [healthy, unhealthy]
+            redis:
+              type: string
+              enum: [healthy, unhealthy]
+            mt4_service:
+              type: string
+              enum: [healthy, unhealthy]

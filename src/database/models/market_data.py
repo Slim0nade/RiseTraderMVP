@@ -16,6 +16,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
+from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, TimestampMixin
@@ -35,8 +36,8 @@ class MarketData(Base, TimestampMixin):
     time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     symbol: Mapped[str] = mapped_column(String, nullable=False)
     import_symbol: Mapped[str] = mapped_column(String, nullable=False)
-    timeframe: Mapped[str] = mapped_column(Text, nullable=False)  # USER-DEFINED enum (timeframe)
-    source: Mapped[str] = mapped_column(Text, nullable=False)  # USER-DEFINED enum (datasource)
+    timeframe: Mapped[str] = mapped_column(ENUM('M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1', 'W1', 'MN1', name='timeframe', create_type=False), nullable=False)
+    source: Mapped[str] = mapped_column(ENUM('BARCHART', 'MT4', name='datasource', create_type=False), nullable=False)
 
     # OHLCV data
     open: Mapped[Decimal] = mapped_column(Numeric, nullable=False)

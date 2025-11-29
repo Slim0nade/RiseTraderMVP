@@ -244,7 +244,7 @@ class CreateInstantOrderCommand(MT4Command):
 
     command: Literal["create_instant_order"] = "create_instant_order"
     symbol: str
-    direction: Literal["BUY", "SELL"]
+    order_type: Literal["BUY", "SELL"]  # EA expects "order_type" not "direction"
     volume: Decimal
     magic_number: int
     stop_loss: Optional[Decimal] = None
@@ -278,7 +278,7 @@ class ClosePositionCommand(MT4Command):
     """Command to close an open position."""
 
     command: Literal["close_position"] = "close_position"
-    ticket_number: int
+    ticket: int  # EA expects "ticket" not "ticket_number"
     magic_number: int
     volume: Optional[Decimal] = None  # None = close entire position
 
@@ -385,3 +385,106 @@ class ConnectionHealth(BaseModel):
 
         elapsed = (datetime.utcnow() - self.last_heartbeat).total_seconds()
         return elapsed < heartbeat_timeout_seconds
+
+
+# =============================================================================
+# User Story 4: Account Information Models (T083)
+# =============================================================================
+
+class AccountInfo(BaseModel):
+    """
+    Account information from MT4.
+
+    Contains balance, equity, margin, and other account metrics.
+    """
+
+    balance: Decimal = Field(..., description="Account balance")
+    equity: Decimal = Field(..., description="Account equity (balance + floating P&L)")
+    margin: Decimal = Field(..., description="Used margin")
+    free_margin: Decimal = Field(..., description="Free margin available for trading")
+    margin_level: Decimal = Field(..., description="Margin level percentage (equity/margin * 100)")
+    profit: Decimal = Field(..., description="Total floating profit/loss")
+    account_number: int = Field(..., description="MT4 account number")
+    leverage: int = Field(..., description="Account leverage (e.g., 100 for 1:100)")
+    currency: str = Field(..., description="Account currency (e.g., USD)")
+    server: str = Field(..., description="MT4 server name")
+    company: str = Field(..., description="Broker company name")
+
+    @field_validator('balance', 'equity', 'margin', 'free_margin', 'margin_level', 'profit', mode='before')
+    @classmethod
+    def coerce_to_decimal(cls, v):
+        """Convert numeric values to Decimal."""
+        if v is None:
+            return None
+        return Decimal(str(v))
+
+    class Config:
+        json_encoders = {
+            Decimal: lambda v: str(v),
+        }
+
+
+class PositionInfo(BaseModel):
+    """
+    Open position information from MT4.
+
+    Represents a single open trade position.
+    """
+
+    ticket: int = Field(..., description="Position ticket number")
+    symbol: str = Field(..., description="Trading symbol")
+    type: Literal["BUY", "SELL"] = Field(..., description="Position type")
+    volume: Decimal = Field(..., description="Position volume in lots")
+    open_price: Decimal = Field(..., description="Opening price")
+    current_price: Decimal = Field(..., description="Current market price")
+    stop_loss: Optional[Decimal] = Field(None, description="Stop loss price")
+    take_profit: Optional[Decimal] = Field(None, description="Take profit price")
+    profit: Decimal = Field(..., description="Current profit/loss")
+    open_time: datetime = Field(..., description="Position open time")
+    magic_number: int = Field(..., description="EA magic number")
+
+    @field_validator('volume', 'open_price', 'current_price', 'stop_loss', 'take_profit', 'profit', mode='before')
+    @classmethod
+    def coerce_to_decimal(cls, v):
+        """Convert numeric values to Decimal."""
+        if v is None:
+            return None
+        return Decimal(str(v))
+
+    @field_validator('open_time', mode='before')
+    @classmethod
+    def parse_datetime(cls, v):
+        """Parse datetime from string if needed."""
+        if isinstance(v, str):
+            return datetime.fromisoformat(v.replace('Z', '+00:00'))
+        return v
+
+    class Config:
+        json_encoders = {
+            Decimal: lambda v: str(v),
+            datetime: lambda v: v.isoformat(),
+        }
+
+
+class GetAccountInfoCommand(BaseModel):
+    """Command to request account information from MT4."""
+
+    command: Literal["get_account_info"] = "get_account_info"
+    correlation_id: str = Field(
+        default_factory=lambda: str(uuid.uuid4()),
+        description="UUID for request tracing"
+    )
+
+
+class GetOpenPositionsCommand(BaseModel):
+    """Command to request open positions from MT4."""
+
+    command: Literal["get_open_positions"] = "get_open_positions"
+    magic_number: Optional[int] = Field(
+        None,
+        description="Optional magic number to filter positions"
+    )
+    correlation_id: str = Field(
+        default_factory=lambda: str(uuid.uuid4()),
+        description="UUID for request tracing"
+    )

@@ -322,6 +322,51 @@ def record_market_tick(symbol: str, latency_seconds: float):
 
 
 # =============================================================================
+# Account Query Metrics (T088 - User Story 4)
+# =============================================================================
+
+mt4_account_query_latency_seconds = Histogram(
+    'mt4_account_query_latency_seconds',
+    'Account info query latency in seconds',
+    ['ea_id'],
+    buckets=(0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0)
+)
+
+mt4_positions_query_latency_seconds = Histogram(
+    'mt4_positions_query_latency_seconds',
+    'Open positions query latency in seconds',
+    ['ea_id'],
+    buckets=(0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0)
+)
+
+mt4_account_queries_total = Counter(
+    'mt4_account_queries_total',
+    'Total number of account info queries',
+    ['ea_id', 'status']  # status: success, error, timeout
+)
+
+mt4_positions_queries_total = Counter(
+    'mt4_positions_queries_total',
+    'Total number of positions queries',
+    ['ea_id', 'status']
+)
+
+
+def record_account_query(ea_id: str, latency_seconds: float, status: str = "success"):
+    """Record account info query metrics."""
+    mt4_account_queries_total.labels(ea_id=ea_id, status=status).inc()
+    if status == "success":
+        mt4_account_query_latency_seconds.labels(ea_id=ea_id).observe(latency_seconds)
+
+
+def record_positions_query(ea_id: str, latency_seconds: float, status: str = "success"):
+    """Record positions query metrics."""
+    mt4_positions_queries_total.labels(ea_id=ea_id, status=status).inc()
+    if status == "success":
+        mt4_positions_query_latency_seconds.labels(ea_id=ea_id).observe(latency_seconds)
+
+
+# =============================================================================
 # Portfolio Metrics Functions (T074 - User Story 5)
 # =============================================================================
 
@@ -378,9 +423,14 @@ def record_zmq_error(command_type: str, error_type: str):
 
 
 def update_circuit_breaker_state(ea_id: str, state: str):
-    """Update circuit breaker state (CLOSED=0, OPEN=1, HALF_OPEN=2)."""
+    """Update circuit breaker state (CLOSED=0, OPEN=1, HALF_OPEN=2) - T096."""
     state_map = {"CLOSED": 0, "OPEN": 1, "HALF_OPEN": 2}
     mt4_circuit_breaker_state.labels(ea_id=ea_id).set(state_map.get(state, 0))
+
+
+def record_circuit_breaker_failure(ea_id: str):
+    """Record circuit breaker failure (T096)."""
+    mt4_circuit_breaker_failures_total.labels(ea_id=ea_id).inc()
 
 
 def set_service_health(is_healthy: bool):

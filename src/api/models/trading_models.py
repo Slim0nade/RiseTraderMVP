@@ -76,6 +76,37 @@ class ClosePositionRequest(BaseModel):
 
 
 # Response Models
+class AccountResponse(BaseModel):
+    """Response model for account information."""
+
+    account_number: str
+    balance: Decimal
+    equity: Decimal
+    margin: Decimal
+    free_margin: Decimal
+    margin_level: Optional[Decimal] = None
+    profit: Decimal
+    currency: str = "USD"
+    leverage: Optional[int] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "account_number": "12345678",
+                "balance": 10000.00,
+                "equity": 10250.00,
+                "margin": 500.00,
+                "free_margin": 9750.00,
+                "margin_level": 2050.00,
+                "profit": 250.00,
+                "currency": "USD",
+                "leverage": 100,
+            }
+        }
+
+
 class PositionResponse(BaseModel):
     """Response model for open position."""
 

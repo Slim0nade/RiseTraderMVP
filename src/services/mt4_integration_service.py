@@ -42,6 +42,8 @@ from src.trading.execution.mt4_models import (
     MarketTick,
     PortfolioRiskState,
     PortfolioRiskUpdatedEvent,
+    AccountInfo,
+    PositionInfo,
 )
 from src.utils.mt4_helpers import (
     get_mt4_logger,
@@ -58,6 +60,8 @@ from src.monitoring.mt4_metrics import (
     record_position_closed,
     record_market_tick,
     update_portfolio_metrics,
+    record_account_query,
+    record_positions_query,
 )
 
 
@@ -79,6 +83,8 @@ class MT4IntegrationService:
         connection_repository: MT4ConnectionRepository,
         symbol_loader: SymbolLoader,
         connection_pool: Optional[MT4ConnectionPool] = None,
+        market_data_repository=None,  # Add market_data_repository
+        indicators_repository=None,  # Add indicators_repository
         logger_instance=None
     ):
         """
@@ -90,6 +96,8 @@ class MT4IntegrationService:
             connection_repository: Repository for EA connection info
             symbol_loader: Symbol validation loader
             connection_pool: Optional connection pool for multi-EA management
+            market_data_repository: Optional repository for market data persistence
+            indicators_repository: Optional repository for indicators persistence
             logger_instance: Optional logger override
         """
         self.order_repository = order_repository
@@ -97,6 +105,8 @@ class MT4IntegrationService:
         self.connection_repository = connection_repository
         self.symbol_loader = symbol_loader
         self.connection_pool = connection_pool or MT4ConnectionPool()
+        self.market_data_repository = market_data_repository  # Store market_data_repository
+        self.indicators_repository = indicators_repository  # Store indicators_repository
         self.logger = logger_instance or logger
 
         # Cache of MT4Client instances by magic_number
@@ -111,6 +121,11 @@ class MT4IntegrationService:
         # Portfolio risk cache (T071)
         self._portfolio_risk_cache: Optional[PortfolioRiskState] = None
         self._portfolio_cache_lock = asyncio.Lock()
+
+        # Account info cache (T085) - cache by magic_number
+        self._account_info_cache: Dict[int, AccountInfo] = {}
+        self._account_cache_timestamp: Dict[int, datetime] = {}
+        self._account_cache_lock = asyncio.Lock()
 
         self.logger.info("mt4_integration_service_initialized")
 
@@ -694,58 +709,247 @@ class MT4IntegrationService:
         Handle market_tick event from MT4 EA.
 
         Processes real-time market ticks, publishes to Redis for signal generation,
-        and records metrics for latency tracking.
+        records metrics for latency tracking, and persists to database.
 
         Args:
-            event_data: Event data dictionary
+            event_data: Event data dictionary (supports both "market_tick" and "real_time_update")
 
         Raises:
             ValidationError: If event data doesn't match schema
         """
         try:
-            # Parse event
-            event = MarketTickEvent(**event_data)
+            # Handle both event formats: "market_tick" (bid/ask) and "real_time_update" (OHLC)
+            event_type = event_data.get("type", event_data.get("event_type", "market_tick"))
 
-            self.logger.debug(
-                "market_tick_received",
-                symbol=event.data.symbol,
-                bid=float(event.data.bid),
-                ask=float(event.data.ask),
-                timestamp=event.data.timestamp.isoformat()
-            )
+            if event_type == "real_time_update":
+                # MT4 EA sends "real_time_update" with OHLC data + indicators
+                await self._handle_real_time_update(event_data)
+            else:
+                # Standard market_tick event with bid/ask
+                event = MarketTickEvent(**event_data)
 
-            # Calculate latency (time from MT4 tick to now)
-            reception_time = datetime.utcnow()
-            latency_seconds = (reception_time - event.data.timestamp).total_seconds()
+                self.logger.debug(
+                    "market_tick_received",
+                    symbol=event.data.symbol,
+                    bid=float(event.data.bid),
+                    ask=float(event.data.ask),
+                    timestamp=event.data.timestamp.isoformat()
+                )
 
-            # Update connection health timestamp (extract magic_number if available)
-            # Note: MT4 EA should include magic_number in tick events for proper tracking
-            if hasattr(event, 'magic_number'):
-                self._last_tick_timestamp[event.magic_number] = reception_time
+                # Calculate latency (time from MT4 tick to now)
+                reception_time = datetime.utcnow()
+                latency_seconds = (reception_time - event.data.timestamp).total_seconds()
 
-            # Publish to Redis for signal generators and monitoring
-            await self.redis_client.publish_event(
-                channel=CHANNEL_MARKET_TICK,
-                event=event.model_dump(mode='json')
-            )
+                # Update connection health timestamp (extract magic_number if available)
+                # Note: MT4 EA should include magic_number in tick events for proper tracking
+                if hasattr(event, 'magic_number'):
+                    self._last_tick_timestamp[event.magic_number] = reception_time
 
-            # Record metrics
-            record_market_tick(
-                symbol=event.data.symbol,
-                latency_seconds=latency_seconds
-            )
+                # Publish to Redis for signal generators and monitoring
+                await self.redis_client.publish_event(
+                    channel=CHANNEL_MARKET_TICK,
+                    event=event.model_dump(mode='json')
+                )
 
-            self.logger.debug(
-                "market_tick_processed",
-                symbol=event.data.symbol,
-                latency_ms=latency_seconds * 1000,
-                correlation_id=event.correlation_id
+                # Record metrics
+                record_market_tick(
+                    symbol=event.data.symbol,
+                    latency_seconds=latency_seconds
+                )
+
+                self.logger.debug(
+                    "market_tick_processed",
+                    symbol=event.data.symbol,
+                    latency_ms=latency_seconds * 1000,
+                    correlation_id=event.correlation_id
             )
 
         except Exception as e:
             self.logger.error(
                 "handle_market_tick_error",
                 error=str(e),
+                event_data=event_data
+            )
+
+    def _convert_timeframe_to_mt4_format(self, minutes: int) -> str:
+        """
+        Convert timeframe in minutes to MT4 ENUM format.
+
+        Database expects: M1, M5, M15, M30, H1, H4, D1, W1, MN1
+        """
+        timeframe_map = {
+            1: "M1",
+            5: "M5",
+            15: "M15",
+            30: "M30",
+            60: "H1",
+            240: "H4",
+            1440: "D1",
+            10080: "W1",
+            43200: "MN1",
+        }
+        return timeframe_map.get(minutes, "M1")  # Default to M1 if unknown
+
+    async def _handle_real_time_update(self, event_data: dict) -> None:
+        """
+        Handle real_time_update events from MT4 EA with OHLC + indicators.
+
+        Format: {"type": "real_time_update", "symbol": "CrudeOIL", "timeframe": 1,
+                 "market_open": true, "price_data": {...}, "signals": {...}, "ta_indicators": {...}}
+
+        Args:
+            event_data: Real-time update dictionary from MT4 EA
+        """
+        try:
+            from decimal import Decimal
+
+            symbol = event_data.get("symbol")
+            timeframe_minutes = event_data.get("timeframe", 1)  # 1 = 1 minute
+            market_open = event_data.get("market_open", False)
+            price_data = event_data.get("price_data", {})
+            signals = event_data.get("signals", {})
+            ta_indicators = event_data.get("ta_indicators", {})
+
+            # Extract OHLC values
+            open_price = price_data.get("open")
+            high_price = price_data.get("high")
+            low_price = price_data.get("low")
+            close_price = price_data.get("close")
+
+            if not all([symbol, open_price, high_price, low_price, close_price]):
+                self.logger.warning(
+                    "incomplete_real_time_update",
+                    symbol=symbol,
+                    has_ohlc=bool(open_price and high_price and low_price and close_price)
+                )
+                return
+
+            # Persist to database if market_data_repository is available
+            if self.market_data_repository:
+                try:
+                    # Calculate change metrics (using previous close if available, otherwise 0)
+                    current_close = Decimal(str(close_price))
+                    current_open = Decimal(str(open_price))
+                    change = current_close - current_open
+                    change_percent = (change / current_open * 100) if current_open > 0 else Decimal('0')
+
+                    # Convert timeframe to MT4 ENUM format (M1, M5, etc.)
+                    timeframe_enum = self._convert_timeframe_to_mt4_format(timeframe_minutes)
+
+                    # Upsert market_data record (creates new or updates existing)
+                    market_data = await self.market_data_repository.upsert({
+                        "time": datetime.utcnow(),
+                        "symbol": symbol,
+                        "import_symbol": symbol,  # For MT4, import_symbol same as symbol
+                        "timeframe": timeframe_enum,
+                        "source": "MT4",
+                        "open": Decimal(str(open_price)),
+                        "high": Decimal(str(high_price)),
+                        "low": Decimal(str(low_price)),
+                        "last": Decimal(str(close_price)),
+                        "change": change,
+                        "change_percent": change_percent,
+                        "volume": 0,  # MT4 EA doesn't send volume in real_time_update
+                    })
+
+                    self.logger.info(
+                        "market_data_persisted",
+                        symbol=symbol,
+                        timeframe=timeframe_enum,
+                        market_data_id=market_data.id,
+                        open=float(open_price),
+                        high=float(high_price),
+                        low=float(low_price),
+                        close=float(close_price)
+                    )
+
+                    # Persist indicators if repository is available and indicators exist
+                    if self.indicators_repository and ta_indicators:
+                        try:
+                            # Extract indicator values from EA response
+                            indicator_data = {
+                                "market_data_id": market_data.id,
+                                "time": market_data.time,
+                                "symbol": symbol,
+                                "timeframe": timeframe_enum,
+                                # RSI
+                                "rsi": Decimal(str(ta_indicators["rsi"])) if ta_indicators.get("rsi") else None,
+                                # MACD
+                                "macd": Decimal(str(ta_indicators["macd"])) if ta_indicators.get("macd") else None,
+                                "macd_signal": Decimal(str(ta_indicators["macd_signal"])) if ta_indicators.get("macd_signal") else None,
+                                # ATR
+                                "atr": Decimal(str(ta_indicators["atr"])) if ta_indicators.get("atr") else None,
+                                # SAR
+                                "sar": Decimal(str(ta_indicators["sar"])) if ta_indicators.get("sar") else None,
+                                # Bollinger Bands
+                                "bb_upper": Decimal(str(ta_indicators["bb_upper"])) if ta_indicators.get("bb_upper") else None,
+                                "bb_middle": Decimal(str(ta_indicators["bb_middle"])) if ta_indicators.get("bb_middle") else None,
+                                "bb_lower": Decimal(str(ta_indicators["bb_lower"])) if ta_indicators.get("bb_lower") else None,
+                                # Moving Averages
+                                "ma_20": Decimal(str(ta_indicators["ma_20"])) if ta_indicators.get("ma_20") else None,
+                                "ma_50": Decimal(str(ta_indicators["ma_50"])) if ta_indicators.get("ma_50") else None,
+                                "ma_200": Decimal(str(ta_indicators["ma_200"])) if ta_indicators.get("ma_200") else None,
+                                # VWAP
+                                "vwap": Decimal(str(ta_indicators["vwap"])) if ta_indicators.get("vwap") else None,
+                            }
+
+                            # Create indicators record
+                            indicators = await self.indicators_repository.create(indicator_data)
+
+                            self.logger.info(
+                                "indicators_persisted",
+                                symbol=symbol,
+                                market_data_id=market_data.id,
+                                indicators_id=indicators.id,
+                                has_rsi=bool(indicators.rsi),
+                                has_macd=bool(indicators.macd),
+                                has_bb=bool(indicators.bb_upper)
+                            )
+
+                        except Exception as ind_error:
+                            self.logger.error(
+                                "indicators_persistence_error",
+                                symbol=symbol,
+                                market_data_id=market_data.id,
+                                error=str(ind_error),
+                                error_type=type(ind_error).__name__
+                            )
+                            # Don't raise - continue even if indicators fail to save
+
+                except Exception as db_error:
+                    self.logger.error(
+                        "market_data_persistence_error",
+                        symbol=symbol,
+                        error=str(db_error),
+                        error_type=type(db_error).__name__
+                    )
+                    # Don't raise - continue processing even if DB write fails
+
+            # Publish to Redis for signal generators (existing behavior)
+            await self.redis_client.publish_event(
+                channel=CHANNEL_MARKET_TICK,
+                event=event_data
+            )
+
+            # Record metrics
+            record_market_tick(
+                symbol=symbol,
+                latency_seconds=0.0  # Real-time update doesn't have timestamp
+            )
+
+            self.logger.debug(
+                "real_time_update_processed",
+                symbol=symbol,
+                market_open=market_open,
+                has_signals=bool(signals),
+                has_indicators=bool(ta_indicators)
+            )
+
+        except Exception as e:
+            self.logger.error(
+                "handle_real_time_update_error",
+                error=str(e),
+                error_type=type(e).__name__,
                 event_data=event_data
             )
 
@@ -1302,6 +1506,198 @@ class MT4IntegrationService:
                 "portfolio_risk_event_publish_error",
                 error=str(e)
             )
+
+    async def query_account_info(
+        self,
+        magic_number: int,
+        use_cache: bool = True,
+        cache_ttl_seconds: int = 30
+    ) -> AccountInfo:
+        """
+        Query account information from MT4 (T084 - User Story 4).
+
+        Args:
+            magic_number: MT4 magic number (EA identifier)
+            use_cache: Whether to use cached data if available
+            cache_ttl_seconds: Cache TTL in seconds (default: 30s)
+
+        Returns:
+            AccountInfo with balance, equity, margin, etc.
+
+        Raises:
+            ValueError: If connection not found
+            ConnectionError: If MT4 communication fails
+            TimeoutError: If MT4 doesn't respond
+        """
+        self.logger.debug(
+            "querying_account_info",
+            magic_number=magic_number,
+            use_cache=use_cache
+        )
+
+        # Check cache first if enabled
+        if use_cache:
+            cached_info = await self.get_cached_account_info(magic_number, cache_ttl_seconds)
+            if cached_info is not None:
+                self.logger.debug("account_info_cache_hit", magic_number=magic_number)
+                return cached_info
+
+        # Get client
+        client = await self._get_client(magic_number)
+
+        # Get EA info for metrics
+        connection = await self.connection_repository.get_by_magic_number(magic_number)
+        ea_id = connection.ea_id if connection else f"ea_{magic_number}"
+
+        # Query account info from MT4 with timing
+        start_time = datetime.utcnow()
+        try:
+            response = await client.get_account_info()
+
+            if not response.get("success"):
+                # Record failed query
+                record_account_query(ea_id, 0, status="error")
+                raise ConnectionError(f"MT4 query failed: {response.get('error')}")
+
+            # Parse into AccountInfo model
+            account_info = AccountInfo(**response)
+
+            # Update cache
+            async with self._account_cache_lock:
+                self._account_info_cache[magic_number] = account_info
+                self._account_cache_timestamp[magic_number] = datetime.utcnow()
+
+            # Record metrics (T088)
+            latency = (datetime.utcnow() - start_time).total_seconds()
+            record_account_query(ea_id, latency, status="success")
+
+            self.logger.info(
+                "account_info_queried",
+                magic_number=magic_number,
+                balance=float(account_info.balance),
+                equity=float(account_info.equity),
+                latency_ms=latency * 1000
+            )
+
+            return account_info
+
+        except TimeoutError as e:
+            record_account_query(ea_id, 0, status="timeout")
+            self.logger.error(
+                "account_info_query_timeout",
+                magic_number=magic_number,
+                error=str(e)
+            )
+            raise
+        except Exception as e:
+            record_account_query(ea_id, 0, status="error")
+            self.logger.error(
+                "account_info_query_error",
+                magic_number=magic_number,
+                error=str(e)
+            )
+            raise
+
+    async def get_cached_account_info(
+        self,
+        magic_number: int,
+        cache_ttl_seconds: int = 30
+    ) -> Optional[AccountInfo]:
+        """
+        Get cached account info if available and fresh (T085).
+
+        Args:
+            magic_number: MT4 magic number
+            cache_ttl_seconds: Cache TTL in seconds
+
+        Returns:
+            Cached AccountInfo or None if expired/not available
+        """
+        async with self._account_cache_lock:
+            if magic_number not in self._account_info_cache:
+                return None
+
+            # Check if cache is still valid
+            cache_age = (datetime.utcnow() - self._account_cache_timestamp[magic_number]).total_seconds()
+            if cache_age > cache_ttl_seconds:
+                self.logger.debug(
+                    "account_cache_expired",
+                    magic_number=magic_number,
+                    age_seconds=cache_age
+                )
+                return None
+
+            return self._account_info_cache[magic_number]
+
+    async def query_open_positions(
+        self,
+        magic_number: int
+    ) -> list[PositionInfo]:
+        """
+        Query open positions from MT4 (T084 - User Story 4).
+
+        Args:
+            magic_number: MT4 magic number to filter positions
+
+        Returns:
+            List of PositionInfo objects
+
+        Raises:
+            ValueError: If connection not found
+            ConnectionError: If MT4 communication fails
+        """
+        self.logger.debug("querying_open_positions", magic_number=magic_number)
+
+        # Get client
+        client = await self._get_client(magic_number)
+
+        # Get EA info for metrics
+        connection = await self.connection_repository.get_by_magic_number(magic_number)
+        ea_id = connection.ea_id if connection else f"ea_{magic_number}"
+
+        # Query positions from MT4 with timing
+        start_time = datetime.utcnow()
+        try:
+            response = await client.get_open_positions(magic_number=magic_number)
+
+            if not response.get("success"):
+                # Record failed query
+                record_positions_query(ea_id, 0, status="error")
+                raise ConnectionError(f"MT4 query failed: {response.get('error')}")
+
+            # Parse positions
+            positions_data = response.get("positions", [])
+            positions = [PositionInfo(**pos) for pos in positions_data]
+
+            # Record metrics (T088)
+            latency = (datetime.utcnow() - start_time).total_seconds()
+            record_positions_query(ea_id, latency, status="success")
+
+            self.logger.info(
+                "positions_queried",
+                magic_number=magic_number,
+                count=len(positions),
+                latency_ms=latency * 1000
+            )
+
+            return positions
+
+        except TimeoutError as e:
+            record_positions_query(ea_id, 0, status="timeout")
+            self.logger.error(
+                "positions_query_timeout",
+                magic_number=magic_number,
+                error=str(e)
+            )
+            raise
+        except Exception as e:
+            record_positions_query(ea_id, 0, status="error")
+            self.logger.error(
+                "positions_query_error",
+                magic_number=magic_number,
+                error=str(e)
+            )
+            raise
 
     async def cleanup(self) -> None:
         """Cleanup resources - disconnect all clients."""

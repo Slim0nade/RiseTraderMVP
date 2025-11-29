@@ -54,6 +54,9 @@ class MarketDataListResponse(BaseModel):
     symbol: str
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
+    next_cursor: Optional[str] = Field(
+        None, description="Cursor for keyset pagination to fetch next page"
+    )
 
     class Config:
         json_schema_extra = {

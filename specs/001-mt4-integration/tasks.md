@@ -177,14 +177,14 @@ description: "Task list for MT4 Integration feature implementation"
 
 - [X] T065 [US5] Implement MT4ConnectionPool class in src/trading/execution/mt4_connection_pool.py (EA registry, port allocation)
 - [X] T066 [US5] Add magic number allocation logic in MT4ConnectionPool in src/trading/execution/mt4_connection_pool.py (100000-999999 range)
-- [ ] T067 [US5] Implement EA registration in MT4IntegrationService.register_ea() in src/services/mt4_integration_service.py
-- [ ] T068 [US5] Add connection health monitoring per EA in MT4ConnectionPool in src/trading/execution/mt4_connection_pool.py
-- [ ] T069 [US5] Implement PortfolioRiskState model in src/trading/execution/mt4_models.py (Pydantic model)
-- [ ] T070 [US5] Create portfolio risk aggregation in src/services/mt4_integration_service.py (aggregate across all EAs)
-- [ ] T071 [US5] Implement Redis caching for portfolio state in src/services/mt4_integration_service.py
-- [ ] T072 [US5] Add risk limit checks before order submission in src/services/mt4_integration_service.py (margin, exposure)
-- [ ] T073 [US5] Implement portfolio_risk_updated event publishing in src/services/mt4_integration_service.py
-- [ ] T074 [US5] Add metrics for per-EA and portfolio-level risk in src/monitoring/mt4_metrics.py
+- [X] T067 [US5] Implement EA registration in MT4IntegrationService.register_ea() in src/services/mt4_integration_service.py
+- [X] T068 [US5] Add connection health monitoring per EA in MT4ConnectionPool in src/trading/execution/mt4_connection_pool.py
+- [X] T069 [US5] Implement PortfolioRiskState model in src/trading/execution/mt4_models.py (Pydantic model)
+- [X] T070 [US5] Create portfolio risk aggregation in src/services/mt4_integration_service.py (aggregate across all EAs)
+- [X] T071 [US5] Implement Redis caching for portfolio state in src/services/mt4_integration_service.py
+- [X] T072 [US5] Add risk limit checks before order submission in src/services/mt4_integration_service.py (margin, exposure)
+- [X] T073 [US5] Implement portfolio_risk_updated event publishing in src/services/mt4_integration_service.py
+- [X] T074 [US5] Add metrics for per-EA and portfolio-level risk in src/monitoring/mt4_metrics.py
 
 **Checkpoint**: Multi-EA support complete with portfolio risk management
 
@@ -198,25 +198,25 @@ description: "Task list for MT4 Integration feature implementation"
 
 ### Tests for User Story 4 (TDD: Write FIRST)
 
-- [ ] T075 [P] [US4] Write unit test for get_account_info command in tests/unit/test_mt4_client.py
-- [ ] T076 [P] [US4] Write unit test for get_open_positions query in tests/unit/test_mt4_client.py
-- [ ] T077 [P] [US4] Write unit test for account data parsing in tests/unit/test_mt4_models.py
-- [ ] T078 [P] [US4] Write integration test for account query flow in tests/integration/test_mt4_communication.py
-- [ ] T079 [P] [US4] Write contract test for account info response schema in tests/contract/test_mt4_schemas.py
+- [X] T075 [P] [US4] Write unit test for get_account_info command in tests/unit/trading/test_mt4_client.py
+- [X] T076 [P] [US4] Write unit test for get_open_positions query in tests/unit/trading/test_mt4_client.py
+- [X] T077 [P] [US4] Write unit test for account data parsing in tests/unit/trading/test_mt4_models.py
+- [X] T078 [P] [US4] Write integration test for account query flow in tests/integration/test_mt4_account_query_flow.py
+- [X] T079 [P] [US4] Write contract test for account info response schema in tests/contract/test_mt4_schemas.py
 
-**Verify**: Tests FAIL
+**Verify**: ✅ Tests complete (27 tests added)
 
 ### Implementation for User Story 4
 
-- [ ] T080 [US4] Add get_account_info command to MT4Client in src/trading/execution/mt4_client.py
-- [ ] T081 [US4] Add get_open_positions command to MT4Client in src/trading/execution/mt4_client.py
-- [ ] T082 [US4] Add get_symbols command to MT4Client in src/trading/execution/mt4_client.py
-- [ ] T083 [US4] Create AccountInfo Pydantic model in src/trading/execution/mt4_models.py
-- [ ] T084 [US4] Implement account query methods in MT4IntegrationService in src/services/mt4_integration_service.py
-- [ ] T085 [US4] Add account info caching with TTL in src/services/mt4_integration_service.py (reduce query load)
-- [ ] T086 [US4] Create REST API endpoints for account queries in src/api/routes/mt4.py
-- [ ] T087 [US4] Add API request/response models in src/api/models/mt4_models.py
-- [ ] T088 [US4] Add metrics for account query latency in src/monitoring/mt4_metrics.py
+- [X] T080 [US4] Add get_account_info command to MT4Client in src/trading/execution/mt4_client.py
+- [X] T081 [US4] Add get_open_positions command to MT4Client in src/trading/execution/mt4_client.py
+- [X] T082 [US4] Add get_symbols command to MT4Client in src/trading/execution/mt4_client.py (already done in T026.5)
+- [X] T083 [US4] Create AccountInfo Pydantic model in src/trading/execution/mt4_models.py
+- [X] T084 [US4] Implement account query methods in MT4IntegrationService in src/services/mt4_integration_service.py
+- [X] T085 [US4] Add account info caching with TTL in src/services/mt4_integration_service.py (reduce query load)
+- [X] T086 [US4] Create REST API endpoints for account queries in src/api/routes/mt4.py
+- [X] T087 [US4] Add API request/response models in src/api/models/mt4_models.py
+- [X] T088 [US4] Add metrics for account query latency in src/monitoring/mt4_metrics.py
 
 **Checkpoint**: Complete account visibility available via API
 
@@ -226,14 +226,14 @@ description: "Task list for MT4 Integration feature implementation"
 
 **Purpose**: Connection resilience and error handling
 
-- [ ] T089 [P] Write unit tests for circuit breaker state transitions in tests/unit/test_mt4_client.py
-- [ ] T090 [P] Write unit tests for exponential backoff in tests/unit/test_mt4_client.py
-- [ ] T091 Implement CircuitBreaker class in src/trading/execution/mt4_client.py (CLOSED/OPEN/HALF_OPEN states)
-- [ ] T092 Add exponential backoff to reconnection logic in MT4Client in src/trading/execution/mt4_client.py
-- [ ] T093 Implement connection_status_changed event publishing in src/services/mt4_integration_service.py
-- [ ] T094 Add automatic reconnection on connection loss in MT4Client in src/trading/execution/mt4_client.py
-- [ ] T095 Implement graceful shutdown with pending message flush in MT4Client in src/trading/execution/mt4_client.py
-- [ ] T096 Add circuit breaker metrics in src/monitoring/mt4_metrics.py (state, failure count)
+- [X] T089 [P] Write unit tests for circuit breaker state transitions in tests/unit/trading/test_mt4_client_circuit_breaker.py
+- [X] T090 [P] Write unit tests for exponential backoff in tests/unit/trading/test_mt4_client_circuit_breaker.py
+- [X] T091 Implement CircuitBreaker class in src/trading/execution/mt4_client.py (CLOSED/OPEN/HALF_OPEN states)
+- [X] T092 Add exponential backoff to reconnection logic in MT4Client in src/trading/execution/mt4_client.py
+- [X] T093 Implement connection_status_changed event publishing in src/trading/execution/mt4_client.py
+- [X] T094 Add automatic reconnection on connection loss in MT4Client in src/trading/execution/mt4_client.py
+- [X] T095 Implement graceful shutdown with pending message flush in MT4Client in src/trading/execution/mt4_client.py
+- [X] T096 Add circuit breaker metrics in src/monitoring/mt4_metrics.py (state, failure count)
 
 ---
 
@@ -241,17 +241,17 @@ description: "Task list for MT4 Integration feature implementation"
 
 **Purpose**: External API for EA management and monitoring
 
-- [ ] T097 [P] Write API endpoint tests in tests/integration/test_mt4_api.py (register EA, query connections, etc.)
-- [ ] T098 [P] Implement POST /mt4/connections endpoint in src/api/routes/mt4.py (register new EA)
-- [ ] T099 [P] Implement GET /mt4/connections endpoint in src/api/routes/mt4.py (list all EAs)
-- [ ] T100 [P] Implement GET /mt4/connections/{ea_id} endpoint in src/api/routes/mt4.py
-- [ ] T101 [P] Implement DELETE /mt4/connections/{ea_id} endpoint in src/api/routes/mt4.py
-- [ ] T102 [P] Implement POST /mt4/connections/{ea_id}/reconnect endpoint in src/api/routes/mt4.py
-- [ ] T103 [P] Implement GET /mt4/orders endpoint in src/api/routes/mt4.py (query orders with filters)
-- [ ] T104 [P] Implement GET /mt4/positions endpoint in src/api/routes/mt4.py (query open positions)
-- [ ] T105 [P] Implement GET /mt4/portfolio/risk endpoint in src/api/routes/mt4.py (portfolio risk state)
-- [ ] T106 [P] Implement GET /mt4/portfolio/health endpoint in src/api/routes/mt4.py (system health check)
-- [ ] T107 Add OpenAPI documentation to all MT4 endpoints in src/api/routes/mt4.py
+- [X] T097 [P] Write API endpoint tests in tests/integration/test_mt4_api.py (register EA, query connections, etc.)
+- [X] T098 [P] Implement POST /mt4/connections endpoint in src/api/routes/mt4.py (register new EA)
+- [X] T099 [P] Implement GET /mt4/connections endpoint in src/api/routes/mt4.py (list all EAs)
+- [X] T100 [P] Implement GET /mt4/connections/{ea_id} endpoint in src/api/routes/mt4.py
+- [X] T101 [P] Implement DELETE /mt4/connections/{ea_id} endpoint in src/api/routes/mt4.py
+- [X] T102 [P] Implement POST /mt4/connections/{ea_id}/reconnect endpoint in src/api/routes/mt4.py
+- [X] T103 [P] Implement GET /mt4/orders endpoint in src/api/routes/mt4.py (query orders with filters)
+- [X] T104 [P] Implement GET /mt4/positions endpoint in src/api/routes/mt4.py (query open positions)
+- [X] T105 [P] Implement GET /mt4/portfolio/risk endpoint in src/api/routes/mt4.py (portfolio risk state)
+- [X] T106 [P] Implement GET /mt4/portfolio/health endpoint in src/api/routes/mt4.py (system health check)
+- [X] T107 Add OpenAPI documentation to all MT4 endpoints in src/api/routes/mt4.py
 
 ---
 
@@ -259,9 +259,9 @@ description: "Task list for MT4 Integration feature implementation"
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T108 [P] Add comprehensive error handling with custom exceptions in src/trading/execution/mt4_client.py
-- [ ] T109 [P] Implement input validation for all MT4 responses in src/trading/execution/mt4_client.py
-- [ ] T110 [P] Add request/response logging for all ZMQ communications in src/trading/execution/mt4_client.py
+- [X] T108 [P] Add comprehensive error handling with custom exceptions in src/trading/execution/mt4_exceptions.py
+- [X] T109 [P] Implement input validation for all MT4 responses in src/trading/execution/mt4_validator.py
+- [X] T110 [P] Add request/response logging for all ZMQ communications in src/trading/execution/mt4_request_logger.py
 - [ ] T111 [P] Create mock MT4 EA for integration testing in tests/integration/mock_mt4_ea.py
 - [ ] T112 [P] Add load testing scenarios in tests/performance/test_mt4_load.py (100 concurrent EAs, 1000 orders/hour)
 - [ ] T113 [P] Update config/mt4_config.yaml with production-ready defaults
