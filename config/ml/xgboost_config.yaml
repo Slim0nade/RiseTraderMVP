@@ -1,0 +1,40 @@
+# XGBoost Model Configuration
+# Based on research.md TD-002: Feature engineering with lag, rolling, indicators
+
+model:
+  type: "xgboost"
+  max_depth: 6
+  learning_rate: 0.1
+  n_estimators: 100
+  objective: "reg:squarederror"
+  booster: "gbtree"
+  gamma: 0
+  min_child_weight: 1
+  subsample: 0.8
+  colsample_bytree: 0.8
+  reg_alpha: 0
+  reg_lambda: 1
+
+training:
+  early_stopping_rounds: 10
+  eval_metric: "rmse"
+  verbose: true
+
+features:
+  lookback_window: 60
+  forecast_horizons: ["1h", "4h", "24h"]
+  include_exogenous: true
+  exogenous_variables: ["DXY", "VIX", "NEWS_EVENT"]
+
+  # Feature engineering (XGBoost-specific)
+  lag_periods: [1, 2, 3, 5, 10, 20, 60]
+  rolling_windows: [5, 10, 20]
+  use_technical_indicators: true
+  indicators: ["rsi_14", "macd", "bb_upper", "bb_lower", "atr"]
+
+data:
+  train_window_days: 30
+  val_window_days: 5
+  test_window_days: 5
+  slide_days: 5
+  min_data_points: 1000

@@ -1,0 +1,37 @@
+# LSTM Model Configuration
+# Based on research.md TD-001: Bidirectional LSTM with attention mechanism
+
+model:
+  type: "lstm"
+  num_layers: 2
+  hidden_size: 128
+  dropout: 0.2
+  bidirectional: true
+  attention: true
+  output_size: 1  # Single value prediction
+
+training:
+  learning_rate: 0.001
+  batch_size: 64
+  max_epochs: 100
+  early_stopping_patience: 10
+  optimizer: "adam"
+  loss_function: "mse"
+  gradient_clip: 1.0
+
+features:
+  lookback_window: 60  # 60 minutes for 1-hour forecast
+  forecast_horizons: ["1h", "4h", "24h"]
+  include_exogenous: true
+  exogenous_variables: ["DXY", "VIX", "NEWS_EVENT"]
+
+  # Feature engineering
+  use_technical_indicators: true
+  indicators: ["rsi_14", "macd", "bb_upper", "bb_lower", "atr"]
+
+data:
+  train_window_days: 30
+  val_window_days: 5
+  test_window_days: 5
+  slide_days: 5
+  min_data_points: 1000

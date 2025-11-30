@@ -392,6 +392,8 @@ This autonomous flow requires careful testing and monitoring at each stage.
 
 ## Active Technologies
 - PostgreSQL 15+ with async operations (positions, orders, account state, EA registry) (001-mt4-integration)
+- Python 3.11+ + FastAPI 0.104.1, SQLAlchemy 2.0.23 (async), Pydantic 2.5.2, asyncpg 0.29.0, Redis 5.0.1, PyZMQ 25.1.2, Structlog 23.2.0, Prometheus-client 0.19.0 (002-fastapi-dashboard-api)
+- PostgreSQL 15+ (async with asyncpg driver), Redis 7+ (pub/sub for real-time updates) (002-fastapi-dashboard-api)
 
 ## Recent Changes
 - 001-mt4-integration: Added Python 3.11+

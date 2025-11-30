@@ -30,7 +30,7 @@ numpy==1.26.2
 optuna==3.4.0
 
 # MLflow & Experiment Tracking
-mlflow==2.9.1
+mlflow==2.9.2
 
 # Technical Analysis
 # Note: TA-Lib requires system installation first
@@ -39,6 +39,11 @@ mlflow==2.9.1
 # Then: pip install TA-Lib
 TA-Lib==0.4.28
 pandas-ta==0.3.14b0
+
+# Market Data & Visualization (ML Forecasting Pipeline)
+yfinance==0.2.32  # For DXY, VIX exogenous variable fetching
+matplotlib==3.8.2  # For forecast vs actual visualization
+seaborn==0.13.0  # Enhanced statistical visualizations
 
 # API & Validation
 pydantic==2.5.2

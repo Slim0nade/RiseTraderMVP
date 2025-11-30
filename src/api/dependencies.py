@@ -13,8 +13,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+from redis.asyncio import Redis
 
 from src.agents.agent_coordinator import AgentCoordinator
+from src.utils.redis_client import MT4RedisClient
 from .config import settings
 
 # Database engine
@@ -38,6 +40,12 @@ AsyncSessionLocal = sessionmaker(
 
 # Global agent coordinator instance
 _agent_coordinator: Optional[AgentCoordinator] = None
+
+# Global Redis client
+_redis_client: Optional[Redis] = None
+
+# Global MT4 Redis client
+_mt4_redis_client: Optional[MT4RedisClient] = None
 
 # Rate limiter
 limiter = Limiter(key_func=get_remote_address)
@@ -63,6 +71,59 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             yield session
         finally:
             await session.close()
+
+
+async def get_redis() -> Optional[Redis]:
+    """
+    Redis client dependency.
+
+    Returns:
+        Redis client instance or None if Redis is not configured
+
+    Example:
+        @app.get("/items")
+        async def get_items(redis: Optional[Redis] = Depends(get_redis)):
+            ...
+    """
+    global _redis_client
+
+    if _redis_client is None and settings.redis_url:
+        try:
+            _redis_client = Redis.from_url(
+                settings.redis_url,
+                encoding="utf-8",
+                decode_responses=True
+            )
+            # Test connection
+            await _redis_client.ping()
+        except Exception:
+            _redis_client = None
+
+    return _redis_client
+
+
+async def get_redis_client() -> Optional[MT4RedisClient]:
+    """
+    MT4 Redis client dependency.
+
+    Returns:
+        MT4RedisClient instance or None if Redis is not configured
+
+    Example:
+        @app.get("/items")
+        async def get_items(redis: Optional[MT4RedisClient] = Depends(get_redis_client)):
+            ...
+    """
+    global _mt4_redis_client
+
+    if _mt4_redis_client is None and settings.redis_url:
+        try:
+            _mt4_redis_client = MT4RedisClient(redis_url=settings.redis_url)
+            await _mt4_redis_client.connect()
+        except Exception:
+            _mt4_redis_client = None
+
+    return _mt4_redis_client
 
 
 async def init_agent_coordinator() -> None:

@@ -13,9 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.database.repositories.market_data_repository import MarketDataRepository
 from src.services.market_data_service import MarketDataService
 from src.services.redis_subscriber_service import RedisSubscriberService
-from src.trading.execution.mt4_client import MT4RedisClient, get_redis_client
+from src.utils.redis_client import MT4RedisClient
 from fastapi.responses import StreamingResponse
-from ..dependencies import get_db
+from ..dependencies import get_db, get_redis_client
 from ..models import (
     MarketDataListResponse,
     MarketDataResponse,

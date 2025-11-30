@@ -26,7 +26,7 @@ from .middleware import (
     register_exception_handlers,
     setup_logging,
 )
-from .routes import agents, trading, market_data, forecasts, performance, strategies, system
+from .routes import agents, trading, market_data, forecasts, performance, strategies, system, ml_forecasting
 
 # Configure structured logging
 setup_logging()
@@ -114,6 +114,7 @@ app.include_router(forecasts.router, prefix="/api")
 app.include_router(performance.router, prefix="/api")
 app.include_router(strategies.router, prefix="/api")
 app.include_router(system.router, prefix="/api")
+app.include_router(ml_forecasting.router)  # ML forecasting endpoints
 
 # Mount Prometheus metrics endpoint
 if settings.prometheus_enabled:

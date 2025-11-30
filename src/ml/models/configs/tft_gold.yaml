@@ -1,0 +1,68 @@
+# Temporal Fusion Transformer for Gold Multi-Horizon Forecasting
+# Based on research: R² of 0.94, excellent tail risk estimation
+
+model:
+  name: "tft_gold_multihorizon"
+  type: "tft"
+  
+  # Architecture
+  d_model: 160
+  n_heads: 4
+  dropout: 0.1
+  
+  # Quantile outputs for probabilistic forecasting
+  quantiles: [0.1, 0.25, 0.5, 0.75, 0.9]
+
+features:
+  lookback_window: 60
+  prediction_length: 14
+  
+  # TFT-specific feature categorization
+  static_vars: []  # Could add: market_regime, asset_class
+  
+  time_varying_known:
+    - day_of_week
+    - month
+    - is_month_end
+    - is_quarter_end
+    
+  time_varying_unknown:
+    - open
+    - high
+    - low
+    - close
+    - volume
+    - rsi_14
+    - macd
+    - atr
+    - dxy
+    - vix
+    - real_yield  # Real interest rates impact gold
+
+training:
+  learning_rate: 0.001
+  batch_size: 32
+  max_epochs: 100
+  early_stopping_patience: 15
+  optimizer: "adam"
+  loss_function: "quantile"  # Pinball loss
+  gradient_clip: 1.0
+  
+  scheduler:
+    type: "reduce_on_plateau"
+    factor: 0.5
+    patience: 5
+
+data:
+  start_date: "2015-01-01"
+  end_date: "2024-12-31"
+  train_ratio: 0.7
+  val_ratio: 0.15
+  test_ratio: 0.15
+  normalization: "z-score"
+  
+  walk_forward:
+    enabled: true
+    train_window: 504
+    test_window: 63
+    step_size: 63

@@ -27,7 +27,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import JSONB
 
-from src.database.config import Base
+from .base import Base, TimestampMixin
 
 
 class StrategyStatus(str, enum.Enum):

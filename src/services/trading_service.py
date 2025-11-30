@@ -15,8 +15,9 @@ from typing import List, Optional, Tuple, Dict, Any
 from decimal import Decimal
 
 from src.database.repositories.trading_repository import TradingRepository
-from src.database.models.trading import OpenPosition, TradingHistory
-from src.trading.execution.mt4_client import MT4RedisClient
+from src.database.models.positions import OpenPosition
+from src.database.models.trading_history import TradingHistory
+from src.utils.redis_client import MT4RedisClient
 from src.utils.cache import (
     cached_fetch,
     get_cached,

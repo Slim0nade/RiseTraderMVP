@@ -13,8 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.repositories.trading_repository import TradingRepository
 from src.services.trading_service import TradingService
-from src.trading.execution.mt4_client import MT4RedisClient, get_redis_client
-from ..dependencies import get_db
+from src.utils.redis_client import MT4RedisClient
+from ..dependencies import get_db, get_redis_client
 from ..models import (
     AccountResponse,
     ClosePositionRequest,

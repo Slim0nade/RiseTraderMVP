@@ -1,0 +1,586 @@
+openapi: 3.0.3
+info:
+  title: RiseTrader ML Forecasting API
+  description: |
+    API for training, deploying, and serving ML-powered price forecasts for financial instruments.
+    Supports LSTM and XGBoost models with exogenous variables (DXY, VIX, news events).
+  version: 1.0.0
+  contact:
+    name: RiseTrader Development Team
+
+servers:
+  - url: http://localhost:8003/api/v1
+    description: Local development server
+  - url: https://api.risetrader.com/api/v1
+    description: Production server
+
+tags:
+  - name: Inference
+    description: Real-time ML forecast generation
+  - name: Training
+    description: Model training and management
+  - name: Metrics
+    description: Model performance metrics and evaluation
+
+paths:
+  /ml/predict:
+    post:
+      tags:
+        - Inference
+      summary: Generate price forecasts
+      description: |
+        Generate ML-powered price forecasts for a given symbol and forecast horizons.
+        Supports LSTM, XGBoost, or ensemble predictions with confidence intervals.
+        Results are cached in Redis for 5 minutes to optimize performance.
+      operationId: predict_forecast
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InferenceRequest'
+            examples:
+              ensemble_forecast:
+                summary: Ensemble forecast with all horizons
+                value:
+                  symbol: "CrudeOIL"
+                  forecast_horizons: ["1h", "4h", "24h"]
+                  model_type: "ensemble"
+                  include_confidence_intervals: true
+              lstm_only:
+                summary: LSTM forecast for 1-hour horizon
+                value:
+                  symbol: "CrudeOIL"
+                  forecast_horizons: ["1h"]
+                  model_type: "lstm"
+                  include_confidence_intervals: false
+      responses:
+        '200':
+          description: Forecast generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InferenceResponse'
+              examples:
+                successful_forecast:
+                  summary: Successful forecast with all horizons
+                  value:
+                    symbol: "CrudeOIL"
+                    timestamp: "2025-11-29T14:00:00Z"
+                    forecasts:
+                      - id: 12345
+                        symbol: "CrudeOIL"
+                        timestamp: "2025-11-29T14:00:00Z"
+                        forecast_horizon: "1h"
+                        model_type: "ensemble"
+                        model_version: "v1.3.0"
+                        predicted_value: 78.45
+                        lower_bound: 77.80
+                        upper_bound: 79.10
+                        confidence_score: 0.87
+                        created_at: "2025-11-29T13:59:55Z"
+                        inference_time_ms: 42.5
+                      - id: 12346
+                        symbol: "CrudeOIL"
+                        timestamp: "2025-11-29T14:00:00Z"
+                        forecast_horizon: "4h"
+                        model_type: "ensemble"
+                        model_version: "v1.3.0"
+                        predicted_value: 78.90
+                        lower_bound: 77.95
+                        upper_bound: 79.85
+                        confidence_score: 0.79
+                        created_at: "2025-11-29T13:59:55Z"
+                        inference_time_ms: 45.2
+                    inference_time_ms: 48.2
+                    cache_hit: false
+        '400':
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalid_symbol:
+                  value:
+                    error: "Validation Error"
+                    message: "Symbol must be between 1 and 20 characters"
+                    details:
+                      field: "symbol"
+                      constraint: "min_length"
+        '404':
+          description: No model available for requested symbol/horizon
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /ml/train:
+    post:
+      tags:
+        - Training
+      summary: Start model training
+      description: |
+        Initiate training of an LSTM or XGBoost model on historical data.
+        Training runs asynchronously by default and logs to MLflow for experiment tracking.
+        Progress can be monitored via the MLflow UI or by polling the training run status.
+      operationId: start_training
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrainingRequest'
+            examples:
+              lstm_training:
+                summary: Train LSTM model with custom config
+                value:
+                  run_name: "lstm_crudeOIL_1h_experiment_v6"
+                  symbol: "CrudeOIL"
+                  model_type: "lstm"
+                  config_override:
+                    training:
+                      learning_rate: 0.0005
+                      max_epochs: 150
+                  async_training: true
+              xgboost_training:
+                summary: Train XGBoost model with default config
+                value:
+                  run_name: "xgboost_crudeOIL_4h_baseline"
+                  symbol: "CrudeOIL"
+                  model_type: "xgboost"
+                  async_training: true
+      responses:
+        '202':
+          description: Training started successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingResponse'
+              examples:
+                training_started:
+                  value:
+                    training_run_id: 43
+                    run_name: "lstm_crudeOIL_1h_experiment_v6"
+                    status: "running"
+                    mlflow_run_id: "b4g9d0e3f2c5b6d7e8f9a0b1c2d3e4f5"
+                    estimated_duration_minutes: 28
+                    message: "Training started successfully. Monitor progress at MLflow UI."
+        '400':
+          description: Invalid training configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Training initialization failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /ml/training-runs/{run_id}:
+    get:
+      tags:
+        - Training
+      summary: Get training run status
+      description: Retrieve the current status and details of a training run
+      operationId: get_training_run
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Training run ID
+      responses:
+        '200':
+          description: Training run details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingRunResponse'
+        '404':
+          description: Training run not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /ml/models/{model_version}/metrics:
+    get:
+      tags:
+        - Metrics
+      summary: Get model performance metrics
+      description: Retrieve evaluation metrics for a specific model version
+      operationId: get_model_metrics
+      parameters:
+        - name: model_version
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Model version (e.g., v1.3.0)
+        - name: forecast_horizon
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [1h, 4h, 24h]
+          description: Filter metrics by forecast horizon
+      responses:
+        '200':
+          description: Model metrics retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ModelMetricsResponse'
+        '404':
+          description: Model version not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    InferenceRequest:
+      type: object
+      required:
+        - symbol
+        - forecast_horizons
+      properties:
+        symbol:
+          type: string
+          minLength: 1
+          maxLength: 20
+          example: "CrudeOIL"
+          description: Trading symbol
+        timestamp:
+          type: string
+          format: date-time
+          nullable: true
+          description: Forecast timestamp (defaults to current time if not provided)
+        forecast_horizons:
+          type: array
+          items:
+            type: string
+            enum: [1h, 4h, 24h]
+          minItems: 1
+          example: ["1h", "4h", "24h"]
+          description: List of forecast horizons to generate
+        model_type:
+          type: string
+          enum: [lstm, xgboost, ensemble]
+          default: ensemble
+          description: Model type to use for prediction
+        include_confidence_intervals:
+          type: boolean
+          default: true
+          description: Whether to include confidence intervals in response
+
+    InferenceResponse:
+      type: object
+      required:
+        - symbol
+        - timestamp
+        - forecasts
+        - inference_time_ms
+        - cache_hit
+      properties:
+        symbol:
+          type: string
+          example: "CrudeOIL"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2025-11-29T14:00:00Z"
+        forecasts:
+          type: array
+          items:
+            $ref: '#/components/schemas/ForecastResponse'
+        inference_time_ms:
+          type: number
+          format: float
+          example: 48.2
+          description: Total inference time in milliseconds
+        cache_hit:
+          type: boolean
+          example: false
+          description: Whether forecast was served from cache
+
+    ForecastResponse:
+      type: object
+      required:
+        - id
+        - symbol
+        - timestamp
+        - forecast_horizon
+        - model_type
+        - model_version
+        - predicted_value
+        - created_at
+      properties:
+        id:
+          type: integer
+          example: 12345
+        symbol:
+          type: string
+          example: "CrudeOIL"
+        timestamp:
+          type: string
+          format: date-time
+        forecast_horizon:
+          type: string
+          enum: [1h, 4h, 24h]
+        model_type:
+          type: string
+          enum: [lstm, xgboost, ensemble]
+        model_version:
+          type: string
+          example: "v1.3.0"
+        predicted_value:
+          type: number
+          format: float
+          example: 78.45
+          description: Predicted price value
+        lower_bound:
+          type: number
+          format: float
+          nullable: true
+          example: 77.80
+          description: 95% confidence interval lower bound
+        upper_bound:
+          type: number
+          format: float
+          nullable: true
+          example: 79.10
+          description: 95% confidence interval upper bound
+        confidence_score:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+          nullable: true
+          example: 0.87
+          description: Model confidence score (0-1)
+        created_at:
+          type: string
+          format: date-time
+        inference_time_ms:
+          type: number
+          format: float
+          nullable: true
+          example: 42.5
+
+    TrainingRequest:
+      type: object
+      required:
+        - run_name
+        - symbol
+        - model_type
+      properties:
+        run_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: "lstm_crudeOIL_1h_experiment_v6"
+        symbol:
+          type: string
+          minLength: 1
+          maxLength: 20
+          example: "CrudeOIL"
+        model_type:
+          type: string
+          enum: [lstm, xgboost]
+        config_override:
+          type: object
+          nullable: true
+          description: Override default training configuration
+          additionalProperties: true
+        async_training:
+          type: boolean
+          default: true
+          description: Run training in background
+
+    TrainingResponse:
+      type: object
+      required:
+        - training_run_id
+        - run_name
+        - status
+        - message
+      properties:
+        training_run_id:
+          type: integer
+          example: 43
+        run_name:
+          type: string
+          example: "lstm_crudeOIL_1h_experiment_v6"
+        status:
+          type: string
+          enum: [pending, running, completed, failed, cancelled]
+        mlflow_run_id:
+          type: string
+          nullable: true
+          example: "b4g9d0e3f2c5b6d7e8f9a0b1c2d3e4f5"
+        estimated_duration_minutes:
+          type: integer
+          nullable: true
+          example: 28
+        message:
+          type: string
+          example: "Training started successfully. Monitor progress at MLflow UI."
+
+    TrainingRunResponse:
+      type: object
+      required:
+        - id
+        - run_name
+        - symbol
+        - model_type
+        - status
+        - created_at
+      properties:
+        id:
+          type: integer
+        run_name:
+          type: string
+        symbol:
+          type: string
+        model_type:
+          type: string
+        mlflow_run_id:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [pending, running, completed, failed, cancelled]
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        duration_seconds:
+          type: integer
+          nullable: true
+        final_metrics:
+          type: object
+          nullable: true
+          properties:
+            mpe:
+              type: number
+              format: float
+            rmse:
+              type: number
+              format: float
+            mae:
+              type: number
+              format: float
+            mape:
+              type: number
+              format: float
+            directional_accuracy:
+              type: number
+              format: float
+        model_version:
+          type: string
+          nullable: true
+        error_message:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    ModelMetricsResponse:
+      type: object
+      required:
+        - id
+        - model_type
+        - model_version
+        - symbol
+        - forecast_horizon
+        - mpe
+        - rmse
+        - mae
+        - mape
+        - evaluation_date
+      properties:
+        id:
+          type: integer
+        model_type:
+          type: string
+        model_version:
+          type: string
+        symbol:
+          type: string
+        forecast_horizon:
+          type: string
+          enum: [1h, 4h, 24h]
+        mpe:
+          type: number
+          format: float
+          description: Mean Percentage Error
+        rmse:
+          type: number
+          format: float
+          description: Root Mean Squared Error
+        mae:
+          type: number
+          format: float
+          description: Mean Absolute Error
+        mape:
+          type: number
+          format: float
+          description: Mean Absolute Percentage Error
+        directional_accuracy:
+          type: number
+          format: float
+          nullable: true
+          description: Percentage of correct direction predictions
+        evaluation_date:
+          type: string
+          format: date-time
+        sample_size:
+          type: integer
+          nullable: true
+          description: Number of predictions evaluated
+
+    Error:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          example: "Validation Error"
+        message:
+          type: string
+          example: "Invalid request parameters"
+        details:
+          type: object
+          nullable: true
+          additionalProperties: true
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token for API authentication
+
+security:
+  - BearerAuth: []

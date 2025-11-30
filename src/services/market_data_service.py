@@ -15,7 +15,7 @@ from decimal import Decimal
 
 from src.database.repositories.market_data_repository import MarketDataRepository
 from src.database.models.market_data import MarketData
-from src.trading.execution.mt4_client import MT4RedisClient
+from src.trading.execution.mt4_client import MT4Client
 from src.utils.cache import (
     cached_fetch,
     get_cached,
@@ -34,7 +34,7 @@ class MarketDataService:
     def __init__(
         self,
         repository: MarketDataRepository,
-        redis_client: Optional[MT4RedisClient] = None,
+        redis_client: Optional[MT4Client] = None,
     ):
         """
         Initialize MarketDataService.

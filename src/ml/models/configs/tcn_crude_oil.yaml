@@ -1,0 +1,62 @@
+# TCN Configuration for Crude Oil Daily Forecasting
+# Based on research: MAE 1.444 (WTI), 1.295 (Brent) - best for daily
+
+model:
+  name: "tcn_crude_oil_daily"
+  type: "tcn"
+  
+  # Architecture
+  num_channels: [64, 128, 256, 128]  # 4 layers
+  kernel_size: 3
+  dropout: 0.2
+  use_skip_connections: true
+  use_weight_norm: true
+
+features:
+  lookback_window: 30  # 30 days (research optimal)
+  prediction_length: 5  # 5-day forecast
+  
+  # Input features (15 total)
+  price_features: ["open", "high", "low", "close", "volume"]
+  technical_indicators:
+    - rsi_14
+    - macd
+    - macd_signal
+    - bb_upper
+    - bb_lower
+    - bb_width
+    - atr
+  exogenous_variables:
+    - dxy       # Dollar Index (highest impact)
+    - vix       # Volatility Index
+    - ovx       # Oil Volatility Index
+
+training:
+  learning_rate: 0.001
+  batch_size: 64
+  max_epochs: 100
+  early_stopping_patience: 15
+  optimizer: "adam"
+  loss_function: "mse"  # or "gaussian_nll" for uncertainty
+  gradient_clip: 1.0
+  
+  # Learning rate schedule
+  scheduler:
+    type: "reduce_on_plateau"
+    factor: 0.5
+    patience: 5
+
+data:
+  start_date: "2015-01-01"
+  end_date: "2024-12-31"
+  train_ratio: 0.7
+  val_ratio: 0.15
+  test_ratio: 0.15
+  normalization: "z-score"
+  
+  # Walk-forward validation
+  walk_forward:
+    enabled: true
+    train_window: 252  # 1 year
+    test_window: 21    # 1 month
+    step_size: 21      # Monthly retraining

@@ -1,0 +1,64 @@
+# PPO Reinforcement Learning Trader for Crude Oil
+# Based on research: CLSTM-PPO shows 5-52% return improvement, Sharpe 2.72
+
+model:
+  name: "ppo_crude_oil_trader"
+  type: "ppo"
+  
+  # Network architecture
+  hidden_size: 256
+  num_lstm_layers: 2
+  
+  # PPO hyperparameters
+  clip_epsilon: 0.2
+  value_loss_coef: 0.5
+  entropy_coef: 0.01
+  gamma: 0.99           # Discount factor
+  gae_lambda: 0.95      # GAE parameter
+  
+  # Training schedule
+  ppo_epochs: 10        # Updates per rollout
+  rollout_length: 256   # Steps before update
+  num_envs: 8           # Parallel environments (optional)
+
+trading:
+  action_type: "discrete"  # "discrete" (BUY/HOLD/SELL) or "continuous"
+  max_position: 1.0        # Maximum position size
+  transaction_cost: 0.001  # 0.1% per trade
+  use_sharpe_reward: true  # Sharpe-based reward shaping
+  
+  # Risk management
+  max_drawdown_limit: 0.1  # Stop if drawdown > 10%
+  position_sizing: "fixed"  # "fixed", "kelly", "volatility_scaled"
+
+features:
+  lookback_window: 30
+  prediction_length: 1  # Single-step action
+  
+  price_features: ["open", "high", "low", "close", "volume"]
+  technical_indicators:
+    - rsi_14
+    - macd
+    - atr
+    - bb_width
+    - volatility_20
+  exogenous_variables:
+    - dxy
+    - vix
+
+training:
+  learning_rate: 0.0003  # Lower for RL stability
+  batch_size: 64
+  max_epochs: 100  # Episodes
+  
+  # RL-specific
+  warmup_steps: 1000     # Random actions before learning
+  eval_frequency: 10     # Evaluate every N episodes
+
+data:
+  start_date: "2015-01-01"
+  end_date: "2024-12-31"
+  train_ratio: 0.7
+  val_ratio: 0.15
+  test_ratio: 0.15
+  normalization: "z-score"

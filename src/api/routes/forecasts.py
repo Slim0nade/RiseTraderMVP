@@ -15,7 +15,7 @@ from src.api.dependencies import get_db, get_redis
 from src.services.forecast_service import ForecastService
 
 logger = structlog.get_logger(__name__)
-router = APIRouter(prefix="/api/forecasts", tags=["forecasts"])
+router = APIRouter(prefix="/forecasts", tags=["forecasts"])
 
 
 @router.get(
@@ -61,7 +61,7 @@ async def get_latest_forecasts(
             data=[ForecastResponse.model_validate(f) for f in forecasts],
             total=len(forecasts),
             page=1,
-            page_size=len(forecasts),
+            page_size=max(len(forecasts), 1),  # Ensure page_size is at least 1
             next_cursor=None
         )
 

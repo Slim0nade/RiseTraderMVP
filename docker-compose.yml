@@ -59,23 +59,33 @@ services:
       - MT4_REP_PORT=5555
       - MT4_PUB_PORT=5556
 
-  # Placeholder for FastAPI service (to be implemented)
-  # api:
-  #   build:
-  #     context: .
-  #     dockerfile: docker/api/Dockerfile
-  #   container_name: risetrader-api
-  #   restart: unless-stopped
-  #   ports:
-  #     - "${API_PORT:-8003}:8000"
-  #   depends_on:
-  #     - postgres
-  #     - redis
-  #   environment:
-  #     DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-risetrader2024}@postgres:5432/${POSTGRES_DB:-risetrader}
-  #     REDIS_URL: redis://redis:6379
-  #   networks:
-  #     - risetrader
+  # FastAPI service
+  api:
+    build:
+      context: .
+      dockerfile: docker/api/Dockerfile.simple
+    container_name: risetrader-api
+    restart: unless-stopped
+    ports:
+      - "${API_PORT:-8003}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-risetrader2024}@postgres:5432/${POSTGRES_DB:-risetrader}
+      REDIS_URL: redis://redis:6379
+      MT4_HOST: ${MT4_HOST:-75.154.254.186}
+      MT4_REP_PORT: ${MT4_REP_PORT:-5555}
+      MT4_PUB_PORT: ${MT4_PUB_PORT:-5556}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      CORS_ENABLED: "true"
+      CORS_ORIGINS: "http://localhost:3000,http://localhost:5173"
+    networks:
+      - risetrader
+    volumes:
+      - ./logs:/app/logs
 
 volumes:
   postgres_data:

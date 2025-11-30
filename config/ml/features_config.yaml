@@ -1,0 +1,71 @@
+# Feature Configuration for ML Models
+# Shared feature definitions for LSTM and XGBoost
+
+exogenous_variables:
+  DXY:
+    name: "Dollar Index"
+    type: "continuous"
+    normalization: "z-score"
+    source: "yahoo_finance"
+    ticker: "DX-Y.NYB"
+    required: false
+
+  VIX:
+    name: "Volatility Index"
+    type: "continuous"
+    normalization: "z-score"
+    source: "yahoo_finance"
+    ticker: "^VIX"
+    required: false
+
+  NEWS_EVENT:
+    name: "Economic News Event"
+    type: "binary"
+    normalization: null
+    source: "economic_calendar"
+    required: false
+
+technical_indicators:
+  rsi_14:
+    name: "Relative Strength Index"
+    period: 14
+
+  macd:
+    name: "Moving Average Convergence Divergence"
+    fast_period: 12
+    slow_period: 26
+    signal_period: 9
+
+  bb_upper:
+    name: "Bollinger Bands Upper"
+    period: 20
+    std_dev: 2
+
+  bb_lower:
+    name: "Bollinger Bands Lower"
+    period: 20
+    std_dev: 2
+
+  atr:
+    name: "Average True Range"
+    period: 14
+
+price_features:
+  - open
+  - high
+  - low
+  - close
+  - volume
+
+derived_features:
+  returns:
+    enabled: true
+    periods: [1, 5, 10]
+
+  log_returns:
+    enabled: true
+    periods: [1, 5, 10]
+
+  volatility:
+    enabled: true
+    window: 20

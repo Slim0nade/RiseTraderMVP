@@ -10,7 +10,7 @@ import structlog
 from typing import AsyncGenerator, List, Optional, Set
 from datetime import datetime
 
-from src.trading.execution.mt4_client import MT4RedisClient
+from src.utils.redis_client import MT4RedisClient
 
 logger = structlog.get_logger(__name__)
 
