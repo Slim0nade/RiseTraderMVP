@@ -11,6 +11,11 @@ from src.ml.training.validator import WalkForwardValidator
 from src.database.repositories.training_run_repository import TrainingRunRepository
 from src.database.repositories.model_metrics_repository import ModelMetricsRepository
 
+# Import unified model registry for MVP and SOTA models
+from src.ml.models import ModelType, create_model
+from src.ml.models.adapters import SOTAtoMVPAdapter
+from src.ml.models.base import BaseForecaster
+
 
 class MLTrainingService:
     """Service for ML model training pipeline."""
@@ -70,16 +75,20 @@ class MLTrainingService:
             splits = self.validator.split(df)
             train_df, val_df, test_df = splits[0]  # Use first split
             
-            # Create model
-            from src.ml.models.lstm_forecaster import LSTMForecaster
-            from src.ml.models.xgboost_forecaster import XGBoostForecaster
-            
-            if model_type == 'lstm':
-                model = LSTMForecaster(**config.get('model', {}))
-            elif model_type == 'xgboost':
-                model = XGBoostForecaster(**config.get('model', {}))
-            else:
-                raise ValueError(f"Unknown model type: {model_type}")
+            # Create model using unified factory (supports both MVP and SOTA models)
+            try:
+                model_enum = ModelType(model_type)
+            except ValueError:
+                raise ValueError(f"Unknown model type: {model_type}. "
+                               f"Supported types: {[t.value for t in ModelType]}")
+
+            # Create model instance
+            model = create_model(model_enum, config=config, **config.get('model', {}))
+
+            # If SOTA model (BaseForecaster), wrap with adapter for MVP compatibility
+            # This allows SOTA models to work with existing training infrastructure
+            if isinstance(model, BaseForecaster):
+                model = SOTAtoMVPAdapter(model)
             
             # Train model
             trainer = ModelTrainer(model, config)

@@ -1,0 +1,626 @@
+openapi: 3.0.3
+info:
+  title: A/B Testing API
+  description: API for configuring and managing model A/B tests
+  version: 1.0.0
+  contact:
+    name: RiseTrader ML Team
+
+servers:
+  - url: http://localhost:8003/api/v1
+    description: Development server
+  - url: https://api.risetrader.com/api/v1
+    description: Production server
+
+paths:
+  /ab-tests:
+    get:
+      summary: List all A/B tests
+      description: Returns all A/B test configurations
+      operationId: listABTests
+      tags:
+        - A/B Testing
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: ["draft", "active", "paused", "completed", "failed"]
+        - name: symbol
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Tests retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ABTestConfiguration'
+
+    post:
+      summary: Create new A/B test
+      description: Configure a new A/B test for model or feature comparison
+      operationId: createABTest
+      tags:
+        - A/B Testing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateABTestRequest'
+            examples:
+              model_test:
+                summary: Model-level A/B test
+                value:
+                  test_name: "TCN vs LSTM for CrudeOIL 1h"
+                  test_type: "model"
+                  symbol: "CrudeOIL"
+                  forecast_horizon: "1h"
+                  model_a: "lstm"
+                  model_b: "tcn"
+                  traffic_split_pct: 20
+                  success_criteria:
+                    min_sample_size: 1000
+                    min_duration_days: 7
+                    mpe_improvement_threshold: 10
+                  auto_promote_threshold: 15
+              feature_test:
+                summary: Feature-level A/B test
+                value:
+                  test_name: "Exogenous variables impact on TFT"
+                  test_type: "feature"
+                  symbol: "CrudeOIL"
+                  forecast_horizon: "24h"
+                  model_a: "tft"
+                  model_b: "tft"
+                  traffic_split_pct: 50
+                  feature_config_a:
+                    use_exogenous: false
+                  feature_config_b:
+                    use_exogenous: true
+                    exogenous_vars: ["vix", "dollar_index", "eia_inventory"]
+      responses:
+        '201':
+          description: Test created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ABTestConfiguration'
+        '400':
+          description: Invalid test configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                overlapping_test:
+                  summary: Overlapping test conflict
+                  value:
+                    error: "ConflictError"
+                    message: "Active test already exists for CrudeOIL:1h"
+                    details:
+                      existing_test_id: 42
+                      existing_test_name: "FEDformer vs MoE for CrudeOIL 1h"
+
+  /ab-tests/{test_id}:
+    get:
+      summary: Get specific A/B test
+      operationId: getABTest
+      tags:
+        - A/B Testing
+      parameters:
+        - name: test_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Test retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ABTestConfiguration'
+        '404':
+          description: Test not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      summary: Update A/B test configuration
+      operationId: updateABTest
+      tags:
+        - A/B Testing
+      parameters:
+        - name: test_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateABTestRequest'
+      responses:
+        '200':
+          description: Test updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ABTestConfiguration'
+        '400':
+          description: Invalid update data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Test not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      summary: Delete A/B test
+      description: Only draft tests can be deleted. Active tests must be paused or completed first.
+      operationId: deleteABTest
+      tags:
+        - A/B Testing
+      parameters:
+        - name: test_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Test deleted successfully
+        '400':
+          description: Cannot delete active test
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Test not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /ab-tests/{test_id}/start:
+    post:
+      summary: Start A/B test
+      description: Transition test from draft to active status
+      operationId: startABTest
+      tags:
+        - A/B Testing
+      parameters:
+        - name: test_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Test started successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ABTestConfiguration'
+        '400':
+          description: Test cannot be started (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Test not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /ab-tests/{test_id}/pause:
+    post:
+      summary: Pause A/B test
+      description: Temporarily suspend test (can be resumed)
+      operationId: pauseABTest
+      tags:
+        - A/B Testing
+      parameters:
+        - name: test_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Test paused successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ABTestConfiguration'
+        '404':
+          description: Test not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /ab-tests/{test_id}/complete:
+    post:
+      summary: Complete A/B test
+      description: Mark test as completed and finalize results
+      operationId: completeABTest
+      tags:
+        - A/B Testing
+      parameters:
+        - name: test_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Test completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ABTestConfiguration'
+        '404':
+          description: Test not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /ab-tests/{test_id}/results:
+    get:
+      summary: Get A/B test results
+      description: Returns comparative metrics and statistical significance analysis
+      operationId: getABTestResults
+      tags:
+        - A/B Testing
+      parameters:
+        - name: test_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: ["json", "summary"]
+            default: "json"
+      responses:
+        '200':
+          description: Results retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ABTestResultsResponse'
+              examples:
+                significant_improvement:
+                  summary: Significant performance improvement
+                  value:
+                    test_id: 42
+                    test_name: "TCN vs LSTM for CrudeOIL 1h"
+                    status: "completed"
+                    duration_days: 14
+                    model_a:
+                      model_type: "lstm"
+                      request_count: 8452
+                      avg_mpe: 3.42
+                      avg_rmse: 1.58
+                      avg_directional_accuracy: 64.3
+                      latency_p95_ms: 28.5
+                      error_rate: 0.12
+                    model_b:
+                      model_type: "tcn"
+                      request_count: 2113
+                      avg_mpe: 2.89
+                      avg_rmse: 1.24
+                      avg_directional_accuracy: 68.7
+                      latency_p95_ms: 32.1
+                      error_rate: 0.08
+                    comparison:
+                      mpe_improvement_pct: 15.5
+                      rmse_improvement_pct: 21.5
+                      directional_accuracy_improvement_pct: 6.8
+                      latency_degradation_pct: 12.6
+                    statistical_significance:
+                      mpe_p_value: 0.0012
+                      mpe_significant: true
+                      rmse_p_value: 0.0008
+                      rmse_significant: true
+                      test_method: "mann_whitney_u"
+                      confidence_level: 0.95
+                    recommendation: "PROMOTE"
+                    recommendation_reason: "Model B (TCN) shows statistically significant improvement in MPE (15.5%) and RMSE (21.5%) with acceptable latency tradeoff (+12.6%). Exceeds auto-promotion threshold of 15%."
+        '404':
+          description: Test not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /ab-tests/{test_id}/metrics:
+    get:
+      summary: Get real-time A/B test metrics
+      description: Returns current metrics without statistical analysis (for monitoring)
+      operationId: getABTestMetrics
+      tags:
+        - A/B Testing
+      parameters:
+        - name: test_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Metrics retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  test_id:
+                    type: integer
+                  status:
+                    type: string
+                  metrics:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ABTestMetrics'
+        '404':
+          description: Test not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    ABTestConfiguration:
+      type: object
+      properties:
+        id:
+          type: integer
+        test_name:
+          type: string
+        test_type:
+          type: string
+          enum: ["model", "feature", "horizon"]
+        symbol:
+          type: string
+        forecast_horizon:
+          type: string
+        model_a:
+          type: string
+        model_b:
+          type: string
+        traffic_split_pct:
+          type: integer
+          minimum: 0
+          maximum: 100
+        feature_config_a:
+          type: object
+          additionalProperties: true
+        feature_config_b:
+          type: object
+          additionalProperties: true
+        start_date:
+          type: string
+          format: date-time
+        end_date:
+          type: string
+          format: date-time
+        actual_end_date:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: ["draft", "active", "paused", "completed", "failed"]
+        success_criteria:
+          type: object
+          additionalProperties: true
+        auto_promote_threshold:
+          type: number
+          format: float
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    CreateABTestRequest:
+      type: object
+      required:
+        - test_name
+        - test_type
+        - symbol
+        - forecast_horizon
+        - model_a
+        - model_b
+        - traffic_split_pct
+      properties:
+        test_name:
+          type: string
+        test_type:
+          type: string
+          enum: ["model", "feature", "horizon"]
+        symbol:
+          type: string
+        forecast_horizon:
+          type: string
+        model_a:
+          type: string
+        model_b:
+          type: string
+        traffic_split_pct:
+          type: integer
+          minimum: 0
+          maximum: 100
+        feature_config_a:
+          type: object
+          additionalProperties: true
+        feature_config_b:
+          type: object
+          additionalProperties: true
+        end_date:
+          type: string
+          format: date-time
+        success_criteria:
+          type: object
+          additionalProperties: true
+        auto_promote_threshold:
+          type: number
+          format: float
+
+    UpdateABTestRequest:
+      type: object
+      properties:
+        test_name:
+          type: string
+        traffic_split_pct:
+          type: integer
+          minimum: 0
+          maximum: 100
+        end_date:
+          type: string
+          format: date-time
+        success_criteria:
+          type: object
+          additionalProperties: true
+        auto_promote_threshold:
+          type: number
+          format: float
+
+    ABTestMetrics:
+      type: object
+      properties:
+        test_id:
+          type: integer
+        model_type:
+          type: string
+        request_count:
+          type: integer
+        avg_mpe:
+          type: number
+          format: float
+        avg_rmse:
+          type: number
+          format: float
+        avg_mae:
+          type: number
+          format: float
+        avg_directional_accuracy:
+          type: number
+          format: float
+        latency_p50_ms:
+          type: number
+          format: float
+        latency_p95_ms:
+          type: number
+          format: float
+        latency_p99_ms:
+          type: number
+          format: float
+        error_count:
+          type: integer
+        error_rate:
+          type: number
+          format: float
+        last_updated:
+          type: string
+          format: date-time
+
+    ABTestResultsResponse:
+      type: object
+      properties:
+        test_id:
+          type: integer
+        test_name:
+          type: string
+        status:
+          type: string
+        duration_days:
+          type: number
+          format: float
+        model_a:
+          $ref: '#/components/schemas/ABTestMetrics'
+        model_b:
+          $ref: '#/components/schemas/ABTestMetrics'
+        comparison:
+          type: object
+          properties:
+            mpe_improvement_pct:
+              type: number
+              format: float
+            rmse_improvement_pct:
+              type: number
+              format: float
+            directional_accuracy_improvement_pct:
+              type: number
+              format: float
+            latency_degradation_pct:
+              type: number
+              format: float
+        statistical_significance:
+          type: object
+          properties:
+            mpe_p_value:
+              type: number
+              format: float
+            mpe_significant:
+              type: boolean
+            rmse_p_value:
+              type: number
+              format: float
+            rmse_significant:
+              type: boolean
+            test_method:
+              type: string
+            confidence_level:
+              type: number
+              format: float
+        recommendation:
+          type: string
+          enum: ["PROMOTE", "REJECT", "INCONCLUSIVE"]
+        recommendation_reason:
+          type: string
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+security:
+  - ApiKeyAuth: []

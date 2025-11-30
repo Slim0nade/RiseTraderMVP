@@ -1,0 +1,573 @@
+openapi: 3.0.3
+info:
+  title: Model Selection API
+  description: API for intelligent model selection based on market regime and performance metrics
+  version: 1.0.0
+  contact:
+    name: RiseTrader ML Team
+
+servers:
+  - url: http://localhost:8003/api/v1
+    description: Development server
+  - url: https://api.risetrader.com/api/v1
+    description: Production server
+
+paths:
+  /model-selection/recommend:
+    post:
+      summary: Get recommended model for forecast request
+      description: |
+        Returns the best-performing model for a given forecast request based on:
+        - Current market regime
+        - Recent model performance metrics
+        - Configured selection rules
+        - Forecast horizon and symbol
+      operationId: recommendModel
+      tags:
+        - Model Selection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelRecommendationRequest'
+            examples:
+              basic:
+                summary: Basic recommendation request
+                value:
+                  symbol: "CrudeOIL"
+                  forecast_horizon: "1h"
+              with_context:
+                summary: Request with agent context
+                value:
+                  symbol: "CrudeOIL"
+                  forecast_horizon: "4h"
+                  agent_id: "signal_generator_001"
+                  context:
+                    time_of_day: "market_open"
+                    upcoming_events: ["EIA_inventory_report"]
+      responses:
+        '200':
+          description: Model recommendation successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelRecommendationResponse'
+              examples:
+                trending_market:
+                  summary: Trending market recommendation
+                  value:
+                    recommended_model: "tcn"
+                    fallback_models: ["lstm", "xgboost"]
+                    selection_reason: "Market regime is trending_up (confidence: 0.87). TCN has 15% better MPE than LSTM over last 24h for 1h forecasts."
+                    market_regime:
+                      regime_type: "trending_up"
+                      confidence_score: 0.87
+                      detected_at: "2025-11-30T10:00:00Z"
+                    performance_snapshot:
+                      tcn:
+                        mpe: 2.8
+                        rmse: 1.24
+                        directional_accuracy: 68.5
+                        latency_p95_ms: 32
+                      lstm:
+                        mpe: 3.4
+                        rmse: 1.56
+                        directional_accuracy: 64.2
+                        latency_p95_ms: 28
+                    matched_rule:
+                      rule_id: 42
+                      rule_name: "trending_short_term_tcn"
+                      condition: "market_regime='trending_up' AND forecast_horizon='1h'"
+                    selection_latency_ms: 6.2
+        '400':
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Model selection service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /model-selection/performance:
+    get:
+      summary: Get real-time model performance metrics
+      description: Returns current performance metrics for all models across specified time windows
+      operationId: getModelPerformance
+      tags:
+        - Model Selection
+      parameters:
+        - name: symbol
+          in: query
+          required: true
+          schema:
+            type: string
+            example: "CrudeOIL"
+        - name: forecast_horizon
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: ["1h", "4h", "24h"]
+        - name: time_window
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: ["1h", "24h", "7d"]
+            default: "24h"
+      responses:
+        '200':
+          description: Performance metrics retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelPerformanceResponse'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /model-selection/rules:
+    get:
+      summary: List all model selection rules
+      description: Returns all configured selection rules (active and inactive)
+      operationId: listSelectionRules
+      tags:
+        - Model Selection Rules
+      parameters:
+        - name: enabled_only
+          in: query
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: Rules retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ModelSelectionRule'
+
+    post:
+      summary: Create new model selection rule
+      description: Add a new rule to the selection logic
+      operationId: createSelectionRule
+      tags:
+        - Model Selection Rules
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateModelSelectionRuleRequest'
+      responses:
+        '201':
+          description: Rule created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelSelectionRule'
+        '400':
+          description: Invalid rule configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /model-selection/rules/{rule_id}:
+    get:
+      summary: Get specific selection rule
+      operationId: getSelectionRule
+      tags:
+        - Model Selection Rules
+      parameters:
+        - name: rule_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Rule retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelSelectionRule'
+        '404':
+          description: Rule not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      summary: Update selection rule
+      operationId: updateSelectionRule
+      tags:
+        - Model Selection Rules
+      parameters:
+        - name: rule_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateModelSelectionRuleRequest'
+      responses:
+        '200':
+          description: Rule updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelSelectionRule'
+        '400':
+          description: Invalid update data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Rule not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      summary: Delete selection rule
+      operationId: deleteSelectionRule
+      tags:
+        - Model Selection Rules
+      parameters:
+        - name: rule_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Rule deleted successfully
+        '404':
+          description: Rule not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /model-selection/audit:
+    get:
+      summary: Get agent model selection audit log
+      description: Returns historical selection decisions with context
+      operationId: getSelectionAudit
+      tags:
+        - Model Selection
+      parameters:
+        - name: agent_id
+          in: query
+          schema:
+            type: string
+        - name: symbol
+          in: query
+          schema:
+            type: string
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+      responses:
+        '200':
+          description: Audit log retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SelectionAuditResponse'
+
+components:
+  schemas:
+    ModelRecommendationRequest:
+      type: object
+      required:
+        - symbol
+        - forecast_horizon
+      properties:
+        symbol:
+          type: string
+          minLength: 1
+          maxLength: 20
+          example: "CrudeOIL"
+        forecast_horizon:
+          type: string
+          enum: ["1h", "4h", "24h"]
+        agent_id:
+          type: string
+          description: Requesting agent identifier (optional)
+          example: "signal_generator_001"
+        context:
+          type: object
+          description: Additional context for selection
+          additionalProperties: true
+
+    ModelRecommendationResponse:
+      type: object
+      required:
+        - recommended_model
+        - selection_reason
+        - selection_latency_ms
+      properties:
+        recommended_model:
+          type: string
+          enum: ["lstm", "xgboost", "tcn", "bigru", "fedformer", "tft", "moe", "ppo"]
+        fallback_models:
+          type: array
+          items:
+            type: string
+        selection_reason:
+          type: string
+          description: Human-readable explanation
+        market_regime:
+          $ref: '#/components/schemas/MarketRegime'
+        performance_snapshot:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/PerformanceMetrics'
+        matched_rule:
+          $ref: '#/components/schemas/MatchedRule'
+        selection_latency_ms:
+          type: number
+          format: float
+
+    MarketRegime:
+      type: object
+      properties:
+        regime_type:
+          type: string
+          enum: ["trending_up", "trending_down", "ranging", "volatile", "crisis"]
+        confidence_score:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+        detected_at:
+          type: string
+          format: date-time
+        duration_hours:
+          type: number
+          format: float
+
+    PerformanceMetrics:
+      type: object
+      properties:
+        mpe:
+          type: number
+          format: float
+        rmse:
+          type: number
+          format: float
+        mae:
+          type: number
+          format: float
+        directional_accuracy:
+          type: number
+          format: float
+        latency_p95_ms:
+          type: number
+          format: float
+        sample_count:
+          type: integer
+
+    MatchedRule:
+      type: object
+      properties:
+        rule_id:
+          type: integer
+        rule_name:
+          type: string
+        condition:
+          type: string
+
+    ModelPerformanceResponse:
+      type: object
+      properties:
+        symbol:
+          type: string
+        forecast_horizon:
+          type: string
+        time_window:
+          type: string
+        models:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/PerformanceMetrics'
+        last_updated:
+          type: string
+          format: date-time
+
+    ModelSelectionRule:
+      type: object
+      properties:
+        id:
+          type: integer
+        rule_name:
+          type: string
+        priority:
+          type: integer
+        condition:
+          type: string
+        recommended_models:
+          type: array
+          items:
+            type: string
+        fallback_models:
+          type: array
+          items:
+            type: string
+        enabled:
+          type: boolean
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        last_modified:
+          type: string
+          format: date-time
+        description:
+          type: string
+
+    CreateModelSelectionRuleRequest:
+      type: object
+      required:
+        - rule_name
+        - condition
+        - recommended_models
+      properties:
+        rule_name:
+          type: string
+        priority:
+          type: integer
+          minimum: 1
+          maximum: 1000
+          default: 100
+        condition:
+          type: string
+        recommended_models:
+          type: array
+          items:
+            type: string
+          minItems: 1
+        fallback_models:
+          type: array
+          items:
+            type: string
+        enabled:
+          type: boolean
+          default: true
+        description:
+          type: string
+
+    UpdateModelSelectionRuleRequest:
+      type: object
+      properties:
+        rule_name:
+          type: string
+        priority:
+          type: integer
+        condition:
+          type: string
+        recommended_models:
+          type: array
+          items:
+            type: string
+        fallback_models:
+          type: array
+          items:
+            type: string
+        enabled:
+          type: boolean
+        description:
+          type: string
+
+    SelectionAuditResponse:
+      type: object
+      properties:
+        total_count:
+          type: integer
+        selections:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentModelSelection'
+
+    AgentModelSelection:
+      type: object
+      properties:
+        id:
+          type: integer
+        selection_timestamp:
+          type: string
+          format: date-time
+        agent_id:
+          type: string
+        requested_symbol:
+          type: string
+        requested_horizon:
+          type: string
+        market_regime:
+          type: string
+        selected_model:
+          type: string
+        selection_reason:
+          type: string
+        override_flag:
+          type: boolean
+        latency_ms:
+          type: number
+          format: float
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+security:
+  - ApiKeyAuth: []

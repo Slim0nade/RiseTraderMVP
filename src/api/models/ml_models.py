@@ -10,12 +10,16 @@ class InferenceRequest(BaseModel):
     symbol: str = Field(..., min_length=1, max_length=20)
     timestamp: Optional[datetime] = None
     forecast_horizons: List[str] = Field(..., min_items=1)
-    model_type: str = Field("ensemble", pattern="^(lstm|xgboost|ensemble)$")
+    model_type: str = Field(
+        "ensemble",
+        pattern="^(lstm|xgboost|ensemble|tcn|bigru|fedformer|tft|moe|ppo)$"
+    )
     include_confidence_intervals: bool = True
+    include_feature_importance: bool = False  # NEW: For SOTA models with interpretability
 
 
 class ForecastResponse(BaseModel):
-    """Individual forecast response."""
+    """Individual forecast response (enhanced for SOTA models)."""
     id: int
     symbol: str
     timestamp: datetime
@@ -28,7 +32,11 @@ class ForecastResponse(BaseModel):
     confidence_score: Optional[float]
     created_at: datetime
     inference_time_ms: Optional[float]
-    
+
+    # Enhanced fields for SOTA models
+    direction_prob: Optional[float] = None  # Probability of price moving up (0-1)
+    feature_importance: Optional[dict] = None  # Feature importance scores from interpretable models
+
     class Config:
         from_attributes = True
 
@@ -43,10 +51,13 @@ class InferenceResponse(BaseModel):
 
 
 class TrainingRequest(BaseModel):
-    """Request to start model training."""
+    """Request to start model training (supports both MVP and SOTA models)."""
     run_name: str
     symbol: str
-    model_type: str = Field(..., pattern="^(lstm|xgboost)$")
+    model_type: str = Field(
+        ...,
+        pattern="^(lstm|xgboost|tcn|bigru|fedformer|tft|moe|ppo)$"
+    )
     config_override: Optional[dict] = None
     async_training: bool = True
 
