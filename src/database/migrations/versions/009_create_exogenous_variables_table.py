@@ -19,6 +19,7 @@ def upgrade():
     op.create_table(
         'exogenous_variables',
         sa.Column('id', sa.Integer(), primary_key=True, autoincrement=True),
+        sa.Column('symbol', sa.String(20), nullable=False),  # Symbol this variable relates to
         sa.Column('variable_name', sa.String(50), nullable=False, index=True),
         sa.Column('timestamp', sa.DateTime(), nullable=False, index=True),
         sa.Column('value', sa.Float()),
@@ -26,8 +27,9 @@ def upgrade():
         sa.Column('source', sa.String(100)),
         sa.Column('created_at', sa.DateTime(), nullable=False)
     )
-    
+
     op.create_index('idx_exogenous_lookup', 'exogenous_variables', ['variable_name', 'timestamp'])
+    op.create_index('idx_exogenous_symbol', 'exogenous_variables', ['symbol', 'variable_name', 'timestamp'])
 
 
 def downgrade():

@@ -249,19 +249,203 @@ async def get_training_run(
     return TrainingRunStatusResponse(**response_data)
 
 
-@router.get("/models/{model_version}/metrics")
+@router.get("/models/{symbol}/{model_version}/metrics", response_model=List[ModelMetricsResponse])
 async def get_model_metrics(
+    symbol: str,
     model_version: str,
-    forecast_horizon: str = "1h",
+    forecast_horizon: Optional[str] = None,
     db: AsyncSession = Depends(get_db)
 ):
-    """Get model performance metrics."""
-    from src.database.repositories.model_metrics_repository import ModelMetricsRepository
-    
-    repo = ModelMetricsRepository(db)
-    metrics = await repo.get_by_model_version(model_version, forecast_horizon)
-    
-    if not metrics:
-        raise HTTPException(status_code=404, detail="Metrics not found")
-    
-    return metrics
+    """
+    Get performance metrics for a specific model.
+
+    - Returns metrics for all horizons if forecast_horizon not specified
+    - Includes MAE, MAPE, RMSE, directional accuracy
+    - Ordered by calculation time (most recent first)
+    """
+    metrics_repo = ModelMetricsRepository(db)
+
+    if forecast_horizon:
+        # Get metrics for specific horizon
+        metrics = await metrics_repo.get_by_model_version(
+            symbol=symbol,
+            model_version=model_version,
+            forecast_horizon=forecast_horizon
+        )
+        if not metrics:
+            raise HTTPException(status_code=404, detail="Metrics not found")
+        return [metrics]
+    else:
+        # Get metrics for all horizons
+        all_metrics = await metrics_repo.get_all_by_model(
+            symbol=symbol,
+            model_version=model_version
+        )
+        if not all_metrics:
+            raise HTTPException(status_code=404, detail="No metrics found for this model")
+        return all_metrics
+
+
+@router.get("/metrics/compare/models", response_model=AccuracyComparisonResponse)
+async def compare_model_accuracy(
+    symbol: str,
+    forecast_horizon: str,
+    model_versions: List[str] = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Compare accuracy across different model versions for the same horizon.
+
+    Returns:
+    - Metrics for each model version
+    - Best and worst performers
+    - Sorted by MAE (ascending)
+    """
+    metrics_repo = ModelMetricsRepository(db)
+
+    # Get metrics for all specified models
+    comparisons = []
+
+    if model_versions:
+        for version in model_versions:
+            metrics = await metrics_repo.get_by_model_version(
+                symbol=symbol,
+                model_version=version,
+                forecast_horizon=forecast_horizon
+            )
+            if metrics:
+                comparisons.append({
+                    'model_version': version,
+                    'mae': metrics.mae,
+                    'mape': metrics.mape,
+                    'rmse': metrics.rmse,
+                    'directional_accuracy': metrics.directional_accuracy,
+                    'sample_count': metrics.sample_count
+                })
+    else:
+        # Get all models for this symbol/horizon
+        all_metrics = await metrics_repo.get_all_for_symbol_horizon(
+            symbol=symbol,
+            forecast_horizon=forecast_horizon
+        )
+        for metrics in all_metrics:
+            comparisons.append({
+                'model_version': metrics.model_version,
+                'mae': metrics.mae,
+                'mape': metrics.mape,
+                'rmse': metrics.rmse,
+                'directional_accuracy': metrics.directional_accuracy,
+                'sample_count': metrics.sample_count
+            })
+
+    if not comparisons:
+        raise HTTPException(status_code=404, detail="No metrics found for comparison")
+
+    # Sort by MAE (lower is better)
+    comparisons.sort(key=lambda x: x['mae'])
+
+    return AccuracyComparisonResponse(
+        comparison_type='models',
+        items=comparisons,
+        best_performer=comparisons[0],
+        worst_performer=comparisons[-1]
+    )
+
+
+@router.get("/metrics/compare/horizons", response_model=AccuracyComparisonResponse)
+async def compare_horizon_accuracy(
+    symbol: str,
+    model_version: str,
+    forecast_horizons: List[str] = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Compare accuracy across different forecast horizons for the same model.
+
+    Returns:
+    - Metrics for each horizon
+    - Best and worst performing horizons
+    - Sorted by MAE (ascending)
+    """
+    metrics_repo = ModelMetricsRepository(db)
+
+    # Default horizons if not specified
+    if not forecast_horizons:
+        forecast_horizons = ['1h', '4h', '1d']
+
+    comparisons = []
+
+    for horizon in forecast_horizons:
+        metrics = await metrics_repo.get_by_model_version(
+            symbol=symbol,
+            model_version=model_version,
+            forecast_horizon=horizon
+        )
+        if metrics:
+            comparisons.append({
+                'forecast_horizon': horizon,
+                'mae': metrics.mae,
+                'mape': metrics.mape,
+                'rmse': metrics.rmse,
+                'directional_accuracy': metrics.directional_accuracy,
+                'sample_count': metrics.sample_count
+            })
+
+    if not comparisons:
+        raise HTTPException(status_code=404, detail="No metrics found for comparison")
+
+    # Sort by MAE (lower is better)
+    comparisons.sort(key=lambda x: x['mae'])
+
+    return AccuracyComparisonResponse(
+        comparison_type='horizons',
+        items=comparisons,
+        best_performer=comparisons[0],
+        worst_performer=comparisons[-1]
+    )
+
+
+@router.post("/metrics/calculate")
+async def trigger_metrics_calculation(
+    symbol: str,
+    model_version: str,
+    forecast_horizon: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Trigger calculation of accuracy metrics for a model.
+
+    - Fetches recent forecasts
+    - Compares with actual market data
+    - Calculates and stores MAE, MAPE, RMSE, directional accuracy
+    """
+    from src.ml.monitoring.forecast_accuracy_tracker import ForecastAccuracyTracker
+    from src.database.repositories.market_data_repository import MarketDataRepository
+
+    forecast_repo = ForecastRepository(db)
+    market_data_repo = MarketDataRepository(db)
+    metrics_repo = ModelMetricsRepository(db)
+
+    tracker = ForecastAccuracyTracker(
+        forecast_repo=forecast_repo,
+        market_data_repo=market_data_repo,
+        metrics_repo=metrics_repo
+    )
+
+    # Calculate and store metrics
+    success = await tracker.update_model_metrics(
+        symbol=symbol,
+        model_version=model_version,
+        forecast_horizon=forecast_horizon
+    )
+
+    if not success:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to calculate metrics. Check logs for details."
+        )
+
+    return {
+        "status": "success",
+        "message": f"Metrics calculated for {symbol} {model_version} {forecast_horizon}"
+    }
