@@ -10,7 +10,10 @@ from src.api.models.ml_models import (
     InferenceResponse,
     ForecastResponse,
     TrainingRequest,
-    TrainingResponse
+    TrainingResponse,
+    TrainingRunStatusResponse,
+    ModelMetricsResponse,
+    AccuracyComparisonResponse
 )
 from src.api.dependencies import get_db
 from src.database.repositories.forecast_repository import ForecastRepository
@@ -138,8 +141,8 @@ async def train_model(
                 training_run_id=result['training_run_id'],
                 run_name=request.run_name,
                 status="completed",
-                mlflow_run_id=None,  # TODO: Add MLflow integration
-                estimated_duration_minutes=None,
+                mlflow_run_id=result.get('mlflow_run_id'),
+                estimated_duration_minutes=result.get('training_duration_seconds', 0) / 60,
                 message=f"Training completed. Model version: {result.get('model_version', 'unknown')}"
             )
         except Exception as e:
@@ -163,21 +166,87 @@ async def train_model(
         )
 
 
-@router.get("/training-runs/{run_id}")
+@router.get("/training-runs/{run_id}", response_model=TrainingRunStatusResponse)
 async def get_training_run(
     run_id: int,
     db: AsyncSession = Depends(get_db)
 ):
-    """Get training run status and metrics."""
-    from src.database.repositories.training_run_repository import TrainingRunRepository
-    
-    repo = TrainingRunRepository(db)
-    run = await repo.get_by_id(run_id)
-    
+    """
+    Get detailed training run status and metrics.
+
+    - Returns training run metadata from database
+    - Fetches MLflow run details if available
+    - Includes hyperparameters, metrics, and current model stage
+    - Provides error information if training failed
+    """
+    training_run_repo = TrainingRunRepository(db)
+    run = await training_run_repo.get_by_id(run_id)
+
     if not run:
         raise HTTPException(status_code=404, detail="Training run not found")
-    
-    return run
+
+    # Build base response from database record
+    response_data = {
+        'training_run_id': run.id,
+        'run_name': run.run_name,
+        'symbol': run.symbol,
+        'model_type': run.model_type,
+        'status': run.status,
+        'model_version': run.model_version,
+        'mlflow_run_id': run.mlflow_run_id,
+        'started_at': run.started_at,
+        'completed_at': run.completed_at,
+        'duration_seconds': run.duration_seconds,
+        'error_message': run.error_message
+    }
+
+    # If MLflow run exists, fetch additional metadata
+    if run.mlflow_run_id:
+        try:
+            from src.ml.tracking.model_registry import ModelRegistry
+            import mlflow
+
+            # Initialize MLflow client
+            registry = ModelRegistry()
+            mlflow_client = registry.client
+
+            # Get MLflow run details
+            mlflow_run = mlflow_client.get_run(run.mlflow_run_id)
+
+            # Extract hyperparameters
+            response_data['hyperparameters'] = dict(mlflow_run.data.params)
+
+            # Extract metrics
+            response_data['metrics'] = dict(mlflow_run.data.metrics)
+
+            # Get artifact URI
+            response_data['artifact_uri'] = mlflow_run.info.artifact_uri
+
+            # Get model stage if model was registered
+            if run.model_version:
+                try:
+                    # Parse model name from run tags or use default pattern
+                    model_name = mlflow_run.data.tags.get('model_name', f"{run.model_type}_forecaster_{run.symbol}")
+
+                    # Get latest version for this model
+                    versions = registry.list_model_versions(model_name)
+                    if versions:
+                        # Find version matching this run
+                        for version in versions:
+                            if version.run_id == run.mlflow_run_id:
+                                response_data['current_stage'] = version.current_stage
+                                break
+                except Exception as e:
+                    # Model may not be registered yet - not an error
+                    pass
+
+        except Exception as e:
+            # Log error but don't fail the request - database info is still valuable
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to fetch MLflow metadata for run {run.mlflow_run_id}: {str(e)}")
+
+    return TrainingRunStatusResponse(**response_data)
 
 
 @router.get("/models/{model_version}/metrics")

@@ -59,3 +59,55 @@ class TrainingResponse(BaseModel):
     mlflow_run_id: Optional[str]
     estimated_duration_minutes: Optional[int]
     message: str
+
+
+class TrainingRunStatusResponse(BaseModel):
+    """Detailed training run status response."""
+    training_run_id: int
+    run_name: str
+    symbol: str
+    model_type: str
+    status: str
+    model_version: Optional[str]
+    mlflow_run_id: Optional[str]
+    started_at: datetime
+    completed_at: Optional[datetime]
+    duration_seconds: Optional[float]
+
+    # MLflow metadata (if available)
+    hyperparameters: Optional[dict] = None
+    metrics: Optional[dict] = None
+    current_stage: Optional[str] = None
+    artifact_uri: Optional[str] = None
+
+    # Error information
+    error_message: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ModelMetricsResponse(BaseModel):
+    """Model performance metrics response."""
+    id: int
+    symbol: str
+    model_version: str
+    forecast_horizon: str
+    mae: float
+    mse: float
+    rmse: float
+    mape: float
+    directional_accuracy: Optional[float]
+    sample_count: int
+    calculated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class AccuracyComparisonResponse(BaseModel):
+    """Compare accuracy across models/horizons."""
+    comparison_type: str  # 'models' or 'horizons'
+    items: List[dict]  # List of metric comparisons
+    best_performer: dict  # Best performing model/horizon
+    worst_performer: dict  # Worst performing model/horizon

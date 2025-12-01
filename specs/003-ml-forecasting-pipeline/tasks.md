@@ -215,7 +215,7 @@ Phase 8: Polish & Cross-Cutting (T081-T085)
 
 ### 5.3: Testing & Validation
 
-- [ ] T059 [US3] Write integration tests for exogenous variable training in tests/integration/ml/test_exogenous_training.py
+- [X] T059 [US3] Write integration tests for exogenous variable training in tests/integration/ml/test_exogenous_training.py
 - [ ] T060 [US3] Implement A/B test script comparing models with/without exogenous variables validating ≥15% RMSE improvement per spec.md SC-006
 
 ---
@@ -236,9 +236,9 @@ Phase 8: Polish & Cross-Cutting (T081-T085)
 
 ### 6.1: MLflow Integration
 
-- [ ] T061 [P] [US4] Write unit tests for MLflowTracker in tests/unit/ml/tracking/test_mlflow_tracker.py
-- [ ] T062 [US4] Create MLflowTracker wrapper class in src/ml/tracking/mlflow_tracker.py with experiment management and artifact logging
-- [ ] T063 [US4] Update ModelTrainer in src/ml/training/trainer.py to integrate MLflowTracker for automatic logging per research.md TD-005
+- [X] T061 [P] [US4] Write unit tests for MLflowTracker in tests/unit/ml/tracking/test_mlflow_tracker.py
+- [X] T062 [US4] Create MLflowTracker wrapper class in src/ml/tracking/mlflow_tracker.py with experiment management and artifact logging
+- [X] T063 [US4] Update ModelTrainer in src/ml/training/trainer.py to integrate MLflowTracker for automatic logging per research.md TD-005
 
 ### 6.2: Model Registry
 
