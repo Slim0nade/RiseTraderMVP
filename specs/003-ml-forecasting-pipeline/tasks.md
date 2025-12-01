@@ -120,27 +120,27 @@ Phase 8: Polish & Cross-Cutting (T081-T085)
 
 ### 3.3: Training Pipeline
 
-- [ ] T026 [P] [US1] Write unit tests for WalkForwardValidator in tests/unit/ml/training/test_validator.py
-- [ ] T027 [P] [US1] Write unit tests for ModelTrainer in tests/unit/ml/training/test_trainer.py
-- [ ] T028 [US1] Implement WalkForwardValidator in src/ml/training/validator.py with 70/15/15 split per research.md TD-004
-- [ ] T029 [US1] Implement ModelTrainer in src/ml/training/trainer.py with training loop, early stopping, and metric calculation
+- [X] T026 [P] [US1] Write unit tests for WalkForwardValidator in tests/unit/ml/training/test_validator.py
+- [X] T027 [P] [US1] Write unit tests for ModelTrainer in tests/unit/ml/training/test_trainer.py
+- [X] T028 [US1] Implement WalkForwardValidator in src/ml/training/validator.py with 70/15/15 split per research.md TD-004
+- [X] T029 [US1] Implement ModelTrainer in src/ml/training/trainer.py with training loop, early stopping, and metric calculation
 
 ### 3.4: Evaluation Metrics
 
-- [ ] T030 [P] [US1] Write unit tests for metrics module in tests/unit/ml/evaluation/test_metrics.py
-- [ ] T031 [US1] Implement metrics calculations in src/ml/evaluation/metrics.py (MPE, RMSE, MAE, MAPE, directional accuracy) per research.md TD-007
+- [X] T030 [P] [US1] Write unit tests for metrics module in tests/unit/ml/evaluation/test_metrics.py
+- [X] T031 [US1] Implement metrics calculations in src/ml/evaluation/metrics.py (MPE, RMSE, MAE, MAPE, directional accuracy) per research.md TD-007
 
 ### 3.5: Repository Layer
 
-- [ ] T032 [P] [US1] Write unit tests for TrainingRunRepository in tests/unit/repositories/test_training_run_repository.py
-- [ ] T033 [P] [US1] Write unit tests for ModelMetricsRepository in tests/unit/repositories/test_model_metrics_repository.py
-- [ ] T034 [US1] Implement TrainingRunRepository in src/database/repositories/training_run_repository.py with CRUD operations
-- [ ] T035 [US1] Implement ModelMetricsRepository in src/database/repositories/model_metrics_repository.py with metrics storage
+- [X] T032 [P] [US1] Write unit tests for TrainingRunRepository in tests/unit/repositories/test_training_run_repository.py
+- [X] T033 [P] [US1] Write unit tests for ModelMetricsRepository in tests/unit/repositories/test_model_metrics_repository.py
+- [X] T034 [US1] Implement TrainingRunRepository in src/database/repositories/training_run_repository.py with CRUD operations
+- [X] T035 [US1] Implement ModelMetricsRepository in src/database/repositories/model_metrics_repository.py with metrics storage
 
 ### 3.6: Service Layer & Integration
 
-- [ ] T036 [US1] Write integration tests for MLTrainingService in tests/integration/ml/test_ml_training_service.py
-- [ ] T037 [US1] Implement MLTrainingService in src/services/ml_training_service.py orchestrating data loading, training, MLflow logging, and metrics storage
+- [X] T036 [US1] Write integration tests for MLTrainingService in tests/integration/ml/test_ml_training_service.py
+- [X] T037 [US1] Implement MLTrainingService in src/services/ml_training_service.py orchestrating data loading, training, MLflow logging, and metrics storage
 
 ---
 
@@ -160,28 +160,28 @@ Phase 8: Polish & Cross-Cutting (T081-T085)
 
 ### 4.1: Inference Engine
 
-- [ ] T038 [P] [US2] Write unit tests for ModelPredictor in tests/unit/ml/inference/test_predictor.py
-- [ ] T039 [P] [US2] Write unit tests for ForecastCache in tests/unit/ml/inference/test_cache.py
-- [ ] T040 [US2] Implement ModelPredictor in src/ml/inference/predictor.py with in-memory model loading and batch prediction
-- [ ] T041 [US2] Implement ForecastCache in src/ml/inference/cache.py with Redis integration and 5-minute TTL per research.md TD-006
+- [X] T038 [P] [US2] Write unit tests for ModelPredictor in tests/unit/ml/inference/test_predictor.py
+- [X] T039 [P] [US2] Write unit tests for ForecastCache in tests/unit/ml/inference/test_cache.py
+- [X] T040 [US2] Implement ModelPredictor in src/ml/inference/predictor.py with in-memory model loading and batch prediction
+- [X] T041 [US2] Implement ForecastCache in src/ml/inference/cache.py with Redis integration and 5-minute TTL per research.md TD-006
 
 ### 4.2: Repository Layer
 
-- [ ] T042 [P] [US2] Write unit tests for ForecastRepository in tests/unit/repositories/test_forecast_repository.py
-- [ ] T043 [US2] Implement ForecastRepository in src/database/repositories/forecast_repository.py with composite indexes per data-model.md
+- [X] T042 [P] [US2] Write unit tests for ForecastRepository in tests/unit/repositories/test_forecast_repository.py
+- [X] T043 [US2] Implement ForecastRepository in src/database/repositories/forecast_repository.py with composite indexes per data-model.md
 
 ### 4.3: Service Layer
 
-- [ ] T044 [US2] Write integration tests for MLInferenceService in tests/integration/ml/test_ml_inference_service.py
-- [ ] T045 [US2] Implement MLInferenceService in src/services/ml_inference_service.py with cache checking, model loading, and forecast storage per quickstart.md Scenario 2
+- [X] T044 [US2] Write integration tests for MLInferenceService in tests/integration/ml/test_ml_inference_service.py
+- [X] T045 [US2] Implement MLInferenceService in src/services/ml_inference_service.py with cache checking, model loading, and forecast storage per quickstart.md Scenario 2
 
 ### 4.4: API Layer
 
-- [ ] T046 [P] [US2] Write contract tests for inference API in tests/contract/test_ml_forecasting_schemas.py validating OpenAPI spec
-- [ ] T047 [US2] Implement Pydantic request/response models in src/api/models/ml_models.py (InferenceRequest, InferenceResponse, ForecastResponse) per data-model.md
-- [ ] T048 [US2] Implement POST /api/v1/ml/predict endpoint in src/api/routes/ml_forecasting.py with async handling
-- [ ] T049 [US2] Write integration tests for inference API in tests/integration/ml/test_ml_inference_api.py
-- [ ] T050 [US2] Register ml_forecasting router in src/api/main.py with /api/v1/ml prefix
+- [X] T046 [P] [US2] Write contract tests for inference API in tests/contract/test_ml_forecasting_schemas.py validating OpenAPI spec
+- [X] T047 [US2] Implement Pydantic request/response models in src/api/models/ml_models.py (InferenceRequest, InferenceResponse, ForecastResponse) per data-model.md
+- [X] T048 [US2] Implement POST /api/v1/ml/predict endpoint in src/api/routes/ml_forecasting.py with async handling
+- [X] T049 [US2] Write integration tests for inference API in tests/integration/ml/test_ml_inference_api.py
+- [X] T050 [US2] Register ml_forecasting router in src/api/main.py with /api/v1/ml prefix
 
 ---
 

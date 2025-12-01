@@ -10,6 +10,7 @@ from src.ml.training.trainer import ModelTrainer
 from src.ml.training.validator import WalkForwardValidator
 from src.database.repositories.training_run_repository import TrainingRunRepository
 from src.database.repositories.model_metrics_repository import ModelMetricsRepository
+from src.database.models.training_runs import TrainingStatus
 
 
 class MLTrainingService:
@@ -48,9 +49,11 @@ class MLTrainingService:
             run_name=run_name,
             symbol=symbol,
             model_type=model_type,
-            status="running",
+            status=TrainingStatus.RUNNING,
             started_at=datetime.utcnow(),
-            hyperparameters=config
+            hyperparameters=config.get('model', {}),
+            feature_config=config.get('features', {}),
+            training_config=config.get('training', {})
         )
         
         try:
@@ -96,7 +99,7 @@ class MLTrainingService:
             # Update training run
             await self.training_run_repo.update_status(
                 run.id,
-                status="completed",
+                status=TrainingStatus.COMPLETED,
                 completed_at=datetime.utcnow(),
                 final_metrics=test_metrics,
                 model_version="v1.0.0"
@@ -108,6 +111,8 @@ class MLTrainingService:
                 model_version="v1.0.0",
                 symbol=symbol,
                 forecast_horizon="1h",
+                evaluation_date=datetime.utcnow(),
+                sample_size=len(y_test),
                 **test_metrics
             )
             
@@ -120,7 +125,7 @@ class MLTrainingService:
         except Exception as e:
             await self.training_run_repo.update_status(
                 run.id,
-                status="failed",
+                status=TrainingStatus.FAILED,
                 error_message=str(e)
             )
             raise

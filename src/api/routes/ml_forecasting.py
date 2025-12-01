@@ -14,8 +14,14 @@ from src.api.models.ml_models import (
 )
 from src.api.dependencies import get_db
 from src.database.repositories.forecast_repository import ForecastRepository
+from src.database.repositories.training_run_repository import TrainingRunRepository
+from src.database.repositories.model_metrics_repository import ModelMetricsRepository
 from src.ml.inference.predictor import ModelPredictor
 from src.ml.inference.cache import ForecastCache
+from src.ml.data.market_data_loader import MarketDataLoader
+from src.services.ml_inference_service import MLInferenceService
+from src.services.ml_training_service import MLTrainingService
+from src.ml.training.config import load_config
 
 
 router = APIRouter(prefix="/api/v1/ml", tags=["ml-forecasting"])
@@ -28,53 +34,53 @@ async def generate_forecast(
 ):
     """
     Generate ML price forecasts for multiple time horizons.
-    
+
     - Checks Redis cache first (5min TTL)
     - Loads production model from MLflow
     - Returns forecasts with confidence intervals
     - p95 latency target: <50ms
     """
     start_time = time.time()
-    
-    # Initialize components
+
+    # Initialize components (in production, these would be dependency-injected)
     forecast_repo = ForecastRepository(db)
     predictor = ModelPredictor()
-    # cache = ForecastCache(redis_client)  # TODO: inject Redis
-    
-    forecasts = []
-    cache_hit = False
-    
-    for horizon in request.forecast_horizons:
-        # Check cache
-        # cached = cache.get(cache.make_key(request.symbol, horizon, "v1.0.0"))
-        # if cached:
-        #     forecasts.append(ForecastResponse(**cached))
-        #     cache_hit = True
-        #     continue
-        
-        # Generate new forecast (simplified for MVP)
-        forecast_data = {
-            "id": 1,
-            "symbol": request.symbol,
-            "timestamp": request.timestamp or datetime.utcnow(),
-            "forecast_horizon": horizon,
-            "model_type": request.model_type,
-            "model_version": "v1.0.0",
-            "predicted_value": 78.45,  # TODO: actual prediction
-            "lower_bound": 77.80 if request.include_confidence_intervals else None,
-            "upper_bound": 79.10 if request.include_confidence_intervals else None,
-            "confidence_score": 0.87,
-            "created_at": datetime.utcnow(),
-            "inference_time_ms": 45.0
-        }
-        
-        forecasts.append(ForecastResponse(**forecast_data))
-        
-        # Save to database
-        await forecast_repo.create(**forecast_data)
-    
+
+    # TODO: Inject Redis client from dependencies in production
+    # For now, create mock cache that always misses
+    from unittest.mock import Mock
+    mock_redis = Mock()
+    mock_redis.get = Mock(return_value=None)
+    mock_redis.setex = Mock()
+    cache = ForecastCache(mock_redis)
+
+    data_loader = MarketDataLoader(db)
+
+    # Initialize inference service
+    inference_service = MLInferenceService(
+        predictor=predictor,
+        cache=cache,
+        forecast_repo=forecast_repo,
+        data_loader=data_loader
+    )
+
+    # Generate forecasts for all requested horizons
+    model_version = "v1.0.0"  # TODO: Get from model registry/config
+
+    forecast_results = await inference_service.generate_forecasts(
+        symbol=request.symbol,
+        horizons=request.forecast_horizons,
+        model_version=model_version,
+        model_type=request.model_type,
+        include_confidence=request.include_confidence_intervals
+    )
+
+    # Convert to ForecastResponse objects
+    forecasts = [ForecastResponse(**result) for result in forecast_results]
+
     inference_time = (time.time() - start_time) * 1000
-    
+    cache_hit = all(f.get('cache_hit', False) for f in forecast_results) if forecast_results else False
+
     return InferenceResponse(
         symbol=request.symbol,
         timestamp=request.timestamp or datetime.utcnow(),
@@ -91,22 +97,70 @@ async def train_model(
 ):
     """
     Start model training run.
-    
+
     - Validates configuration
     - Creates training run record
     - Starts async training (if requested)
     - Returns training run ID for status polling
     """
-    # TODO: Implement actual training orchestration
-    
-    return TrainingResponse(
-        training_run_id=101,
-        run_name=request.run_name,
-        status="running",
-        mlflow_run_id="a1b2c3d4e5f6g7h8",
-        estimated_duration_minutes=28,
-        message="Training started successfully. Monitor progress at MLflow UI."
+    # Initialize repositories
+    training_run_repo = TrainingRunRepository(db)
+    metrics_repo = ModelMetricsRepository(db)
+    data_loader = MarketDataLoader(db)
+
+    # Load configuration (use override if provided, otherwise use defaults)
+    if request.config_override:
+        config = request.config_override
+    else:
+        # Load default config for model type
+        config = load_config(f'config/ml/{request.model_type}_config.yaml')
+
+    # Initialize training service
+    training_service = MLTrainingService(
+        data_loader=data_loader,
+        training_run_repo=training_run_repo,
+        metrics_repo=metrics_repo
     )
+
+    # Start training (async or blocking based on request)
+    if request.async_training:
+        # For MVP, we'll run synchronously but mark as "running"
+        # In production, this would use Celery/background tasks
+        try:
+            result = await training_service.train_model(
+                symbol=request.symbol,
+                model_type=request.model_type,
+                config=config,
+                run_name=request.run_name
+            )
+
+            return TrainingResponse(
+                training_run_id=result['training_run_id'],
+                run_name=request.run_name,
+                status="completed",
+                mlflow_run_id=None,  # TODO: Add MLflow integration
+                estimated_duration_minutes=None,
+                message=f"Training completed. Model version: {result.get('model_version', 'unknown')}"
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Training failed: {str(e)}")
+    else:
+        # Synchronous training
+        result = await training_service.train_model(
+            symbol=request.symbol,
+            model_type=request.model_type,
+            config=config,
+            run_name=request.run_name
+        )
+
+        return TrainingResponse(
+            training_run_id=result['training_run_id'],
+            run_name=request.run_name,
+            status="completed",
+            mlflow_run_id=None,
+            estimated_duration_minutes=None,
+            message="Training completed successfully"
+        )
 
 
 @router.get("/training-runs/{run_id}")
