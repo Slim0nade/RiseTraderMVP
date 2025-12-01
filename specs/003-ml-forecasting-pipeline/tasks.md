@@ -201,17 +201,17 @@ Phase 8: Polish & Cross-Cutting (T081-T085)
 
 ### 5.1: Data Collection
 
-- [ ] T051 [P] [US3] Write unit tests for ExogenousDataLoader in tests/unit/ml/data/test_exogenous_data_loader.py
-- [ ] T052 [P] [US3] Write unit tests for ExogenousVariableRepository in tests/unit/repositories/test_exogenous_variable_repository.py
-- [ ] T053 [US3] Implement ExogenousDataLoader in src/ml/data/exogenous_data_loader.py with yfinance integration for DXY and VIX per quickstart.md Scenario 5
-- [ ] T054 [US3] Implement ExogenousVariableRepository in src/database/repositories/exogenous_variable_repository.py with time-alignment queries
+- [X] T051 [P] [US3] Write unit tests for ExogenousDataLoader in tests/unit/ml/data/test_exogenous_data_loader.py
+- [X] T052 [P] [US3] Write unit tests for ExogenousVariableRepository in tests/unit/repositories/test_exogenous_variable_repository.py
+- [X] T053 [US3] Implement ExogenousDataLoader in src/ml/data/exogenous_data_loader.py with yfinance integration for DXY and VIX per quickstart.md Scenario 5
+- [X] T054 [US3] Implement ExogenousVariableRepository in src/database/repositories/exogenous_variable_repository.py with time-alignment queries
 
 ### 5.2: Feature Integration
 
-- [ ] T055 [US3] Update FeatureEngineering in src/ml/data/feature_engineering.py to merge exogenous variables with OHLCV data per research.md TD-003
-- [ ] T056 [US3] Add exogenous variable normalization (Z-score) to FeatureEngineering per research.md TD-003
-- [ ] T057 [US3] Update LSTMForecaster in src/ml/models/lstm_forecaster.py to accept exogenous features
-- [ ] T058 [US3] Update XGBoostForecaster in src/ml/models/xgboost_forecaster.py to include exogenous features per research.md TD-002
+- [X] T055 [US3] Update FeatureEngineering in src/ml/data/feature_engineering.py to merge exogenous variables with OHLCV data per research.md TD-003
+- [X] T056 [US3] Add exogenous variable normalization (Z-score) to FeatureEngineering per research.md TD-003
+- [X] T057 [US3] Update LSTMForecaster in src/ml/models/lstm_forecaster.py to accept exogenous features
+- [X] T058 [US3] Update XGBoostForecaster in src/ml/models/xgboost_forecaster.py to include exogenous features per research.md TD-002
 
 ### 5.3: Testing & Validation
 

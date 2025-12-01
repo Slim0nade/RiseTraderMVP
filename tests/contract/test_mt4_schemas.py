@@ -1288,3 +1288,181 @@ def test_portfolio_risk_updated_event_schema():
     assert portfolio_event["event_type"] == "portfolio_risk_updated"
     assert portfolio_event["data"]["ea_count"] == 3
     assert portfolio_event["data"]["total_positions"] == 10
+
+
+# =============================================================================
+# User Story 4: Account Info Response Schema Tests (T079)
+# =============================================================================
+
+def test_account_info_response_schema():
+    """Test T079: AccountInfo response schema from MT4."""
+    from src.trading.execution.mt4_models import AccountInfo
+
+    # Arrange - MT4 response format
+    mt4_response = {
+        "balance": 10000.00,
+        "equity": 10250.50,
+        "margin": 500.00,
+        "free_margin": 9750.50,
+        "margin_level": 2050.10,
+        "profit": 250.50,
+        "account_number": 12345678,
+        "leverage": 100,
+        "currency": "USD",
+        "server": "Demo-Server",
+        "company": "MetaQuotes"
+    }
+
+    # Act
+    account_info = AccountInfo(**mt4_response)
+
+    # Assert - all required fields present
+    assert account_info.balance == Decimal("10000.00")
+    assert account_info.equity == Decimal("10250.50")
+    assert account_info.margin == Decimal("500.00")
+    assert account_info.free_margin == Decimal("9750.50")
+    assert account_info.margin_level == Decimal("2050.10")
+    assert account_info.profit == Decimal("250.50")
+    assert account_info.account_number == 12345678
+    assert account_info.leverage == 100
+    assert account_info.currency == "USD"
+    assert account_info.server == "Demo-Server"
+    assert account_info.company == "MetaQuotes"
+
+
+def test_get_account_info_command_schema():
+    """Test T079: GetAccountInfoCommand schema."""
+    from src.trading.execution.mt4_models import GetAccountInfoCommand
+
+    # Act
+    command = GetAccountInfoCommand()
+
+    # Assert - command format
+    json_data = command.model_dump(mode='json')
+    assert json_data["command"] == "get_account_info"
+    assert "correlation_id" in json_data
+    assert len(json_data["correlation_id"]) == 36  # UUID
+
+
+def test_get_open_positions_command_schema():
+    """Test T079: GetOpenPositionsCommand schema."""
+    from src.trading.execution.mt4_models import GetOpenPositionsCommand
+
+    # Act - without magic number
+    command1 = GetOpenPositionsCommand()
+    json1 = command1.model_dump(mode='json')
+
+    # Act - with magic number
+    command2 = GetOpenPositionsCommand(magic_number=100001)
+    json2 = command2.model_dump(mode='json')
+
+    # Assert
+    assert json1["command"] == "get_open_positions"
+    assert json1.get("magic_number") is None
+
+    assert json2["command"] == "get_open_positions"
+    assert json2["magic_number"] == 100001
+
+
+def test_position_info_response_schema():
+    """Test T079: PositionInfo response schema from MT4."""
+    from src.trading.execution.mt4_models import PositionInfo
+
+    # Arrange - MT4 position format
+    mt4_position = {
+        "ticket": 12345,
+        "symbol": "CrudeOIL",
+        "type": "BUY",
+        "volume": 0.1,
+        "open_price": 75.50,
+        "current_price": 75.75,
+        "stop_loss": 75.00,
+        "take_profit": 76.50,
+        "profit": 25.00,
+        "open_time": "2025-11-22T10:00:00Z",
+        "magic_number": 100001
+    }
+
+    # Act
+    position = PositionInfo(**mt4_position)
+
+    # Assert - all fields correct
+    assert position.ticket == 12345
+    assert position.symbol == "CrudeOIL"
+    assert position.type == "BUY"
+    assert position.volume == Decimal("0.1")
+    assert position.open_price == Decimal("75.50")
+    assert position.current_price == Decimal("75.75")
+    assert position.stop_loss == Decimal("75.00")
+    assert position.take_profit == Decimal("76.50")
+    assert position.profit == Decimal("25.00")
+    assert position.magic_number == 100001
+
+
+def test_account_info_response_with_missing_fields():
+    """Test T079: Handle account info response with optional fields missing."""
+    from src.trading.execution.mt4_models import AccountInfo
+
+    # Arrange - minimal response
+    minimal_response = {
+        "balance": 10000.00,
+        "equity": 10250.50,
+        "margin": 500.00,
+        "free_margin": 9750.50,
+        "margin_level": 2050.10,
+        "profit": 250.50,
+        "account_number": 12345678,
+        "leverage": 100,
+        "currency": "USD"
+    }
+
+    # Act - should work with defaults for server and company
+    account_info = AccountInfo(
+        **minimal_response,
+        server="Unknown",
+        company="Unknown"
+    )
+
+    # Assert
+    assert account_info.balance == Decimal("10000.00")
+    assert account_info.account_number == 12345678
+
+
+def test_open_positions_array_schema():
+    """Test T079: Array of positions in get_open_positions response."""
+    from src.trading.execution.mt4_models import PositionInfo
+
+    # Arrange - array response
+    positions_data = [
+        {
+            "ticket": 12345,
+            "symbol": "CrudeOIL",
+            "type": "BUY",
+            "volume": 0.1,
+            "open_price": 75.50,
+            "current_price": 75.75,
+            "profit": 25.00,
+            "open_time": "2025-11-22T10:00:00Z",
+            "magic_number": 100001
+        },
+        {
+            "ticket": 12346,
+            "symbol": "EURUSD",
+            "type": "SELL",
+            "volume": 0.2,
+            "open_price": 1.0950,
+            "current_price": 1.0940,
+            "profit": 20.00,
+            "open_time": "2025-11-22T11:00:00Z",
+            "magic_number": 100001
+        }
+    ]
+
+    # Act
+    positions = [PositionInfo(**pos) for pos in positions_data]
+
+    # Assert
+    assert len(positions) == 2
+    assert all(isinstance(pos, PositionInfo) for pos in positions)
+    assert positions[0].ticket == 12345
+    assert positions[1].ticket == 12346

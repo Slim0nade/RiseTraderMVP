@@ -787,3 +787,195 @@ async def test_pub_socket_disconnect(mt4_client, mock_zmq_context, mock_zmq_sock
     # Assert
     mock_pub_socket.close.assert_called_once()
     assert mt4_client.is_connected() is False
+
+
+# =============================================================================
+# User Story 4: Account Information Query Tests (T075-T076)
+# =============================================================================
+
+@pytest.mark.asyncio
+async def test_get_account_info_success(mt4_client, mock_zmq_context, mock_zmq_socket):
+    """Test T075: successful get_account_info command."""
+    # Arrange
+    mock_context_instance = Mock()
+    mock_context_instance.socket.return_value = mock_zmq_socket
+    mock_zmq_context.return_value = mock_context_instance
+
+    await mt4_client.connect()
+
+    response_data = {
+        "success": True,
+        "balance": 10000.00,
+        "equity": 10250.50,
+        "margin": 500.00,
+        "free_margin": 9750.50,
+        "margin_level": 2050.10,
+        "profit": 250.50,
+        "account_number": 12345678,
+        "leverage": 100,
+        "currency": "USD",
+        "server": "Demo-Server",
+        "company": "MetaQuotes"
+    }
+
+    mock_zmq_socket.recv_string.return_value = json.dumps(response_data)
+
+    # Act
+    response = await mt4_client.get_account_info()
+
+    # Assert
+    assert response["success"] is True
+    assert response["balance"] == 10000.00
+    assert response["equity"] == 10250.50
+    assert response["margin_level"] == 2050.10
+    mock_zmq_socket.send_string.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_get_account_info_timeout(mt4_client, mock_zmq_context, mock_zmq_socket):
+    """Test T075: get_account_info timeout handling."""
+    # Arrange
+    mock_context_instance = Mock()
+    mock_context_instance.socket.return_value = mock_zmq_socket
+    mock_zmq_context.return_value = mock_context_instance
+
+    await mt4_client.connect()
+
+    mock_zmq_socket.poll.return_value = 0  # No response
+
+    # Act & Assert
+    with pytest.raises(TimeoutError):
+        await mt4_client.get_account_info()
+
+
+@pytest.mark.asyncio
+async def test_get_account_info_not_connected(mt4_client):
+    """Test T075: get_account_info when not connected."""
+    # Act & Assert
+    with pytest.raises(ConnectionError):
+        await mt4_client.get_account_info()
+
+
+@pytest.mark.asyncio
+async def test_get_open_positions_success(mt4_client, mock_zmq_context, mock_zmq_socket):
+    """Test T076: successful get_open_positions command."""
+    # Arrange
+    mock_context_instance = Mock()
+    mock_context_instance.socket.return_value = mock_zmq_socket
+    mock_zmq_context.return_value = mock_context_instance
+
+    await mt4_client.connect()
+
+    response_data = {
+        "success": True,
+        "positions": [
+            {
+                "ticket": 12345,
+                "symbol": "CrudeOIL",
+                "type": "BUY",
+                "volume": 0.1,
+                "open_price": 75.50,
+                "current_price": 75.75,
+                "stop_loss": 75.00,
+                "take_profit": 76.50,
+                "profit": 25.00,
+                "open_time": "2025-11-22T10:00:00Z",
+                "magic_number": 100001
+            },
+            {
+                "ticket": 12346,
+                "symbol": "EURUSD",
+                "type": "SELL",
+                "volume": 0.2,
+                "open_price": 1.0950,
+                "current_price": 1.0940,
+                "stop_loss": 1.1000,
+                "take_profit": 1.0900,
+                "profit": 20.00,
+                "open_time": "2025-11-22T11:00:00Z",
+                "magic_number": 100001
+            }
+        ]
+    }
+
+    mock_zmq_socket.recv_string.return_value = json.dumps(response_data)
+
+    # Act
+    response = await mt4_client.get_open_positions()
+
+    # Assert
+    assert response["success"] is True
+    assert len(response["positions"]) == 2
+    assert response["positions"][0]["ticket"] == 12345
+    assert response["positions"][1]["symbol"] == "EURUSD"
+    mock_zmq_socket.send_string.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_get_open_positions_empty(mt4_client, mock_zmq_context, mock_zmq_socket):
+    """Test T076: get_open_positions with no open positions."""
+    # Arrange
+    mock_context_instance = Mock()
+    mock_context_instance.socket.return_value = mock_zmq_socket
+    mock_zmq_context.return_value = mock_context_instance
+
+    await mt4_client.connect()
+
+    response_data = {
+        "success": True,
+        "positions": []
+    }
+
+    mock_zmq_socket.recv_string.return_value = json.dumps(response_data)
+
+    # Act
+    response = await mt4_client.get_open_positions()
+
+    # Assert
+    assert response["success"] is True
+    assert len(response["positions"]) == 0
+
+
+@pytest.mark.asyncio
+async def test_get_open_positions_with_magic_number(mt4_client, mock_zmq_context, mock_zmq_socket):
+    """Test T076: get_open_positions filtered by magic number."""
+    # Arrange
+    mock_context_instance = Mock()
+    mock_context_instance.socket.return_value = mock_zmq_socket
+    mock_zmq_context.return_value = mock_context_instance
+
+    await mt4_client.connect()
+
+    response_data = {
+        "success": True,
+        "positions": [
+            {
+                "ticket": 12345,
+                "symbol": "CrudeOIL",
+                "type": "BUY",
+                "volume": 0.1,
+                "open_price": 75.50,
+                "current_price": 75.75,
+                "profit": 25.00,
+                "magic_number": 100001
+            }
+        ]
+    }
+
+    mock_zmq_socket.recv_string.return_value = json.dumps(response_data)
+
+    # Act
+    response = await mt4_client.get_open_positions(magic_number=100001)
+
+    # Assert
+    assert response["success"] is True
+    assert len(response["positions"]) == 1
+    assert response["positions"][0]["magic_number"] == 100001
+
+
+@pytest.mark.asyncio
+async def test_get_open_positions_not_connected(mt4_client):
+    """Test T076: get_open_positions when not connected."""
+    # Act & Assert
+    with pytest.raises(ConnectionError):
+        await mt4_client.get_open_positions()

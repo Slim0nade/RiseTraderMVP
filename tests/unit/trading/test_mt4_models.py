@@ -296,3 +296,185 @@ class TestMarketTickEvent:
         assert event.data.bid == Decimal("1.08500")
         assert event.data.ask == Decimal("1.08520")
         assert event.data.volume == 500
+
+
+# =============================================================================
+# User Story 4: Account Info Model Tests (T077)
+# =============================================================================
+
+def test_account_info_creation():
+    """Test T077: AccountInfo model creation with all fields."""
+    from src.trading.execution.mt4_models import AccountInfo
+
+    account_info = AccountInfo(
+        balance=Decimal("10000.00"),
+        equity=Decimal("10250.50"),
+        margin=Decimal("500.00"),
+        free_margin=Decimal("9750.50"),
+        margin_level=Decimal("2050.10"),
+        profit=Decimal("250.50"),
+        account_number=12345678,
+        leverage=100,
+        currency="USD",
+        server="Demo-Server",
+        company="MetaQuotes"
+    )
+
+    assert account_info.balance == Decimal("10000.00")
+    assert account_info.equity == Decimal("10250.50")
+    assert account_info.margin == Decimal("500.00")
+    assert account_info.free_margin == Decimal("9750.50")
+    assert account_info.margin_level == Decimal("2050.10")
+    assert account_info.profit == Decimal("250.50")
+    assert account_info.account_number == 12345678
+    assert account_info.leverage == 100
+    assert account_info.currency == "USD"
+
+
+def test_account_info_json_serialization():
+    """Test T077: AccountInfo JSON serialization."""
+    from src.trading.execution.mt4_models import AccountInfo
+
+    account_info = AccountInfo(
+        balance=Decimal("10000.00"),
+        equity=Decimal("10250.50"),
+        margin=Decimal("500.00"),
+        free_margin=Decimal("9750.50"),
+        margin_level=Decimal("2050.10"),
+        profit=Decimal("250.50"),
+        account_number=12345678,
+        leverage=100,
+        currency="USD",
+        server="Demo-Server",
+        company="MetaQuotes"
+    )
+
+    json_data = account_info.model_dump(mode='json')
+
+    assert json_data["balance"] == "10000.00"
+    assert json_data["equity"] == "10250.50"
+    assert json_data["margin_level"] == "2050.10"
+    assert json_data["account_number"] == 12345678
+
+
+def test_account_info_from_mt4_response():
+    """Test T077: AccountInfo parsing from MT4 response."""
+    from src.trading.execution.mt4_models import AccountInfo
+
+    mt4_response = {
+        "balance": 10000.00,
+        "equity": 10250.50,
+        "margin": 500.00,
+        "free_margin": 9750.50,
+        "margin_level": 2050.10,
+        "profit": 250.50,
+        "account_number": 12345678,
+        "leverage": 100,
+        "currency": "USD",
+        "server": "Demo-Server",
+        "company": "MetaQuotes"
+    }
+
+    account_info = AccountInfo(**mt4_response)
+
+    assert account_info.balance == Decimal("10000.00")
+    assert account_info.equity == Decimal("10250.50")
+    assert account_info.account_number == 12345678
+
+
+def test_account_info_margin_level_calculation():
+    """Test T077: Verify margin level represents equity/margin ratio."""
+    from src.trading.execution.mt4_models import AccountInfo
+
+    account_info = AccountInfo(
+        balance=Decimal("10000.00"),
+        equity=Decimal("10000.00"),
+        margin=Decimal("100.00"),
+        free_margin=Decimal("9900.00"),
+        margin_level=Decimal("10000.00"),  # 10000 / 100 * 100 = 10,000%
+        profit=Decimal("0.00"),
+        account_number=12345678,
+        leverage=100,
+        currency="USD",
+        server="Test",
+        company="Test"
+    )
+
+    # Margin level should be equity/margin * 100
+    expected_margin_level = (account_info.equity / account_info.margin) * 100
+    assert abs(account_info.margin_level - expected_margin_level) < Decimal("0.01")
+
+
+def test_position_info_creation():
+    """Test T077: PositionInfo model for open positions query."""
+    from src.trading.execution.mt4_models import PositionInfo
+
+    position = PositionInfo(
+        ticket=12345,
+        symbol="CrudeOIL",
+        type="BUY",
+        volume=Decimal("0.1"),
+        open_price=Decimal("75.50"),
+        current_price=Decimal("75.75"),
+        stop_loss=Decimal("75.00"),
+        take_profit=Decimal("76.50"),
+        profit=Decimal("25.00"),
+        open_time=datetime(2025, 11, 22, 10, 0, 0),
+        magic_number=100001
+    )
+
+    assert position.ticket == 12345
+    assert position.symbol == "CrudeOIL"
+    assert position.type == "BUY"
+    assert position.volume == Decimal("0.1")
+    assert position.profit == Decimal("25.00")
+    assert position.magic_number == 100001
+
+
+def test_position_info_from_mt4_response():
+    """Test T077: PositionInfo parsing from MT4 response."""
+    from src.trading.execution.mt4_models import PositionInfo
+
+    mt4_position = {
+        "ticket": 12345,
+        "symbol": "CrudeOIL",
+        "type": "BUY",
+        "volume": 0.1,
+        "open_price": 75.50,
+        "current_price": 75.75,
+        "stop_loss": 75.00,
+        "take_profit": 76.50,
+        "profit": 25.00,
+        "open_time": "2025-11-22T10:00:00Z",
+        "magic_number": 100001
+    }
+
+    position = PositionInfo(**mt4_position)
+
+    assert position.ticket == 12345
+    assert position.volume == Decimal("0.1")
+    assert position.open_price == Decimal("75.50")
+
+
+def test_get_account_info_command():
+    """Test T077: GetAccountInfoCommand model."""
+    from src.trading.execution.mt4_models import GetAccountInfoCommand
+
+    command = GetAccountInfoCommand()
+
+    assert command.command == "get_account_info"
+    assert command.correlation_id is not None
+    assert len(command.correlation_id) == 36  # UUID format
+
+
+def test_get_open_positions_command():
+    """Test T077: GetOpenPositionsCommand model."""
+    from src.trading.execution.mt4_models import GetOpenPositionsCommand
+
+    command = GetOpenPositionsCommand()
+
+    assert command.command == "get_open_positions"
+    assert command.magic_number is None  # Optional
+
+    command_with_magic = GetOpenPositionsCommand(magic_number=100001)
+    assert command_with_magic.magic_number == 100001
