@@ -15,7 +15,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Categorical, Normal
 
-from .base import BaseForecaster, ForecastResult, ModelConfig
+from ..base import BaseForecaster, ForecastResult, ModelConfig
 
 
 class TradingAction(int, Enum):

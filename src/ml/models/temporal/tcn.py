@@ -16,7 +16,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
 
-from .base import BaseForecaster, ForecastResult, ModelConfig
+from ..base import BaseForecaster, ForecastResult, ModelConfig
 
 
 @dataclass

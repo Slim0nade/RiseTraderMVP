@@ -383,19 +383,83 @@ class FeatureEngineering:
     def merge_exogenous_features(
         self,
         df: pd.DataFrame,
-        exogenous_df: pd.DataFrame
+        exogenous_df: pd.DataFrame,
+        normalize: bool = True
     ) -> pd.DataFrame:
         """
-        Merge exogenous variables (DXY, VIX) with OHLCV data
+        Merge exogenous variables (DXY, VIX) with OHLCV data.
+
+        Performs time-alignment and optional Z-score normalization
+        per research.md TD-003.
 
         Args:
-            df: OHLCV DataFrame
-            exogenous_df: Exogenous variables DataFrame
+            df: OHLCV DataFrame with 'timestamp' index
+            exogenous_df: Exogenous variables DataFrame with columns for each symbol
+            normalize: Whether to apply Z-score normalization to exogenous features
 
         Returns:
-            Merged DataFrame
+            Merged DataFrame with exogenous features
         """
-        return df.merge(exogenous_df, on='timestamp', how='left')
+        df = df.copy()
+
+        # Ensure timestamp is index for both
+        if 'timestamp' in df.columns and df.index.name != 'timestamp':
+            df = df.set_index('timestamp')
+
+        if 'timestamp' in exogenous_df.columns and exogenous_df.index.name != 'timestamp':
+            exogenous_df = exogenous_df.set_index('timestamp')
+
+        # Merge on timestamp index (left join to keep all OHLCV rows)
+        df = df.join(exogenous_df, how='left')
+
+        # Forward fill missing exogenous values (handles minor time misalignments)
+        exogenous_cols = exogenous_df.columns.tolist()
+        df[exogenous_cols] = df[exogenous_cols].fillna(method='ffill')
+
+        # Backward fill any remaining NaNs at the start
+        df[exogenous_cols] = df[exogenous_cols].fillna(method='bfill')
+
+        # Apply Z-score normalization to exogenous variables
+        if normalize:
+            df = self.normalize_exogenous_variables(df, exogenous_cols)
+
+        return df
+
+    def normalize_exogenous_variables(
+        self,
+        df: pd.DataFrame,
+        exogenous_columns: List[str]
+    ) -> pd.DataFrame:
+        """
+        Apply Z-score normalization to exogenous variables.
+
+        Per research.md TD-003: DXY and VIX normalized using Z-score
+        to ensure comparable scales with price features.
+
+        Args:
+            df: DataFrame with exogenous features
+            exogenous_columns: List of exogenous column names
+
+        Returns:
+            DataFrame with normalized exogenous features
+        """
+        df = df.copy()
+
+        for col in exogenous_columns:
+            if col in df.columns:
+                # Z-score normalization: (x - mean) / std
+                mean = df[col].mean()
+                std = df[col].std()
+
+                if std > 0:  # Avoid division by zero
+                    df[f'{col}_normalized'] = (df[col] - mean) / std
+                    self.feature_names.append(f'{col}_normalized')
+                else:
+                    # If std is 0, feature is constant
+                    df[f'{col}_normalized'] = 0
+                    self.feature_names.append(f'{col}_normalized')
+
+        return df
 
     def create_sequences_for_lstm(
         self,
