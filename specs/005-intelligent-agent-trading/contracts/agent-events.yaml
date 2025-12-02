@@ -1,0 +1,924 @@
+# Agent Event Contracts: Intelligent Multi-Agent Trading System
+# Defines all event schemas for inter-agent communication via MCP server
+# Based on FR-017 (Typed Schemas for Agent Communication)
+
+version: "1.0.0"
+created: "2025-12-01"
+spec_reference: "../spec.md#FR-017"
+
+# ============================================================================
+# EVENT BUS ARCHITECTURE
+# ============================================================================
+
+event_bus:
+  transport: "Redis Pub/Sub"
+  protocol: "JSON-serialized Pydantic models"
+
+  patterns:
+    idempotency:
+      description: "All event handlers must be idempotent (safe to replay)"
+      mechanism: "Event deduplication using event_id + timestamp window"
+
+    ordering:
+      description: "Events within same correlation_id processed sequentially"
+      mechanism: "Redis streams with consumer groups per correlation_id"
+
+    retry:
+      description: "Failed event handlers retry with exponential backoff"
+      max_retries: 3
+      initial_delay_ms: 100
+      max_delay_ms: 5000
+
+  channels:
+    - "agent.market_data.tick"
+    - "agent.analysis.report"
+    - "agent.debate.outcome"
+    - "agent.decision.trade_intent"
+    - "agent.decision.position_size"
+    - "agent.decision.stop_loss"
+    - "agent.decision.take_profit"
+    - "agent.execution.order"
+    - "agent.execution.fill"
+    - "agent.monitoring.health"
+    - "agent.risk.alert"
+
+# ============================================================================
+# BASE EVENT SCHEMA
+# ============================================================================
+
+base_event:
+  description: "Base schema inherited by all events"
+  schema:
+    type: "object"
+    properties:
+      event_id:
+        type: "string"
+        format: "uuid"
+        description: "Unique event identifier for deduplication"
+
+      event_type:
+        type: "string"
+        description: "Event type identifier (e.g., 'new_tick', 'signal_generated')"
+
+      timestamp:
+        type: "string"
+        format: "date-time"
+        description: "Event creation timestamp (ISO 8601)"
+
+      correlation_id:
+        type: "string"
+        format: "uuid"
+        description: "Groups related events in decision pipeline"
+
+      source_agent_id:
+        type: "string"
+        format: "uuid"
+        description: "Agent that emitted this event"
+
+      source_agent_type:
+        type: "string"
+        description: "Type of agent that emitted this event"
+
+      symbol:
+        type: "string"
+        description: "Trading symbol (if applicable)"
+
+      metadata:
+        type: "object"
+        description: "Additional metadata (performance tracking, etc.)"
+        properties:
+          processing_time_ms:
+            type: "number"
+          retry_count:
+            type: "integer"
+
+    required: ["event_id", "event_type", "timestamp", "correlation_id", "source_agent_id"]
+
+# ============================================================================
+# MARKET DATA EVENTS
+# ============================================================================
+
+market_data_events:
+  new_tick:
+    description: "New market tick received (triggers analysis layer)"
+    channel: "agent.market_data.tick"
+    emitted_by: "MarketDataAgent"
+    consumed_by: ["TechnicalAnalystAgent", "FundamentalAnalystAgent", "SentimentAnalystAgent"]
+
+    schema:
+      allOf:
+        - $ref: "#/base_event"
+        - type: "object"
+          properties:
+            payload:
+              type: "object"
+              properties:
+                symbol:
+                  type: "string"
+                price:
+                  type: "number"
+                  description: "Current price"
+                bid:
+                  type: "number"
+                ask:
+                  type: "number"
+                volume:
+                  type: "number"
+                timestamp:
+                  type: "string"
+                  format: "date-time"
+              required: ["symbol", "price", "bid", "ask", "timestamp"]
+
+    example:
+      event_id: "evt-001"
+      event_type: "new_tick"
+      timestamp: "2025-12-01T10:30:00.000Z"
+      correlation_id: "corr-abc123"
+      source_agent_id: "agent-market-data-001"
+      source_agent_type: "market_data"
+      symbol: "CrudeOIL"
+      payload:
+        symbol: "CrudeOIL"
+        price: 75.20
+        bid: 75.18
+        ask: 75.22
+        volume: 1250
+        timestamp: "2025-12-01T10:30:00.000Z"
+
+# ============================================================================
+# ANALYSIS LAYER EVENTS
+# ============================================================================
+
+analysis_events:
+  technical_report_generated:
+    description: "Technical analysis report generated"
+    channel: "agent.analysis.report"
+    emitted_by: "TechnicalAnalystAgent"
+    consumed_by: ["BullResearcherAgent", "BearResearcherAgent", "TradeDecisionAgent"]
+
+    schema:
+      allOf:
+        - $ref: "#/base_event"
+        - type: "object"
+          properties:
+            payload:
+              type: "object"
+              properties:
+                report_id:
+                  type: "string"
+                  format: "uuid"
+                ml_forecasts:
+                  type: "object"
+                  description: "ML model predictions"
+                trend:
+                  type: "string"
+                  enum: ["BULLISH", "BEARISH", "NEUTRAL"]
+                support_levels:
+                  type: "array"
+                  items:
+                    type: "number"
+                resistance_levels:
+                  type: "array"
+                  items:
+                    type: "number"
+                key_indicators:
+                  type: "object"
+                bias:
+                  type: "string"
+                  enum: ["BULLISH", "BEARISH", "NEUTRAL"]
+                confidence:
+                  type: "number"
+                  minimum: 0.0
+                  maximum: 1.0
+                summary:
+                  type: "string"
+              required: ["report_id", "ml_forecasts", "bias", "confidence", "summary"]
+
+  fundamental_report_generated:
+    description: "Fundamental analysis report generated"
+    channel: "agent.analysis.report"
+    emitted_by: "FundamentalAnalystAgent"
+    consumed_by: ["BullResearcherAgent", "BearResearcherAgent", "TradeDecisionAgent"]
+
+    schema:
+      allOf:
+        - $ref: "#/base_event"
+        - type: "object"
+          properties:
+            payload:
+              type: "object"
+              properties:
+                report_id:
+                  type: "string"
+                  format: "uuid"
+                upcoming_events:
+                  type: "array"
+                  items:
+                    type: "object"
+                correlation_analysis:
+                  type: "object"
+                bias:
+                  type: "string"
+                  enum: ["BULLISH", "BEARISH", "NEUTRAL"]
+                confidence:
+                  type: "number"
+                summary:
+                  type: "string"
+              required: ["report_id", "bias", "confidence", "summary"]
+
+  sentiment_report_generated:
+    description: "Sentiment analysis report generated"
+    channel: "agent.analysis.report"
+    emitted_by: "SentimentAnalystAgent"
+    consumed_by: ["BullResearcherAgent", "BearResearcherAgent", "TradeDecisionAgent"]
+
+    schema:
+      allOf:
+        - $ref: "#/base_event"
+        - type: "object"
+          properties:
+            payload:
+              type: "object"
+              properties:
+                report_id:
+                  type: "string"
+                  format: "uuid"
+                cot_data:
+                  type: "object"
+                retail_sentiment:
+                  type: "object"
+                bias:
+                  type: "string"
+                  enum: ["BULLISH", "BEARISH", "NEUTRAL"]
+                confidence:
+                  type: "number"
+                contrarian_signal:
+                  type: "boolean"
+                summary:
+                  type: "string"
+              required: ["report_id", "bias", "confidence", "summary"]
+
+# ============================================================================
+# DEBATE LAYER EVENTS
+# ============================================================================
+
+debate_events:
+  debate_completed:
+    description: "Adversarial debate completed between Bull and Bear researchers"
+    channel: "agent.debate.outcome"
+    emitted_by: "MCPServer (coordinates BullResearcherAgent + BearResearcherAgent)"
+    consumed_by: ["TradeDecisionAgent"]
+
+    schema:
+      allOf:
+        - $ref: "#/base_event"
+        - type: "object"
+          properties:
+            payload:
+              type: "object"
+              properties:
+                debate_id:
+                  type: "string"
+                  format: "uuid"
+                bull_agent_id:
+                  type: "string"
+                  format: "uuid"
+                bear_agent_id:
+                  type: "string"
+                  format: "uuid"
+                bull_case:
+                  type: "string"
+                  minLength: 200
+                bear_case:
+                  type: "string"
+                  minLength: 200
+                bull_strength:
+                  type: "number"
+                  minimum: 0.0
+                  maximum: 1.0
+                bear_strength:
+                  type: "number"
+                  minimum: 0.0
+                  maximum: 1.0
+                consensus:
+                  type: "string"
+                  enum: ["BULLISH", "BEARISH", "NEUTRAL"]
+                confidence:
+                  type: "number"
+                  minimum: 0.0
+                  maximum: 1.0
+                synthesis:
+                  type: "string"
+                  minLength: 100
+                risk_warnings:
+                  type: "array"
+                  items:
+                    type: "string"
+                debate_duration_ms:
+                  type: "integer"
+              required: ["debate_id", "bull_case", "bear_case", "consensus", "confidence", "synthesis"]
+
+    example:
+      event_id: "evt-debate-001"
+      event_type: "debate_completed"
+      timestamp: "2025-12-01T10:30:03.000Z"
+      correlation_id: "corr-abc123"
+      source_agent_id: "mcp-server"
+      source_agent_type: "coordination"
+      symbol: "CrudeOIL"
+      payload:
+        debate_id: "debate-xyz789"
+        bull_agent_id: "agent-bull-crude-001"
+        bear_agent_id: "agent-bear-crude-001"
+        bull_case: "Strong technical setup: RSI reversal..."
+        bear_case: "Counterarguments: RSI reversal occurred..."
+        bull_strength: 0.72
+        bear_strength: 0.58
+        consensus: "BULLISH"
+        confidence: 0.64
+        synthesis: "Bull case prevails with modest edge..."
+        risk_warnings:
+          - "200-day MA support tested multiple times"
+          - "China demand concerns"
+        debate_duration_ms: 2450
+
+# ============================================================================
+# DECISION LAYER EVENTS
+# ============================================================================
+
+decision_events:
+  trade_intent_generated:
+    description: "Trade decision made (LONG/SHORT/NO_TRADE)"
+    channel: "agent.decision.trade_intent"
+    emitted_by: "TradeDecisionAgent"
+    consumed_by: ["PositionSizingAgent", "RiskOverseerAgent"]
+
+    schema:
+      allOf:
+        - $ref: "#/base_event"
+        - type: "object"
+          properties:
+            payload:
+              type: "object"
+              properties:
+                decision_id:
+                  type: "string"
+                  format: "uuid"
+                direction:
+                  type: "string"
+                  enum: ["LONG", "SHORT", "NO_TRADE"]
+                conviction:
+                  type: "number"
+                  minimum: 0.0
+                  maximum: 1.0
+                rationale:
+                  type: "string"
+                  minLength: 50
+                key_factors:
+                  type: "array"
+                  items:
+                    type: "string"
+                  minItems: 3
+                  maxItems: 5
+              required: ["decision_id", "direction", "conviction", "rationale", "key_factors"]
+
+    example:
+      event_id: "evt-intent-001"
+      event_type: "trade_intent_generated"
+      timestamp: "2025-12-01T10:30:00.500Z"
+      correlation_id: "corr-abc123"
+      source_agent_id: "agent-decision-crude-001"
+      source_agent_type: "trade_decision"
+      symbol: "CrudeOIL"
+      payload:
+        decision_id: "decision-001"
+        direction: "LONG"
+        conviction: 0.78
+        rationale: "Strong bullish technical setup with RSI reversal..."
+        key_factors:
+          - "RSI reversal from oversold"
+          - "ML forecast 68% up probability"
+          - "Support at 200-day MA"
+
+  position_size_calculated:
+    description: "Position size calculated using Kelly + adjustments"
+    channel: "agent.decision.position_size"
+    emitted_by: "PositionSizingAgent"
+    consumed_by: ["StopLossAgent", "TakeProfitAgent", "RiskOverseerAgent"]
+
+    schema:
+      allOf:
+        - $ref: "#/base_event"
+        - type: "object"
+          properties:
+            payload:
+              type: "object"
+              properties:
+                sizing_id:
+                  type: "string"
+                  format: "uuid"
+                trade_intent_id:
+                  type: "string"
+                  format: "uuid"
+                allocated_capital:
+                  type: "number"
+                kelly_fraction:
+                  type: "number"
+                regime_adjustment:
+                  type: "number"
+                conviction_adjustment:
+                  type: "number"
+                correlation_adjustment:
+                  type: "number"
+                position_size_usd:
+                  type: "number"
+                position_size_pct:
+                  type: "number"
+                lot_size:
+                  type: "number"
+                rationale:
+                  type: "string"
+              required: ["sizing_id", "trade_intent_id", "position_size_usd", "lot_size", "rationale"]
+
+  stop_loss_calculated:
+    description: "Stop-loss calculated using market structure + ATR"
+    channel: "agent.decision.stop_loss"
+    emitted_by: "StopLossAgent"
+    consumed_by: ["ExecutionAgent", "RiskOverseerAgent"]
+
+    schema:
+      allOf:
+        - $ref: "#/base_event"
+        - type: "object"
+          properties:
+            payload:
+              type: "object"
+              properties:
+                stop_id:
+                  type: "string"
+                  format: "uuid"
+                trade_intent_id:
+                  type: "string"
+                  format: "uuid"
+                position_size_id:
+                  type: "string"
+                  format: "uuid"
+                entry_price:
+                  type: "number"
+                direction:
+                  type: "string"
+                  enum: ["LONG", "SHORT"]
+                stop_price:
+                  type: "number"
+                stop_distance_pct:
+                  type: "number"
+                atr_multiplier:
+                  type: "number"
+                nearest_support:
+                  type: "number"
+                nearest_resistance:
+                  type: "number"
+                structure_type:
+                  type: "string"
+                  enum: ["swing_low", "swing_high", "pivot", "liquidity_cluster", "atr_based"]
+                stop_hit_probability:
+                  type: "number"
+                is_trailing:
+                  type: "boolean"
+                trailing_offset_pct:
+                  type: "number"
+                rationale:
+                  type: "string"
+              required: ["stop_id", "stop_price", "stop_distance_pct", "rationale"]
+
+  take_profit_calculated:
+    description: "Take-profit targets calculated from ML forecast distributions"
+    channel: "agent.decision.take_profit"
+    emitted_by: "TakeProfitAgent"
+    consumed_by: ["ExecutionAgent", "RiskOverseerAgent"]
+
+    schema:
+      allOf:
+        - $ref: "#/base_event"
+        - type: "object"
+          properties:
+            payload:
+              type: "object"
+              properties:
+                tp_id:
+                  type: "string"
+                  format: "uuid"
+                trade_intent_id:
+                  type: "string"
+                  format: "uuid"
+                position_size_id:
+                  type: "string"
+                  format: "uuid"
+                stop_loss_id:
+                  type: "string"
+                  format: "uuid"
+                entry_price:
+                  type: "number"
+                direction:
+                  type: "string"
+                  enum: ["LONG", "SHORT"]
+                targets:
+                  type: "array"
+                  items:
+                    type: "object"
+                    properties:
+                      price:
+                        type: "number"
+                      size_pct:
+                        type: "number"
+                      probability:
+                        type: "number"
+                      rationale:
+                        type: "string"
+                  minItems: 1
+                  maxItems: 3
+                risk_reward_ratio:
+                  type: "number"
+                  minimum: 1.0
+                expected_value:
+                  type: "number"
+                forecast_horizon:
+                  type: "string"
+                  enum: ["1h", "4h", "1d"]
+                rationale:
+                  type: "string"
+              required: ["tp_id", "targets", "risk_reward_ratio", "rationale"]
+
+# ============================================================================
+# EXECUTION LAYER EVENTS
+# ============================================================================
+
+execution_events:
+  trade_validated:
+    description: "Trade validated by Risk Overseer (approved for execution)"
+    channel: "agent.execution.order"
+    emitted_by: "RiskOverseerAgent"
+    consumed_by: ["ExecutionAgent"]
+
+    schema:
+      allOf:
+        - $ref: "#/base_event"
+        - type: "object"
+          properties:
+            payload:
+              type: "object"
+              properties:
+                validation_id:
+                  type: "string"
+                  format: "uuid"
+                trade_intent_id:
+                  type: "string"
+                  format: "uuid"
+                position_size_id:
+                  type: "string"
+                  format: "uuid"
+                stop_loss_id:
+                  type: "string"
+                  format: "uuid"
+                take_profit_id:
+                  type: "string"
+                  format: "uuid"
+                approved:
+                  type: "boolean"
+                rejection_reason:
+                  type: "string"
+                risk_checks:
+                  type: "object"
+                  properties:
+                    position_limit_ok:
+                      type: "boolean"
+                    portfolio_limit_ok:
+                      type: "boolean"
+                    risk_reward_ok:
+                      type: "boolean"
+                    correlation_ok:
+                      type: "boolean"
+              required: ["validation_id", "approved", "risk_checks"]
+
+    example:
+      event_id: "evt-validated-001"
+      event_type: "trade_validated"
+      timestamp: "2025-12-01T10:30:09.500Z"
+      correlation_id: "corr-abc123"
+      source_agent_id: "agent-risk-overseer-001"
+      source_agent_type: "risk_overseer"
+      symbol: "CrudeOIL"
+      payload:
+        validation_id: "validation-001"
+        trade_intent_id: "decision-001"
+        position_size_id: "sizing-001"
+        stop_loss_id: "stop-001"
+        take_profit_id: "tp-001"
+        approved: true
+        risk_checks:
+          position_limit_ok: true
+          portfolio_limit_ok: true
+          risk_reward_ok: true
+          correlation_ok: true
+
+  trade_rejected:
+    description: "Trade rejected by Risk Overseer"
+    channel: "agent.execution.order"
+    emitted_by: "RiskOverseerAgent"
+    consumed_by: ["TradeDecisionAgent", "PerformanceMonitorAgent"]
+
+    schema:
+      allOf:
+        - $ref: "#/base_event"
+        - type: "object"
+          properties:
+            payload:
+              type: "object"
+              properties:
+                validation_id:
+                  type: "string"
+                  format: "uuid"
+                trade_intent_id:
+                  type: "string"
+                  format: "uuid"
+                approved:
+                  type: "boolean"
+                  enum: [false]
+                rejection_reason:
+                  type: "string"
+                failed_checks:
+                  type: "array"
+                  items:
+                    type: "string"
+              required: ["validation_id", "approved", "rejection_reason", "failed_checks"]
+
+  order_submitted:
+    description: "Order submitted to MT4 via ZMQ"
+    channel: "agent.execution.order"
+    emitted_by: "ExecutionAgent"
+    consumed_by: ["PositionMonitorAgent", "PerformanceMonitorAgent"]
+
+    schema:
+      allOf:
+        - $ref: "#/base_event"
+        - type: "object"
+          properties:
+            payload:
+              type: "object"
+              properties:
+                order_id:
+                  type: "string"
+                  format: "uuid"
+                mt4_ticket:
+                  type: "integer"
+                  description: "MT4 order ticket number"
+                direction:
+                  type: "string"
+                  enum: ["BUY", "SELL"]
+                lot_size:
+                  type: "number"
+                entry_price:
+                  type: "number"
+                stop_loss:
+                  type: "number"
+                take_profit:
+                  type: "array"
+                  items:
+                    type: "number"
+                order_type:
+                  type: "string"
+                  enum: ["MARKET", "LIMIT", "STOP"]
+                slippage_pips:
+                  type: "number"
+                submission_time:
+                  type: "string"
+                  format: "date-time"
+              required: ["order_id", "direction", "lot_size", "entry_price", "stop_loss"]
+
+  order_filled:
+    description: "Order fill confirmed from MT4"
+    channel: "agent.execution.fill"
+    emitted_by: "ExecutionAgent"
+    consumed_by: ["PositionMonitorAgent", "PerformanceMonitorAgent"]
+
+    schema:
+      allOf:
+        - $ref: "#/base_event"
+        - type: "object"
+          properties:
+            payload:
+              type: "object"
+              properties:
+                order_id:
+                  type: "string"
+                  format: "uuid"
+                mt4_ticket:
+                  type: "integer"
+                fill_price:
+                  type: "number"
+                fill_time:
+                  type: "string"
+                  format: "date-time"
+                actual_slippage_pips:
+                  type: "number"
+                commission:
+                  type: "number"
+                swap:
+                  type: "number"
+              required: ["order_id", "mt4_ticket", "fill_price", "fill_time"]
+
+  position_updated:
+    description: "Position update (trailing stop, partial close, etc.)"
+    channel: "agent.execution.fill"
+    emitted_by: "PositionMonitorAgent"
+    consumed_by: ["PerformanceMonitorAgent", "RiskOverseerAgent"]
+
+    schema:
+      allOf:
+        - $ref: "#/base_event"
+        - type: "object"
+          properties:
+            payload:
+              type: "object"
+              properties:
+                position_id:
+                  type: "string"
+                  format: "uuid"
+                mt4_ticket:
+                  type: "integer"
+                update_type:
+                  type: "string"
+                  enum: ["TRAILING_STOP", "PARTIAL_CLOSE", "TARGET_HIT", "STOP_HIT", "MANUAL_CLOSE"]
+                current_price:
+                  type: "number"
+                new_stop_loss:
+                  type: "number"
+                closed_lots:
+                  type: "number"
+                remaining_lots:
+                  type: "number"
+                realized_pnl:
+                  type: "number"
+                unrealized_pnl:
+                  type: "number"
+              required: ["position_id", "mt4_ticket", "update_type", "current_price"]
+
+# ============================================================================
+# MONITORING & SUPERVISORY EVENTS
+# ============================================================================
+
+monitoring_events:
+  agent_health_check:
+    description: "Agent health status update"
+    channel: "agent.monitoring.health"
+    emitted_by: "All agents"
+    consumed_by: ["MCPServer", "MonitoringService"]
+
+    schema:
+      allOf:
+        - $ref: "#/base_event"
+        - type: "object"
+          properties:
+            payload:
+              type: "object"
+              properties:
+                agent_id:
+                  type: "string"
+                  format: "uuid"
+                agent_type:
+                  type: "string"
+                status:
+                  type: "string"
+                  enum: ["HEALTHY", "DEGRADED", "ERROR"]
+                current_task:
+                  type: "string"
+                last_heartbeat:
+                  type: "string"
+                  format: "date-time"
+                metrics:
+                  type: "object"
+                  properties:
+                    decisions_last_hour:
+                      type: "integer"
+                    avg_latency_ms:
+                      type: "number"
+                    error_count:
+                      type: "integer"
+                    llm_cost_last_hour:
+                      type: "number"
+              required: ["agent_id", "agent_type", "status", "last_heartbeat"]
+
+  risk_alert:
+    description: "Risk alert triggered (portfolio limits, circuit breaker, etc.)"
+    channel: "agent.risk.alert"
+    emitted_by: "RiskOverseerAgent"
+    consumed_by: ["MCPServer", "AllAgents", "AlertingService"]
+
+    schema:
+      allOf:
+        - $ref: "#/base_event"
+        - type: "object"
+          properties:
+            payload:
+              type: "object"
+              properties:
+                alert_id:
+                  type: "string"
+                  format: "uuid"
+                severity:
+                  type: "string"
+                  enum: ["INFO", "WARNING", "CRITICAL", "EMERGENCY"]
+                alert_type:
+                  type: "string"
+                  enum: [
+                    "POSITION_LIMIT_EXCEEDED",
+                    "PORTFOLIO_LIMIT_EXCEEDED",
+                    "DAILY_LOSS_LIMIT",
+                    "CORRELATION_SPIKE",
+                    "CIRCUIT_BREAKER_TRIGGERED",
+                    "MARKET_VOLATILITY_EXTREME"
+                  ]
+                message:
+                  type: "string"
+                current_value:
+                  type: "number"
+                threshold_value:
+                  type: "number"
+                action_taken:
+                  type: "string"
+                  enum: ["NONE", "HALT_TRADING", "REDUCE_POSITIONS", "CLOSE_ALL_POSITIONS"]
+              required: ["alert_id", "severity", "alert_type", "message"]
+
+    example:
+      event_id: "evt-alert-001"
+      event_type: "risk_alert"
+      timestamp: "2025-12-01T15:30:00.000Z"
+      correlation_id: "corr-xyz789"
+      source_agent_id: "agent-risk-overseer-001"
+      source_agent_type: "risk_overseer"
+      payload:
+        alert_id: "alert-001"
+        severity: "CRITICAL"
+        alert_type: "DAILY_LOSS_LIMIT"
+        message: "Daily loss limit exceeded: -$5,200 / -$5,000 threshold"
+        current_value: -5200.0
+        threshold_value: -5000.0
+        action_taken: "HALT_TRADING"
+
+# ============================================================================
+# EVENT HANDLING STANDARDS
+# ============================================================================
+
+event_handling_standards:
+  idempotency:
+    description: "All event handlers must be idempotent"
+    implementation: |
+      - Store processed event_ids in Redis with TTL (10 min)
+      - Check event_id before processing
+      - If already processed, skip (log duplicate)
+
+  ordering:
+    description: "Events with same correlation_id processed sequentially"
+    implementation: |
+      - Use Redis Streams with consumer groups
+      - Group by correlation_id
+      - Process in timestamp order
+
+  error_handling:
+    description: "Failed event handlers retry with exponential backoff"
+    implementation: |
+      - Max 3 retries
+      - Initial delay: 100ms
+      - Exponential backoff: 2x per retry
+      - Max delay: 5000ms
+      - After max retries, send to dead-letter queue
+
+  circuit_breaker:
+    description: "Prevent event storms"
+    implementation: |
+      - Track event rate per channel (events/second)
+      - If rate > threshold (100 events/sec), open circuit
+      - Circuit open: Drop events, log warning
+      - Auto-reset after 60 seconds
+
+  monitoring:
+    prometheus_metrics:
+      - "agent_event_published_total"
+      - "agent_event_consumed_total"
+      - "agent_event_processing_duration_seconds"
+      - "agent_event_error_total"
+      - "agent_event_duplicate_total"
+      - "agent_event_circuit_breaker_state"
+
+    alerts:
+      - name: "High Event Error Rate"
+        condition: "event_error_rate > 0.05"  # 5% error rate
+        severity: "warning"
+
+      - name: "Event Processing Lag"
+        condition: "event_lag_seconds > 5"
+        severity: "critical"
+
+      - name: "Event Circuit Breaker Open"
+        condition: "circuit_breaker_state == OPEN"
+        severity: "critical"

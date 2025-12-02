@@ -1,0 +1,871 @@
+# MCP Tool Contracts: Intelligent Multi-Agent Trading System
+# Defines all MCP tool interfaces that agents can call
+# Based on FR-019 (MCP Integration Protocol)
+
+version: "1.0.0"
+created: "2025-12-01"
+spec_reference: "../spec.md#FR-019"
+
+# ============================================================================
+# ML FORECAST TOOLS
+# ============================================================================
+
+ml_forecasts:
+  get_tcn_forecast:
+    description: "Get TCN model forecast with confidence scores and uncertainty quantification"
+    category: "ml_forecast"
+    performance:
+      timeout_ms: 100
+      cache_ttl_seconds: 300
+      circuit_breaker_threshold: 5
+
+    input:
+      type: "object"
+      properties:
+        symbol:
+          type: "string"
+          description: "Trading symbol (e.g., CrudeOIL, Gold)"
+          pattern: "^[A-Z][a-zA-Z0-9]{1,19}$"
+          required: true
+
+        horizon:
+          type: "string"
+          description: "Forecast horizon"
+          enum: ["1h", "4h", "1d"]
+          default: "1h"
+          required: true
+
+        confidence_threshold:
+          type: "number"
+          description: "Minimum confidence threshold (0-1)"
+          minimum: 0.0
+          maximum: 1.0
+          default: 0.7
+          required: false
+
+        include_uncertainty:
+          type: "boolean"
+          description: "Include uncertainty quantification (prediction intervals)"
+          default: true
+          required: false
+
+      required: ["symbol", "horizon"]
+
+    output:
+      type: "object"
+      properties:
+        symbol:
+          type: "string"
+          description: "Trading symbol"
+
+        horizon:
+          type: "string"
+          description: "Forecast horizon"
+
+        predictions:
+          type: "array"
+          description: "Predicted prices for next N timesteps"
+          items:
+            type: "number"
+
+        confidence_scores:
+          type: "array"
+          description: "Confidence scores per prediction (0-1)"
+          items:
+            type: "number"
+            minimum: 0.0
+            maximum: 1.0
+
+        direction_prob:
+          type: "number"
+          description: "Probability of upward movement (0-1)"
+          minimum: 0.0
+          maximum: 1.0
+
+        uncertainty_bounds:
+          type: "object"
+          description: "Prediction intervals (optional if include_uncertainty=true)"
+          properties:
+            lower_95:
+              type: "array"
+              items:
+                type: "number"
+            upper_95:
+              type: "array"
+              items:
+                type: "number"
+
+        inference_time_ms:
+          type: "number"
+          description: "Model inference time in milliseconds"
+
+        model_version:
+          type: "string"
+          description: "TCN model version"
+
+      required: ["symbol", "predictions", "confidence_scores", "direction_prob", "inference_time_ms"]
+
+    example:
+      input:
+        symbol: "CrudeOIL"
+        horizon: "4h"
+        confidence_threshold: 0.7
+        include_uncertainty: true
+
+      output:
+        symbol: "CrudeOIL"
+        horizon: "4h"
+        predictions: [75.42, 75.68, 75.91, 76.15]
+        confidence_scores: [0.82, 0.78, 0.74, 0.68]
+        direction_prob: 0.68
+        uncertainty_bounds:
+          lower_95: [73.85, 74.02, 74.18, 74.35]
+          upper_95: [76.99, 77.34, 77.64, 77.95]
+        inference_time_ms: 45.2
+        model_version: "tcn_v1.2.0"
+
+  get_tft_prediction:
+    description: "Get TFT (Temporal Fusion Transformer) prediction with attention weights"
+    category: "ml_forecast"
+    performance:
+      timeout_ms: 150
+      cache_ttl_seconds: 300
+      circuit_breaker_threshold: 5
+
+    input:
+      type: "object"
+      properties:
+        symbol:
+          type: "string"
+          required: true
+
+        horizon:
+          type: "string"
+          enum: ["1h", "4h", "1d"]
+          required: true
+
+        include_attention:
+          type: "boolean"
+          description: "Include attention weights for interpretability"
+          default: false
+          required: false
+
+      required: ["symbol", "horizon"]
+
+    output:
+      type: "object"
+      properties:
+        symbol:
+          type: "string"
+
+        horizon:
+          type: "string"
+
+        predictions:
+          type: "array"
+          items:
+            type: "number"
+
+        quantiles:
+          type: "object"
+          description: "Quantile predictions (p10, p25, p50, p75, p90)"
+          properties:
+            p10:
+              type: "array"
+              items:
+                type: "number"
+            p25:
+              type: "array"
+              items:
+                type: "number"
+            p50:
+              type: "array"
+              items:
+                type: "number"
+            p75:
+              type: "array"
+              items:
+                type: "number"
+            p90:
+              type: "array"
+              items:
+                type: "number"
+
+        attention_weights:
+          type: "object"
+          description: "Attention weights (optional if include_attention=true)"
+          properties:
+            top_features:
+              type: "array"
+              items:
+                type: "object"
+                properties:
+                  feature_name:
+                    type: "string"
+                  weight:
+                    type: "number"
+
+        inference_time_ms:
+          type: "number"
+
+        model_version:
+          type: "string"
+
+      required: ["symbol", "predictions", "quantiles", "inference_time_ms"]
+
+  get_fedformer_regime:
+    description: "Get FEDformer regime classification (trending, mean-reverting, volatile)"
+    category: "ml_forecast"
+    performance:
+      timeout_ms: 100
+      cache_ttl_seconds: 300
+      circuit_breaker_threshold: 5
+
+    input:
+      type: "object"
+      properties:
+        symbol:
+          type: "string"
+          required: true
+
+        lookback_periods:
+          type: "integer"
+          description: "Number of periods to analyze for regime"
+          minimum: 50
+          maximum: 500
+          default: 100
+          required: false
+
+      required: ["symbol"]
+
+    output:
+      type: "object"
+      properties:
+        symbol:
+          type: "string"
+
+        regime:
+          type: "string"
+          enum: ["TRENDING_BULLISH", "TRENDING_BEARISH", "MEAN_REVERTING", "VOLATILE", "TRANSITIONING"]
+          description: "Current market regime"
+
+        regime_confidence:
+          type: "number"
+          description: "Confidence in regime classification (0-1)"
+          minimum: 0.0
+          maximum: 1.0
+
+        regime_duration_periods:
+          type: "integer"
+          description: "How long current regime has persisted"
+
+        transition_probability:
+          type: "number"
+          description: "Probability of regime change in next period (0-1)"
+          minimum: 0.0
+          maximum: 1.0
+
+        volatility_percentile:
+          type: "number"
+          description: "Current volatility percentile (0-100)"
+          minimum: 0.0
+          maximum: 100.0
+
+        inference_time_ms:
+          type: "number"
+
+        model_version:
+          type: "string"
+
+      required: ["symbol", "regime", "regime_confidence", "inference_time_ms"]
+
+    example:
+      input:
+        symbol: "CrudeOIL"
+        lookback_periods: 100
+
+      output:
+        symbol: "CrudeOIL"
+        regime: "TRENDING_BULLISH"
+        regime_confidence: 0.82
+        regime_duration_periods: 24
+        transition_probability: 0.15
+        volatility_percentile: 68.5
+        inference_time_ms: 52.3
+        model_version: "fedformer_v1.0.0"
+
+# ============================================================================
+# CALCULATION TOOLS
+# ============================================================================
+
+calculations:
+  calculate_kelly:
+    description: "Calculate Kelly criterion position size based on win probability and payoff ratio"
+    category: "calculation"
+    performance:
+      timeout_ms: 50
+      cache_ttl_seconds: 60
+      circuit_breaker_threshold: 10
+
+    input:
+      type: "object"
+      properties:
+        win_probability:
+          type: "number"
+          description: "Probability of winning trade (0-1)"
+          minimum: 0.0
+          maximum: 1.0
+          required: true
+
+        win_loss_ratio:
+          type: "number"
+          description: "Average win / average loss ratio"
+          minimum: 0.1
+          maximum: 10.0
+          required: true
+
+        max_kelly_fraction:
+          type: "number"
+          description: "Maximum Kelly fraction (safety cap, e.g., 0.25 for quarter-Kelly)"
+          minimum: 0.1
+          maximum: 1.0
+          default: 0.25
+          required: false
+
+        bankroll:
+          type: "number"
+          description: "Total allocated capital"
+          minimum: 0.0
+          required: true
+
+      required: ["win_probability", "win_loss_ratio", "bankroll"]
+
+    output:
+      type: "object"
+      properties:
+        kelly_fraction:
+          type: "number"
+          description: "Raw Kelly fraction (0-1)"
+          minimum: 0.0
+          maximum: 1.0
+
+        capped_kelly_fraction:
+          type: "number"
+          description: "Capped Kelly fraction after applying max_kelly_fraction"
+          minimum: 0.0
+          maximum: 1.0
+
+        recommended_position_size:
+          type: "number"
+          description: "Recommended position size in currency units"
+
+        recommended_position_pct:
+          type: "number"
+          description: "Recommended position size as % of bankroll"
+
+        expected_growth_rate:
+          type: "number"
+          description: "Expected geometric growth rate per trade"
+
+        calculation_time_ms:
+          type: "number"
+
+      required: ["kelly_fraction", "capped_kelly_fraction", "recommended_position_size", "recommended_position_pct"]
+
+    example:
+      input:
+        win_probability: 0.55
+        win_loss_ratio: 1.8
+        max_kelly_fraction: 0.25
+        bankroll: 40000.0
+
+      output:
+        kelly_fraction: 0.35
+        capped_kelly_fraction: 0.25
+        recommended_position_size: 10000.0
+        recommended_position_pct: 25.0
+        expected_growth_rate: 0.042
+        calculation_time_ms: 2.1
+
+  calculate_atr:
+    description: "Calculate Average True Range (ATR) for volatility-based position sizing and stops"
+    category: "calculation"
+    performance:
+      timeout_ms: 50
+      cache_ttl_seconds: 300
+      circuit_breaker_threshold: 10
+
+    input:
+      type: "object"
+      properties:
+        symbol:
+          type: "string"
+          required: true
+
+        period:
+          type: "integer"
+          description: "ATR period (e.g., 14)"
+          minimum: 5
+          maximum: 100
+          default: 14
+          required: false
+
+        timeframe:
+          type: "string"
+          description: "Timeframe for ATR calculation"
+          enum: ["1h", "4h", "1d"]
+          default: "4h"
+          required: false
+
+      required: ["symbol"]
+
+    output:
+      type: "object"
+      properties:
+        symbol:
+          type: "string"
+
+        atr_value:
+          type: "number"
+          description: "Current ATR value in price units"
+
+        atr_percentage:
+          type: "number"
+          description: "ATR as % of current price"
+
+        current_price:
+          type: "number"
+
+        period:
+          type: "integer"
+
+        timeframe:
+          type: "string"
+
+        calculation_time_ms:
+          type: "number"
+
+      required: ["symbol", "atr_value", "atr_percentage", "current_price"]
+
+    example:
+      input:
+        symbol: "CrudeOIL"
+        period: 14
+        timeframe: "4h"
+
+      output:
+        symbol: "CrudeOIL"
+        atr_value: 1.14
+        atr_percentage: 1.52
+        current_price: 75.20
+        period: 14
+        timeframe: "4h"
+        calculation_time_ms: 8.5
+
+# ============================================================================
+# MARKET STRUCTURE TOOLS
+# ============================================================================
+
+market_structure:
+  get_support_resistance:
+    description: "Identify key support and resistance levels using pivot points and volume profiles"
+    category: "market_structure"
+    performance:
+      timeout_ms: 100
+      cache_ttl_seconds: 300
+      circuit_breaker_threshold: 5
+
+    input:
+      type: "object"
+      properties:
+        symbol:
+          type: "string"
+          required: true
+
+        lookback_periods:
+          type: "integer"
+          description: "Number of periods to analyze"
+          minimum: 50
+          maximum: 500
+          default: 100
+          required: false
+
+        timeframe:
+          type: "string"
+          enum: ["1h", "4h", "1d"]
+          default: "4h"
+          required: false
+
+        max_levels:
+          type: "integer"
+          description: "Maximum number of levels to return"
+          minimum: 3
+          maximum: 10
+          default: 5
+          required: false
+
+      required: ["symbol"]
+
+    output:
+      type: "object"
+      properties:
+        symbol:
+          type: "string"
+
+        current_price:
+          type: "number"
+
+        support_levels:
+          type: "array"
+          description: "Support levels below current price"
+          items:
+            type: "object"
+            properties:
+              price:
+                type: "number"
+              strength:
+                type: "number"
+                description: "Strength score (0-1)"
+              type:
+                type: "string"
+                enum: ["pivot", "swing_low", "volume_profile"]
+              touches:
+                type: "integer"
+                description: "Number of times price tested this level"
+
+        resistance_levels:
+          type: "array"
+          description: "Resistance levels above current price"
+          items:
+            type: "object"
+            properties:
+              price:
+                type: "number"
+              strength:
+                type: "number"
+              type:
+                type: "string"
+                enum: ["pivot", "swing_high", "volume_profile"]
+              touches:
+                type: "integer"
+
+        nearest_support:
+          type: "number"
+          description: "Nearest support level below current price"
+
+        nearest_resistance:
+          type: "number"
+          description: "Nearest resistance level above current price"
+
+        calculation_time_ms:
+          type: "number"
+
+      required: ["symbol", "current_price", "support_levels", "resistance_levels", "nearest_support", "nearest_resistance"]
+
+    example:
+      input:
+        symbol: "CrudeOIL"
+        lookback_periods: 100
+        timeframe: "4h"
+        max_levels: 5
+
+      output:
+        symbol: "CrudeOIL"
+        current_price: 75.20
+        support_levels:
+          - price: 73.10
+            strength: 0.85
+            type: "swing_low"
+            touches: 3
+          - price: 72.50
+            strength: 0.92
+            type: "pivot"
+            touches: 5
+          - price: 71.80
+            strength: 0.68
+            type: "volume_profile"
+            touches: 2
+        resistance_levels:
+          - price: 76.80
+            strength: 0.78
+            type: "swing_high"
+            touches: 2
+          - price: 77.50
+            strength: 0.88
+            type: "pivot"
+            touches: 4
+        nearest_support: 73.10
+        nearest_resistance: 76.80
+        calculation_time_ms: 68.4
+
+  detect_liquidity_clusters:
+    description: "Detect liquidity clusters (accumulation zones) for optimal entry/exit"
+    category: "market_structure"
+    performance:
+      timeout_ms: 100
+      cache_ttl_seconds: 300
+      circuit_breaker_threshold: 5
+
+    input:
+      type: "object"
+      properties:
+        symbol:
+          type: "string"
+          required: true
+
+        lookback_periods:
+          type: "integer"
+          minimum: 50
+          maximum: 500
+          default: 100
+          required: false
+
+        min_cluster_strength:
+          type: "number"
+          description: "Minimum cluster strength threshold (0-1)"
+          minimum: 0.0
+          maximum: 1.0
+          default: 0.6
+          required: false
+
+      required: ["symbol"]
+
+    output:
+      type: "object"
+      properties:
+        symbol:
+          type: "string"
+
+        clusters:
+          type: "array"
+          items:
+            type: "object"
+            properties:
+              price_level:
+                type: "number"
+              cluster_strength:
+                type: "number"
+                minimum: 0.0
+                maximum: 1.0
+              volume_concentration:
+                type: "number"
+                description: "% of total volume in this cluster"
+              side:
+                type: "string"
+                enum: ["BUY", "SELL", "NEUTRAL"]
+                description: "Dominant order flow direction"
+
+        high_liquidity_zones:
+          type: "array"
+          description: "Price ranges with high liquidity"
+          items:
+            type: "object"
+            properties:
+              lower_bound:
+                type: "number"
+              upper_bound:
+                type: "number"
+              strength:
+                type: "number"
+
+        calculation_time_ms:
+          type: "number"
+
+      required: ["symbol", "clusters"]
+
+# ============================================================================
+# DATA RETRIEVAL TOOLS
+# ============================================================================
+
+data_retrieval:
+  get_economic_events:
+    description: "Get upcoming high-impact economic calendar events"
+    category: "data_retrieval"
+    performance:
+      timeout_ms: 200
+      cache_ttl_seconds: 600  # Cache for 10 minutes
+      circuit_breaker_threshold: 5
+
+    input:
+      type: "object"
+      properties:
+        symbol:
+          type: "string"
+          description: "Trading symbol to filter relevant events"
+          required: true
+
+        lookforward_hours:
+          type: "integer"
+          description: "Hours to look ahead for events"
+          minimum: 1
+          maximum: 168  # 1 week
+          default: 24
+          required: false
+
+        min_impact:
+          type: "string"
+          description: "Minimum event impact level"
+          enum: ["LOW", "MEDIUM", "HIGH"]
+          default: "HIGH"
+          required: false
+
+      required: ["symbol"]
+
+    output:
+      type: "object"
+      properties:
+        symbol:
+          type: "string"
+
+        events:
+          type: "array"
+          items:
+            type: "object"
+            properties:
+              event_name:
+                type: "string"
+              event_time:
+                type: "string"
+                format: "date-time"
+              impact:
+                type: "string"
+                enum: ["LOW", "MEDIUM", "HIGH"]
+              currency:
+                type: "string"
+              forecast:
+                type: "string"
+              previous:
+                type: "string"
+              description:
+                type: "string"
+
+        high_risk_periods:
+          type: "array"
+          description: "Time windows with clustered high-impact events"
+          items:
+            type: "object"
+            properties:
+              start_time:
+                type: "string"
+                format: "date-time"
+              end_time:
+                type: "string"
+                format: "date-time"
+              event_count:
+                type: "integer"
+
+        retrieval_time_ms:
+          type: "number"
+
+      required: ["symbol", "events"]
+
+  get_cot_data:
+    description: "Get Commitment of Traders (COT) positioning data for sentiment analysis"
+    category: "data_retrieval"
+    performance:
+      timeout_ms: 200
+      cache_ttl_seconds: 3600  # Cache for 1 hour
+      circuit_breaker_threshold: 5
+
+    input:
+      type: "object"
+      properties:
+        symbol:
+          type: "string"
+          required: true
+
+        lookback_weeks:
+          type: "integer"
+          description: "Number of weeks of historical COT data"
+          minimum: 1
+          maximum: 52
+          default: 4
+          required: false
+
+      required: ["symbol"]
+
+    output:
+      type: "object"
+      properties:
+        symbol:
+          type: "string"
+
+        latest_report_date:
+          type: "string"
+          format: "date"
+
+        commercial_positioning:
+          type: "object"
+          properties:
+            long_contracts:
+              type: "integer"
+            short_contracts:
+              type: "integer"
+            net_position:
+              type: "integer"
+            net_position_change_pct:
+              type: "number"
+              description: "Week-over-week change %"
+
+        large_speculator_positioning:
+          type: "object"
+          properties:
+            long_contracts:
+              type: "integer"
+            short_contracts:
+              type: "integer"
+            net_position:
+              type: "integer"
+            net_position_change_pct:
+              type: "number"
+
+        retail_positioning:
+          type: "object"
+          properties:
+            long_pct:
+              type: "number"
+              description: "% of retail traders long"
+            short_pct:
+              type: "number"
+              description: "% of retail traders short"
+
+        sentiment_signal:
+          type: "string"
+          enum: ["BULLISH", "BEARISH", "NEUTRAL", "CONTRARIAN_BULLISH", "CONTRARIAN_BEARISH"]
+          description: "Derived sentiment signal"
+
+        retrieval_time_ms:
+          type: "number"
+
+      required: ["symbol", "latest_report_date", "commercial_positioning", "sentiment_signal"]
+
+# ============================================================================
+# PERFORMANCE STANDARDS
+# ============================================================================
+
+performance_standards:
+  global_targets:
+    p95_latency_ms: 100
+    p99_latency_ms: 200
+    cache_hit_rate: 0.8
+    circuit_breaker_recovery_seconds: 60
+
+  monitoring:
+    prometheus_metrics:
+      - "mcp_tool_call_duration_seconds"
+      - "mcp_tool_cache_hit_total"
+      - "mcp_tool_error_total"
+      - "mcp_tool_circuit_breaker_state"
+
+    alerts:
+      - name: "MCP Tool High Latency"
+        condition: "p95_latency > 150ms"
+        severity: "warning"
+
+      - name: "MCP Tool Circuit Breaker Open"
+        condition: "circuit_breaker_state == OPEN"
+        severity: "critical"
+
+      - name: "MCP Tool Low Cache Hit Rate"
+        condition: "cache_hit_rate < 0.6"
+        severity: "info"
