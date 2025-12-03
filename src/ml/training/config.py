@@ -5,7 +5,7 @@ Based on spec: 003-ml-forecasting-pipeline/research.md TD-008
 """
 
 from pathlib import Path
-from typing import List
+from typing import List, Union, Optional
 
 import yaml
 from pydantic import BaseModel, Field, field_validator
@@ -213,3 +213,31 @@ def get_default_lstm_config_path() -> str:
 def get_default_xgboost_config_path() -> str:
     """Get default path to XGBoost config file"""
     return "config/ml/xgboost_config.yaml"
+
+
+def load_config(config_path: str, model_type: Optional[str] = None) -> Union[LSTMFullConfig, XGBoostFullConfig]:
+    """
+    Generic config loader that determines model type from path or parameter
+
+    Args:
+        config_path: Path to YAML configuration file
+        model_type: Optional model type ('lstm' or 'xgboost')
+
+    Returns:
+        Validated config object (LSTMFullConfig or XGBoostFullConfig)
+    """
+    if model_type is None:
+        # Infer from filename
+        if 'lstm' in config_path.lower():
+            model_type = 'lstm'
+        elif 'xgboost' in config_path.lower() or 'xgb' in config_path.lower():
+            model_type = 'xgboost'
+        else:
+            raise ValueError(f"Cannot infer model type from path: {config_path}")
+
+    if model_type == 'lstm':
+        return load_lstm_config(config_path)
+    elif model_type == 'xgboost':
+        return load_xgboost_config(config_path)
+    else:
+        raise ValueError(f"Unknown model type: {model_type}")

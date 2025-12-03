@@ -4,8 +4,9 @@ API Configuration for RiseTrader FastAPI Application
 Manages API settings, CORS configuration, rate limits, and feature flags.
 """
 import os
-from typing import List, Optional
+from typing import List, Optional, Union
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -30,12 +31,21 @@ class APISettings(BaseSettings):
 
     # CORS Configuration
     cors_enabled: bool = True
-    cors_origins: List[str] = [
+    cors_origins: Union[str, List[str]] = [
         "http://localhost:3000",  # React Dashboard
         "http://localhost:3001",  # Grafana
         "http://127.0.0.1:3000",
         "http://127.0.0.1:3001",
     ]
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, v):
+        """Parse CORS origins from comma-separated string or list."""
+        if isinstance(v, str):
+            return [origin.strip() for origin in v.split(",")]
+        return v
+
     cors_credentials: bool = True
     cors_methods: List[str] = ["*"]
     cors_headers: List[str] = ["*"]
@@ -53,8 +63,9 @@ class APISettings(BaseSettings):
     redis_max_connections: int = 50
 
     # Agent Configuration
-    agent_config_path: str = "/Users/slimrouissi/Documents/VSCode/Rise/RiseTraderMVP/config/agents.yaml"
+    agent_config_path: str = "/app/config/agents.yaml"  # Docker container path
     mcp_server_url: str = "http://localhost:7000"
+    ollama_base_url: str = "http://192.168.0.123:11434"  # External Ollama instance
 
     # Security
     jwt_secret_key: Optional[str] = None
@@ -128,15 +139,17 @@ def get_cors_origins() -> List[str]:
     """
     Get CORS allowed origins.
 
-    Can be overridden by CORS_ORIGINS environment variable (comma-separated).
+    Handles both comma-separated strings from env vars and list values.
+    The field_validator in APISettings already parses comma-separated strings.
 
     Returns:
         List of allowed origins
     """
-    env_origins = os.getenv("CORS_ORIGINS")
-    if env_origins:
-        return [origin.strip() for origin in env_origins.split(",")]
-    return settings.cors_origins
+    origins = settings.cors_origins
+    # Ensure we always return a list (validator should handle this, but safety check)
+    if isinstance(origins, str):
+        return [origin.strip() for origin in origins.split(",")]
+    return origins
 
 
 # API Keys validation

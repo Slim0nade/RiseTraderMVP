@@ -24,12 +24,12 @@
 
 **Purpose**: Project initialization and agent system structure
 
-- [ ] T001 Create agent system directory structure (src/agents/, src/ml/rl/, config/agents/)
-- [ ] T002 [P] Install agent system dependencies (litellm, stable-baselines3, gymnasium, mlflow)
-- [ ] T003 [P] Configure pre-commit hooks for Pydantic schema validation
-- [ ] T004 [P] Create base configuration templates (config/agents/agents.yaml.template, config/agents/rl_training_config.yaml.template, config/agents/portfolio_allocation.yaml.template)
-- [ ] T005 [P] Setup MLflow tracking server configuration in docker-compose.yml
-- [ ] T006 [P] Create MCP server Docker service definition in docker-compose.yml
+- [X] T001 Create agent system directory structure (src/agents/, src/ml/rl/, config/agents/)
+- [X] T002 [P] Install agent system dependencies (autogen-agentchat>=0.4.0, autogen-ext[openai]>=0.4.0, stable-baselines3, gymnasium, mlflow). **⚠️ NOTE**: Search latest AutoGen 0.4 docs at https://microsoft.github.io/autogen/ before implementing - API may have changed
+- [X] T003 [P] Configure pre-commit hooks for Pydantic schema validation
+- [X] T004 [P] Create base configuration templates (config/agents/agents.yaml.template, config/agents/rl_training_config.yaml.template, config/agents/portfolio_allocation.yaml.template)
+- [X] T005 [P] Setup MLflow tracking server configuration in docker-compose.yml
+- [X] T006 [P] Create Ollama service definition in docker-compose.yml for local LLM inference (Qwen3-14B, DeepSeek-R1-14B)
 
 ---
 
@@ -41,43 +41,53 @@
 
 ### Database & Data Models
 
-- [ ] T007 Create Alembic migration for agent system tables (agents, decision_log, rl_training_runs, model_configurations, portfolio_allocations, strategy_teams, mcp_tools)
-- [ ] T008 [P] Create Agent SQLAlchemy model in src/database/models/agent.py
-- [ ] T009 [P] Create DecisionLog SQLAlchemy model with TimescaleDB hypertable in src/database/models/decision_log.py
-- [ ] T010 [P] Create RLTrainingRun SQLAlchemy model in src/database/models/rl_training_run.py
-- [ ] T011 [P] Create ModelConfiguration SQLAlchemy model in src/database/models/model_configuration.py
-- [ ] T012 [P] Create PortfolioAllocation SQLAlchemy model in src/database/models/portfolio_allocation.py
-- [ ] T013 [P] Create StrategyTeam SQLAlchemy model in src/database/models/strategy_team.py
-- [ ] T014 [P] Create MCPTool SQLAlchemy model in src/database/models/mcp_tool.py
+- [X] T007 Create Alembic migration for agent system tables (agents, decision_log, rl_training_runs, model_configurations, portfolio_allocations, strategy_teams, mcp_tools)
+- [X] T008 [P] Create Agent SQLAlchemy model in src/database/models/agent.py
+- [X] T009 [P] Create DecisionLog SQLAlchemy model with TimescaleDB hypertable in src/database/models/decision_log.py
+- [X] T010 [P] Create RLTrainingRun SQLAlchemy model in src/database/models/rl_training_run.py
+- [X] T011 [P] Create ModelConfiguration SQLAlchemy model in src/database/models/model_configuration.py
+- [X] T012 [P] Create PortfolioAllocation SQLAlchemy model in src/database/models/portfolio_allocation.py
+- [X] T013 [P] Create StrategyTeam SQLAlchemy model in src/database/models/strategy_team.py
+- [X] T014 [P] Create MCPTool SQLAlchemy model in src/database/models/mcp_tool.py
 - [ ] T015 Apply Alembic migration and create TimescaleDB hypertable for decision_log
 - [ ] T016 [P] Create decision_log TimescaleDB indexes and retention policy (90 days)
 
 ### Pydantic Schemas (Agent Communication)
 
-- [ ] T017 [P] Create base event schema in src/agents/schemas/events.py
-- [ ] T018 [P] Create decision schemas (TradeIntent, PositionSize, StopLoss, TakeProfit) in src/agents/schemas/decisions.py
-- [ ] T019 [P] Create analyst report schemas (TechnicalReport, FundamentalReport, SentimentReport) in src/agents/schemas/reports.py
-- [ ] T020 [P] Create debate schema (DebateOutcome) in src/agents/schemas/reports.py
-- [ ] T021 [P] Create agent config schema (AgentConfig, AgentState) in src/agents/base/agent_config.py
+- [X] T017 [P] Create base event schema in src/agents/schemas/events.py
+- [X] T018 [P] Create decision schemas (TradeIntent, PositionSize, StopLoss, TakeProfit) in src/agents/schemas/decisions.py
+- [X] T019 [P] Create analyst report schemas (TechnicalReport, FundamentalReport, SentimentReport) in src/agents/schemas/reports.py
+- [X] T020 [P] Create debate schema (DebateOutcome) in src/agents/schemas/reports.py
+- [X] T021 [P] Create agent config schema (AgentConfig, AgentState) in src/agents/base/agent_config.py
 
 ### Repositories
 
-- [ ] T022 [P] Create AgentRepository in src/database/repositories/agent_repository.py
-- [ ] T023 [P] Create DecisionLogRepository with TimescaleDB queries in src/database/repositories/decision_log_repository.py
-- [ ] T024 [P] Create RLTrainingRunRepository in src/database/repositories/rl_training_run_repository.py
-- [ ] T025 [P] Create ModelConfigurationRepository in src/database/repositories/model_configuration_repository.py
-- [ ] T026 [P] Create PortfolioAllocationRepository in src/database/repositories/portfolio_allocation_repository.py
-- [ ] T027 [P] Create StrategyTeamRepository in src/database/repositories/strategy_team_repository.py
-- [ ] T028 [P] Create MCPToolRepository in src/database/repositories/mcp_tool_repository.py
+- [X] T022 [P] Create AgentRepository in src/database/repositories/agent_repository.py
+- [X] T023 [P] Create DecisionLogRepository with TimescaleDB queries in src/database/repositories/decision_log_repository.py
+- [X] T024 [P] Create RLTrainingRunRepository in src/database/repositories/rl_training_run_repository.py
+- [X] T025 [P] Create ModelConfigurationRepository in src/database/repositories/model_configuration_repository.py
+- [X] T026 [P] Create PortfolioAllocationRepository in src/database/repositories/portfolio_allocation_repository.py
+- [X] T027 [P] Create StrategyTeamRepository in src/database/repositories/strategy_team_repository.py
+- [X] T028 [P] Create MCPToolRepository in src/database/repositories/mcp_tool_repository.py
 
-### Core Agent Infrastructure
+### Core Agent Infrastructure (AutoGen 0.4)
 
-- [ ] T029 Create BaseAgent abstract class in src/agents/base/base_agent.py (event handling, logging, health checks)
-- [ ] T030 Create LLMClient wrapper for LiteLLM in src/agents/tools/llm_client.py (quick-think vs deep-think routing)
-- [ ] T031 Create MCPClient for tool invocations in src/agents/tools/mcp_client.py (circuit breaker, caching, retry logic)
-- [ ] T032 Create MCP Server core in src/agents/coordination/mcp_server.py (event routing, Redis pub/sub, shared context)
-- [ ] T033 Implement event bus with idempotency in src/agents/coordination/event_bus.py (deduplication, ordering, retry)
-- [ ] T034 [P] Create Prometheus metrics recorder in src/monitoring/agent_metrics.py
+**⚠️ CRITICAL**: Before implementing T029-T038, search AutoGen 0.4 documentation at https://microsoft.github.io/autogen/ to verify current API patterns. AutoGen 0.4 is a complete rewrite from v0.2 - the `pyautogen` package is deprecated.
+
+- [ ] T029 Create BaseAgent abstract class in src/agents/base/base_agent.py (logging, health checks, common patterns for wrapping AutoGen AssistantAgent)
+- [ ] T030 Create LLM provider clients in src/agents/providers/:
+  - openai_client.py: Wrapper for AutoGen OpenAIChatCompletionClient (GPT-4o/o1/o3)
+  - ollama_client.py: OpenAIChatCompletionClient with base_url="http://localhost:11434/v1" (Qwen3/DeepSeek-R1)
+  - anthropic_client.py: Custom ChatCompletionClient implementing Anthropic API
+  - client_factory.py: Creates quick-think vs deep-think clients from config
+- [ ] T031 Create MCP tool wrappers in src/agents/tools/mcp_tools.py using AutoGen's @function_tool decorator
+- [ ] T032 Create AutoGen team orchestration in src/agents/teams/:
+  - analysis_team.py: RoundRobinGroupChat (Technical → Fundamental → Sentiment)
+  - debate_team.py: SelectorGroupChat (Bull ↔ Bear moderated debate)
+  - trading_pipeline.py: Swarm (Analysis → Debate → Decision → Execution)
+- [ ] T033 Create team_factory.py in src/agents/teams/ for A/B testing (creates teams with different model_client assignments)
+- [ ] T034 Create agent_registry.py in src/agents/coordination/ (agent instance tracking, health monitoring)
+- [ ] T035 [P] Create Prometheus metrics recorder in src/monitoring/agent_metrics.py
 
 ### MCP Tools Implementation (FR-019)
 

@@ -59,6 +59,51 @@ services:
       - MT4_REP_PORT=5555
       - MT4_PUB_PORT=5556
 
+  # MLflow Tracking Server for ML/RL model registry
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.9.2
+    container_name: risetrader-mlflow
+    restart: unless-stopped
+    ports:
+      - "${MLFLOW_PORT:-5000}:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      MLFLOW_BACKEND_STORE_URI: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-risetrader2024}@postgres:5432/${POSTGRES_DB:-risetrader}
+      MLFLOW_DEFAULT_ARTIFACT_ROOT: /mlflow/artifacts
+    command: >
+      mlflow server
+      --backend-store-uri postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-risetrader2024}@postgres:5432/${POSTGRES_DB:-risetrader}
+      --default-artifact-root /mlflow/artifacts
+      --host 0.0.0.0
+      --port 5000
+    volumes:
+      - mlflow_artifacts:/mlflow/artifacts
+    networks:
+      - risetrader
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Ollama for local LLM inference (Qwen3-14B, DeepSeek-R1-14B)
+  # DISABLED: Using external Ollama instance at 192.168.0.123:11434
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   container_name: risetrader-ollama
+  #   restart: unless-stopped
+  #   ports:
+  #     - "${OLLAMA_PORT:-11434}:11434"
+  #   volumes:
+  #     - ollama_models:/root/.ollama
+  #   networks:
+  #     - risetrader
+  #   # Note: Models already pulled on external machine:
+  #   # - qwen3:14b
+  #   # - deepseek-r1:14b
+
   # FastAPI service
   api:
     build:
@@ -66,24 +111,29 @@ services:
       dockerfile: docker/api/Dockerfile.simple
     container_name: risetrader-api
     restart: unless-stopped
-    ports:
-      - "${API_PORT:-8003}:8000"
+    network_mode: host  # Required to access Ollama on LAN (192.168.0.123:11434)
+    # ports:  # Not needed with host mode
+    #   - "${API_PORT:-8003}:8000"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      # mlflow:
+      #   condition: service_healthy  # Disabled temporarily - port 5000 conflict
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-risetrader2024}@postgres:5432/${POSTGRES_DB:-risetrader}
-      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-risetrader2024}@localhost:5433/${POSTGRES_DB:-risetrader}
+      REDIS_URL: redis://localhost:6379
+      MLFLOW_TRACKING_URI: http://localhost:5000
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://192.168.0.123:11434}
       MT4_HOST: ${MT4_HOST:-75.154.254.186}
       MT4_REP_PORT: ${MT4_REP_PORT:-5555}
       MT4_PUB_PORT: ${MT4_PUB_PORT:-5556}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       CORS_ENABLED: "true"
       CORS_ORIGINS: "http://localhost:3000,http://localhost:5173"
-    networks:
-      - risetrader
+    # networks:  # Not used with network_mode: host
+    #   - risetrader
     volumes:
       - ./logs:/app/logs
 
@@ -92,6 +142,10 @@ volumes:
     name: risetrader_postgres_data
   redis_data:
     name: risetrader_redis_data
+  mlflow_artifacts:
+    name: risetrader_mlflow_artifacts
+  # ollama_models:  # Not needed - using external Ollama instance
+  #   name: risetrader_ollama_models
 
 networks:
   risetrader:

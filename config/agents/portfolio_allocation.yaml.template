@@ -1,0 +1,68 @@
+# RiseTrader Portfolio Allocation Configuration Template
+# Copy this file to portfolio_allocation.yaml and customize
+
+# Portfolio Allocation Type
+allocation_type: "static"  # Options: "static" (config-based), "dynamic" (Portfolio Allocator Agent)
+
+# Total Portfolio Capital
+total_capital_usd: 100000.0
+
+# Static Allocations (for allocation_type="static")
+static_allocations:
+  - strategy_team_id: "team-gold-001"
+    symbol: "Gold"
+    allocated_capital_usd: 40000.0
+    allocated_percentage: 40.0
+    max_drawdown_limit: 0.15  # 15% max drawdown for this strategy
+    rebalance_frequency: "manual"  # Options: "daily", "weekly", "monthly", "manual"
+
+  - strategy_team_id: "team-crude-001"
+    symbol: "CrudeOIL"
+    allocated_capital_usd: 40000.0
+    allocated_percentage: 40.0
+    max_drawdown_limit: 0.15
+    rebalance_frequency: "manual"
+
+# Reserve Capital
+reserve_capital_usd: 20000.0
+reserve_percentage: 20.0
+
+# Dynamic Allocation Settings (for allocation_type="dynamic")
+dynamic_allocation:
+  enabled: false
+
+  # Portfolio Allocator Agent Configuration
+  agent_config:
+    llm_tier: "deep_think"
+    rebalance_frequency: "weekly"
+    min_allocation_pct: 10.0  # Minimum allocation per strategy
+    max_allocation_pct: 60.0  # Maximum allocation per strategy
+
+  # Rebalancing Triggers
+  triggers:
+    sharpe_threshold: 0.3  # Increase allocation if Sharpe > threshold
+    drawdown_threshold: 0.20  # Reduce allocation if drawdown > threshold
+    correlation_threshold: 0.7  # Reduce correlated positions
+
+  # Risk Parity Weights
+  risk_parity:
+    enabled: false
+    target_volatility: 0.15  # 15% annualized volatility per strategy
+    lookback_days: 90
+
+# Allocation Constraints
+constraints:
+  min_reserve_percentage: 10.0  # Always maintain at least 10% reserve
+  max_single_strategy_percentage: 60.0  # No strategy can exceed 60%
+  max_correlated_exposure: 0.80  # Maximum combined allocation to correlated instruments
+
+# Validity Period
+validity:
+  effective_from: "2025-12-01T00:00:00Z"
+  effective_until: null  # null = indefinite
+
+# Metadata
+metadata:
+  created_by: "system"
+  created_at: "2025-12-01T00:00:00Z"
+  notes: "Initial portfolio allocation: 40% Gold, 40% Crude Oil, 20% Reserve"

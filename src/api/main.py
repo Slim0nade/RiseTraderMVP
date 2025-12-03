@@ -48,9 +48,11 @@ async def lifespan(app: FastAPI):
     logger.info("application_starting", version=settings.app_version)
 
     try:
-        # Initialize agent coordinator
-        await init_agent_coordinator()
-        logger.info("agent_coordinator_initialized")
+        # Initialize agent coordinator (temporarily disabled until agents are implemented)
+        # TODO: Re-enable after implementing BaseAgent and agent configurations
+        # await init_agent_coordinator()
+        # logger.info("agent_coordinator_initialized")
+        logger.info("agent_coordinator_initialization_skipped", reason="Agents not yet implemented")
 
     except Exception as e:
         logger.error("startup_failed", error=str(e), exc_info=True)

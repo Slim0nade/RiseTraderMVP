@@ -30,8 +30,7 @@ python-json-logger>=2.0.7
 # Rate Limiting
 slowapi>=0.1.9
 
-# CORS
-python-cors>=1.0.0
+# CORS (built into FastAPI via starlette)
 
 # Configuration
 pyyaml>=6.0.1

@@ -1,5 +1,6 @@
 """FastAPI routes for ML forecasting API."""
 
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime

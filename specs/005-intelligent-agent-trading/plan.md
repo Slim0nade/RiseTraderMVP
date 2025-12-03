@@ -162,17 +162,22 @@ specs/005-intelligent-agent-trading/
 
 ```text
 src/
-├── agents/                          # NEW: Intelligent agent system
+├── agents/                          # NEW: Intelligent agent system (AutoGen 0.4)
 │   ├── base/
-│   │   ├── base_agent.py           # Abstract agent with event handling, logging, health checks
+│   │   ├── base_agent.py           # Abstract agent with logging, health checks, common patterns
 │   │   └── agent_config.py         # Agent configuration schema (Pydantic)
+│   ├── providers/                        # LLM client abstractions (AutoGen ChatCompletionClient)
+│   │   ├── openai_client.py              # OpenAIChatCompletionClient for GPT-4o/o1/o3
+│   │   ├── anthropic_client.py           # Custom ChatCompletionClient for Claude
+│   │   ├── ollama_client.py              # OpenAIChatCompletionClient with Ollama base_url
+│   │   └── client_factory.py             # Creates clients from config (quick-think vs deep-think)
 │   ├── analysis/
 │   │   ├── technical_analyst_agent.py    # FR-001: Consumes ML forecasts, produces TechnicalReport
 │   │   ├── fundamental_analyst_agent.py  # FR-002: Economic calendar, correlations, FundamentalReport
 │   │   └── sentiment_analyst_agent.py    # FR-003: Positioning data, SentimentReport
 │   ├── debate/
 │   │   ├── bull_researcher_agent.py      # FR-008: Builds bull case with evidence
-│   │   └── bear_researcher_agent.py      # FR-008: Builds bear case with rebuttals
+│   │   └── bear_researcher_agent.py      # FR-008: Builds bear case with rebuttals (uses deep-think LLM)
 │   ├── decision/
 │   │   ├── trade_decision_agent.py       # FR-004: LONG/SHORT/NO_TRADE with conviction
 │   │   ├── position_sizing_agent.py      # FR-005: Dynamic sizing (Kelly, regime, correlation)
@@ -182,17 +187,22 @@ src/
 │   │   ├── execution_agent.py            # FR-009: Order placement via MT4/ZMQ
 │   │   ├── position_monitor_agent.py     # FR-010: Trailing stops, target adjustments
 │   │   └── risk_overseer_agent.py        # FR-011: Portfolio limits, circuit breakers
+│   ├── teams/                            # AutoGen 0.4 team orchestration patterns
+│   │   ├── analysis_team.py              # RoundRobinGroupChat: Technical → Fundamental → Sentiment
+│   │   ├── debate_team.py                # SelectorGroupChat: Bull ↔ Bear moderated debate
+│   │   ├── trading_pipeline.py           # Swarm: Analysis → Debate → Decision → Execution
+│   │   ├── strategy_team.py              # Manages full agent team per instrument
+│   │   └── team_factory.py               # Creates teams from model_config for A/B testing
 │   ├── coordination/
-│   │   ├── mcp_server.py                 # Event routing, shared context, agent registry
 │   │   ├── portfolio_allocator_agent.py  # FR-018: Dynamic capital allocation (optional)
-│   │   └── strategy_team.py              # Manages agent team per instrument
+│   │   └── agent_registry.py             # Agent instance tracking, health monitoring
 │   ├── schemas/                          # FR-017: Pydantic schemas for structured communication
 │   │   ├── events.py                     # Event schemas (agent-to-agent)
 │   │   ├── decisions.py                  # TradeIntent, PositionSize, StopLoss, TakeProfit
 │   │   └── reports.py                    # TechnicalReport, FundamentalReport, SentimentReport
-│   └── tools/                            # MCP tool integration helpers
-│       ├── mcp_client.py                 # Calls MCP tools with retry/timeout
-│       └── llm_client.py                 # LiteLLM wrapper for quick-think/deep-think routing
+│   └── tools/                            # MCP tool integration (for ML models/calculators only)
+│       ├── mcp_tools.py                  # @function_tool decorated MCP calls for AutoGen
+│       └── tool_registry.py              # Registers MCP tools with AutoGen agents
 ├── services/                        # Business logic services
 │   ├── agent_orchestration_service.py    # Start/stop agents, health monitoring
 │   ├── mcp_tool_service.py               # MCP tool registration and invocation
