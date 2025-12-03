@@ -16,6 +16,7 @@ from uuid import UUID
 
 import structlog
 from autogen_agentchat.agents import AssistantAgent
+from autogen_core.models import ModelInfo
 from autogen_ext.models.openai import OpenAIChatCompletionClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -125,12 +126,21 @@ class BaseAgent(ABC):
         temperature = self.config.temperature or default_temp
         max_tokens = self.config.max_tokens or default_tokens
 
+        # Create model_info for Ollama models (required for non-OpenAI models)
+        model_info = ModelInfo(
+            vision=False,  # Text-only models
+            function_calling=True,  # Supports tool/function calling
+            json_output=True,  # Supports JSON mode
+            family=model.split(":")[0],  # Extract model family (e.g., "qwen3", "deepseek-r1")
+        )
+
         # Use OpenAI client with Ollama base URL
         # Ollama's OpenAI-compatible endpoint: http://host:port/v1
         return OpenAIChatCompletionClient(
             model=model,
             base_url=f"{ollama_host}/v1",  # Ollama OpenAI-compatible endpoint
             api_key="ollama",  # Ollama doesn't need a real API key, but client requires it
+            model_info=model_info,  # Required for non-OpenAI models
             temperature=temperature,
             max_tokens=max_tokens,
         )

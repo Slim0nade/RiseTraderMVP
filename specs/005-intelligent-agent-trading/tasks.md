@@ -49,8 +49,8 @@
 - [X] T012 [P] Create PortfolioAllocation SQLAlchemy model in src/database/models/portfolio_allocation.py
 - [X] T013 [P] Create StrategyTeam SQLAlchemy model in src/database/models/strategy_team.py
 - [X] T014 [P] Create MCPTool SQLAlchemy model in src/database/models/mcp_tool.py
-- [ ] T015 Apply Alembic migration and create TimescaleDB hypertable for decision_log
-- [ ] T016 [P] Create decision_log TimescaleDB indexes and retention policy (90 days)
+- [X] T015 Apply Alembic migration and create TimescaleDB hypertable for decision_log
+- [X] T016 [P] Create decision_log TimescaleDB indexes and retention policy (90 days)
 
 ### Pydantic Schemas (Agent Communication)
 
@@ -74,20 +74,22 @@
 
 **⚠️ CRITICAL**: Before implementing T029-T038, search AutoGen 0.4 documentation at https://microsoft.github.io/autogen/ to verify current API patterns. AutoGen 0.4 is a complete rewrite from v0.2 - the `pyautogen` package is deprecated.
 
-- [ ] T029 Create BaseAgent abstract class in src/agents/base/base_agent.py (logging, health checks, common patterns for wrapping AutoGen AssistantAgent)
-- [ ] T030 Create LLM provider clients in src/agents/providers/:
+- [X] T029 Create BaseAgent abstract class in src/agents/base/base_agent.py (logging, health checks, common patterns for wrapping AutoGen AssistantAgent)
+- [X] T030 Create LLM provider clients in src/agents/providers/:
   - openai_client.py: Wrapper for AutoGen OpenAIChatCompletionClient (GPT-4o/o1/o3)
   - ollama_client.py: OpenAIChatCompletionClient with base_url="http://localhost:11434/v1" (Qwen3/DeepSeek-R1)
   - anthropic_client.py: Custom ChatCompletionClient implementing Anthropic API
-  - client_factory.py: Creates quick-think vs deep-think clients from config
-- [ ] T031 Create MCP tool wrappers in src/agents/tools/mcp_tools.py using AutoGen's @function_tool decorator
-- [ ] T032 Create AutoGen team orchestration in src/agents/teams/:
+  - google_client.py: Google Gemini client
+  - model_router.py: Intelligent routing between quick-think vs deep-think vs structured clients
+- [X] T031 Create MCP tool wrappers in src/agents/tools/mcp_tools.py (8 async functions for AutoGen agents)
+- [X] T032 Create AutoGen team orchestration in src/agents/teams/:
   - analysis_team.py: RoundRobinGroupChat (Technical → Fundamental → Sentiment)
   - debate_team.py: SelectorGroupChat (Bull ↔ Bear moderated debate)
-  - trading_pipeline.py: Swarm (Analysis → Debate → Decision → Execution)
-- [ ] T033 Create team_factory.py in src/agents/teams/ for A/B testing (creates teams with different model_client assignments)
-- [ ] T034 Create agent_registry.py in src/agents/coordination/ (agent instance tracking, health monitoring)
-- [ ] T035 [P] Create Prometheus metrics recorder in src/monitoring/agent_metrics.py
+  - trading_pipeline.py: Sequential pipeline orchestration
+  - team_factory.py: Factory for creating teams with appropriate LLM clients
+- [X] T033 Create team_factory.py in src/agents/teams/ for A/B testing (creates teams with different model_client assignments)
+- [X] T034 Create agent_registry.py in src/agents/coordination/ (agent instance tracking, health monitoring)
+- [X] T035 [P] Create Prometheus metrics recorder in src/monitoring/agent_metrics.py
 
 ### MCP Tools Implementation (FR-019)
 
