@@ -16,7 +16,7 @@ from uuid import UUID
 
 import structlog
 from autogen_agentchat.agents import AssistantAgent
-from autogen_ext.models.ollama import OllamaChatCompletionClient
+from autogen_ext.models.openai import OpenAIChatCompletionClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.agents.base.agent_config import AgentConfig, AgentState, AgentStateModel, LLMTier
@@ -96,14 +96,15 @@ class BaseAgent(ABC):
             tools_count=len(self._tools),
         )
 
-    def _create_model_client(self) -> OllamaChatCompletionClient:
+    def _create_model_client(self) -> OpenAIChatCompletionClient:
         """
-        Create OllamaChatCompletionClient based on agent's LLM tier.
+        Create OpenAIChatCompletionClient configured for Ollama.
 
-        Uses external Ollama instance at 192.168.0.123:11434.
+        Uses OpenAI-compatible client pointing to Ollama instance at 192.168.0.123:11434.
+        Ollama provides an OpenAI-compatible API at /v1/chat/completions.
 
         Returns:
-            Configured OllamaChatCompletionClient
+            Configured OpenAIChatCompletionClient for Ollama
         """
         # Get Ollama host from config or use default
         ollama_host = self.config.config_overrides.get(
@@ -124,13 +125,14 @@ class BaseAgent(ABC):
         temperature = self.config.temperature or default_temp
         max_tokens = self.config.max_tokens or default_tokens
 
-        return OllamaChatCompletionClient(
+        # Use OpenAI client with Ollama base URL
+        # Ollama's OpenAI-compatible endpoint: http://host:port/v1
+        return OpenAIChatCompletionClient(
             model=model,
-            host=ollama_host,
-            options={
-                "temperature": temperature,
-                "num_predict": max_tokens,
-            },
+            base_url=f"{ollama_host}/v1",  # Ollama OpenAI-compatible endpoint
+            api_key="ollama",  # Ollama doesn't need a real API key, but client requires it
+            temperature=temperature,
+            max_tokens=max_tokens,
         )
 
     @abstractmethod
