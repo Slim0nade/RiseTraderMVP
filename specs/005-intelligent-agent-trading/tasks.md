@@ -93,34 +93,34 @@
 
 ### MCP Tools Implementation (FR-019)
 
-- [ ] T035 [P] Implement get_tcn_forecast MCP tool in src/ml/tools/forecasting_tools.py
-- [ ] T036 [P] Implement get_tft_prediction MCP tool in src/ml/tools/forecasting_tools.py
-- [ ] T037 [P] Implement get_fedformer_regime MCP tool in src/ml/tools/forecasting_tools.py
-- [ ] T038 [P] Implement calculate_kelly MCP tool in src/ml/tools/calculation_tools.py
-- [ ] T039 [P] Implement calculate_atr MCP tool in src/ml/tools/calculation_tools.py
-- [ ] T040 [P] Implement get_support_resistance MCP tool in src/ml/tools/market_structure_tools.py
-- [ ] T041 [P] Implement detect_liquidity_clusters MCP tool in src/ml/tools/market_structure_tools.py
-- [ ] T042 [P] Implement get_economic_events MCP tool in src/ml/tools/data_retrieval_tools.py
-- [ ] T043 [P] Implement get_cot_data MCP tool in src/ml/tools/data_retrieval_tools.py
+- [X] T035 [P] Implement get_tcn_forecast MCP tool in src/ml/tools/forecasting_tools.py
+- [X] T036 [P] Implement get_tft_prediction MCP tool in src/ml/tools/forecasting_tools.py
+- [X] T037 [P] Implement get_fedformer_regime MCP tool in src/ml/tools/forecasting_tools.py
+- [X] T038 [P] Implement calculate_kelly MCP tool in src/ml/tools/calculation_tools.py
+- [X] T039 [P] Implement calculate_atr MCP tool in src/ml/tools/calculation_tools.py
+- [X] T040 [P] Implement get_support_resistance MCP tool in src/ml/tools/market_structure_tools.py
+- [X] T041 [P] Implement detect_liquidity_clusters MCP tool in src/ml/tools/market_structure_tools.py
+- [X] T042 [P] Implement get_economic_events MCP tool in src/ml/tools/data_retrieval_tools.py
+- [X] T043 [P] Implement get_cot_data MCP tool in src/ml/tools/data_retrieval_tools.py
 - [ ] T044 Register all MCP tools in mcp_tools table with schemas from contracts/mcp-tools.yaml
-- [ ] T045 Implement MCP tool circuit breaker and caching in MCPClient
+- [X] T045 Implement MCP tool circuit breaker and caching in MCPClient
 
 ### Services
 
-- [ ] T046 Create AgentOrchestrationService in src/services/agent_orchestration_service.py (start/stop agents, health monitoring)
-- [ ] T047 Create MCPToolService in src/services/mcp_tool_service.py (tool registration, invocation)
-- [ ] T048 Create RLTrainingService skeleton in src/services/rl_training_service.py (offline RL orchestration)
+- [X] T046 Create AgentOrchestrationService in src/services/agent_orchestration_service.py (start/stop agents, health monitoring) - ALREADY EXISTS as agent_service.py
+- [X] T047 Create MCPToolService in src/services/mcp_tool_service.py (tool registration, invocation)
+- [X] T048 Create RLTrainingService skeleton in src/services/rl_training_service.py (offline RL orchestration)
 
 ### API Endpoints
 
-- [ ] T049 [P] Create agent management API routes in src/api/routes/agents.py (health, status, configuration)
-- [ ] T050 [P] Create RL training API routes in src/api/routes/rl_training.py (trigger training, view metrics)
+- [X] T049 [P] Create agent management API routes in src/api/routes/agents.py (health, status, configuration) - ALREADY EXISTS
+- [X] T050 [P] Create RL training API routes in src/api/routes/rl_training.py (trigger training, view metrics)
 
 ### Scripts
 
-- [ ] T051 [P] Create start_agent_system.py script in scripts/agents/
-- [ ] T052 [P] Create monitor_agents.py script in scripts/agents/
-- [ ] T053 [P] Create run_rl_training.py skeleton in scripts/agents/
+- [X] T051 [P] Create start_agent_system.py script in scripts/agents/
+- [X] T052 [P] Create monitor_agents.py script in scripts/agents/
+- [X] T053 [P] Create run_rl_training.py skeleton in scripts/agents/
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 

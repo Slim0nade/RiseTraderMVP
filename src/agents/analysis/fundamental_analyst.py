@@ -246,7 +246,7 @@ def create_fundamental_analyst(
     )
 
     config = AgentConfig(
-        name=f"{symbol} Fundamental Analyst",
+        name=f"{symbol}_Fundamental_Analyst",
         agent_type=AgentType.FUNDAMENTAL_ANALYST,
         layer=AgentLayer.ANALYSIS,
         strategy_team_id=strategy_team_id,

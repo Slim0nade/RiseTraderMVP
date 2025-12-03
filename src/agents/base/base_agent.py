@@ -78,14 +78,18 @@ class BaseAgent(ABC):
         self._model_client = self._create_model_client()
 
         # Create AutoGen AssistantAgent
-        self._autogen_agent = AssistantAgent(
-            name=config.name,
-            model_client=self._model_client,
-            tools=self._tools,
-            system_message=self._get_system_message(),
-            reflect_on_tool_use=True,  # Enable self-reflection
-            model_client_stream=False,  # We'll handle streaming separately if needed
-        )
+        # Only pass tools if they exist (some models like deepseek-r1 don't support tools)
+        agent_kwargs = {
+            "name": config.name,
+            "model_client": self._model_client,
+            "system_message": self._get_system_message(),
+        }
+
+        if self._tools:
+            agent_kwargs["tools"] = self._tools
+            agent_kwargs["reflect_on_tool_use"] = True
+
+        self._autogen_agent = AssistantAgent(**agent_kwargs)
 
         logger.info(
             "agent_initialized",

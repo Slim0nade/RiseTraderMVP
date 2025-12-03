@@ -1,406 +1,375 @@
 # Quick Start Guide - Next Session
 
-## Session Status: Feature 005 Foundation + Database COMPLETE ✅
-
-**Last Session**: 2025-12-02 (Continued)
-**Tasks Completed**: T001-T028 (foundation) + T015-T016 (database migration)
-**Status**: Database ready, API running. Ready for AutoGen 0.4 research → agent implementation
+**Last Updated**: 2025-12-02
+**Current Status**: 8 core agents implemented, service layer pending
 
 ---
 
-## What's Been Completed
+## 🎯 What's Complete
 
-### ✅ Phase 1: Infrastructure (T001-T006)
-- Agent directory structure created
-- AutoGen 0.4 + RL dependencies installed in Docker
-- Pre-commit hooks configured
-- YAML configuration templates created
-- MLflow + Ollama services added to docker-compose.yml
+### ✅ Core Agent Infrastructure (100%)
+- BaseAgent with AutoGen 0.4
+- LLM provider clients (Ollama, OpenAI, Anthropic, Google)
+- LLMRouter with intelligent tier selection
+- MCP tool wrappers (8 functions)
+- Team orchestration (RoundRobin, Selector)
+- AgentRegistry with health monitoring
+- Prometheus metrics (27 metrics)
+- Database migration 011 (TimescaleDB)
 
-### ✅ Phase 2: Database & Schemas (T007-T021)
-- **Migration 010**: 7 agent system tables
-- **7 SQLAlchemy Models**: Agent, DecisionLog, RLTrainingRun, ModelConfiguration, PortfolioAllocation, StrategyTeam, MCPTool
-- **20+ Pydantic Schemas**: Events, Decisions, Reports, AgentConfig
+### ✅ Concrete Agents (100%)
+- **Analysis Layer** (3): Technical, Fundamental, Sentiment
+- **Decision Layer** (3): Position Sizing, Stop-Loss, Take-Profit
+- **Execution Layer** (2): Trade Executor, Position Monitor
 
-### ✅ Phase 2: Repository Layer (T022-T028)
-- **7 Repositories**: Full async CRUD with specialized queries
-- All repositories exported in `src/database/repositories/__init__.py`
-
-### ✅ Docker Build Status
-- API container built successfully
-- All 100+ packages installed including:
-  - autogen-agentchat-0.4.4
-  - autogen-core-0.4.4
-  - autogen-ext-0.4.4
-  - stable-baselines3-2.4.1
-  - gymnasium-1.0.0
-  - mlflow-2.9.2
-
-### ✅ API Fixes & Database Migration (This Session - 2025-12-02 Continued)
-
-**Code Fixes Applied:**
-1. Fixed CORS parsing in `src/api/config.py` - added `field_validator` for comma-separated env var
-2. Added missing `load_config()` function to `src/ml/training/config.py`
-3. Fixed missing imports in `src/api/routes/ml_forecasting.py` (List, Optional)
-4. Fixed `agent_config_path` to use Docker container path `/app/config/agents.yaml`
-5. Temporarily disabled agent coordinator initialization (pending BaseAgent implementation)
-
-**Database Migration:**
-- ✅ Applied migration 009 (exogenous_variables table)
-- ✅ Applied migration 010 (7 agent system tables created)
-- ✅ Verified all tables and 40+ composite indexes created successfully
-
-**API Status:**
-- Container running healthy on port 8003
-- All routes accessible
-- Ready for Alembic migrations and testing
+**Total**: 8 agents with comprehensive system prompts and structured outputs
 
 ---
 
-## Immediate Next Steps
+## 🚧 What's Next (Priority Order)
 
-### ✅ COMPLETED: Database Migration (T015-T016)
+### 1. Agent Service Layer (T044-T046) - ~1-2 hours
+**Files to Create**:
+- `src/services/agent_service.py` - High-level orchestration
+- `src/services/__init__.py` - Service exports
 
-**T015**: ✅ Applied Alembic migration
-- Successfully created 7 agent system tables
-- All composite indexes created for time-series queries
-- Migration 009 (exogenous_variables) and 010 (agent_system) applied
+**Requirements**:
+- Agent lifecycle management (create, start, stop, health check)
+- Pipeline orchestration (analysis → decision → execution)
+- Error recovery and retry logic
+- Integration with AgentRegistry
 
-**Verification**:
-```bash
-# All 7 tables created
-docker-compose exec postgres psql -U postgres -d risetrader -c "\dt" | grep -E "(strategy_teams|agents|decision_log|rl_training_runs|model_configurations|portfolio_allocations|mcp_tools)"
+### 2. API Endpoints (T047-T050) - ~2 hours
+**Files to Create**:
+- `src/api/routes/agents.py` - Agent control endpoints
+- Schemas in `src/api/schemas/agent_schemas.py`
+
+**Endpoints Needed**:
+```
+POST /api/v1/agents/analysis/run
+POST /api/v1/agents/decision/run
+POST /api/v1/agents/execution/execute
+GET  /api/v1/agents/health
+GET  /api/v1/agents/registry/stats
+GET  /api/v1/agents/positions/{position_id}
 ```
 
-**T016**: ⚠️ TimescaleDB Not Available
-- Current PostgreSQL image (postgres:17-alpine) doesn't include TimescaleDB
-- Decision_log table created with standard indexes (composite time-series indexes work well)
-- **Future Enhancement**: Switch to `timescale/timescaledb:latest-pg17` image for hypertable + retention policy
+### 3. Integration Testing - ~2-3 hours
+- Pull Ollama models (qwen3:14b, deepseek-r1:14b)
+- Test full pipeline with real models
+- Verify MCP tool integration
+- Validate database persistence
+- Check Prometheus metrics
 
-**Note**: Standard PostgreSQL with composite indexes is sufficient for MVP. TimescaleDB can be added later for production scale.
+---
 
-### ✅ COMPLETED: Research AutoGen 0.4 + Ollama Network Configuration
+## 🔧 Before Starting Next Session
 
-**AutoGen 0.4 Research**: ✅ Complete
-- Comprehensive research document created: `.serena/AUTOGEN_0.4_RESEARCH_SUMMARY.md`
-- AssistantAgent API patterns documented
-- OllamaChatCompletionClient integration understood
-- Tool registration and message patterns learned
+### 1. Pull Ollama Models
+```bash
+ollama pull qwen3:14b        # Quick-think (1-2s)
+ollama pull deepseek-r1:14b  # Deep-think (8-12s)
+```
 
-**Ollama Network Configuration**: ✅ Complete
-- Connected to external Ollama at `192.168.0.123:11434`
-- Models available: `qwen3:14b`, `deepseek-r1:14b`, `qwen3:30b-a3b`
-- API container using `network_mode: host` for LAN access
-- Connectivity verified from container
+Verify:
+```bash
+curl http://192.168.0.123:11434/v1/models
+```
 
-### ✅ COMPLETED: Implement BaseAgent (T029)
+### 2. Verify ML API is Running
+```bash
+docker-compose ps ml-forecasting-api
+curl http://localhost:8004/health
+```
 
-**Implementation Complete**: ✅
-- Created `src/agents/base/base_agent.py` - Abstract base class wrapping AutoGen 0.4
-- Created `src/agents/examples/simple_test_agent.py` - Test implementation
-- Features implemented:
-  - Dual-LLM client creation (quick-think vs deep-think)
-  - Decision logging to decision_log table
-  - Error handling with retry logic and exponential backoff
-  - Health monitoring and state management
-  - Performance metrics tracking
-  - Pause/resume/shutdown lifecycle management
+If not running:
+```bash
+docker-compose up -d ml-forecasting-api
+```
 
-**BaseAgent Architecture**:
+### 3. Check Database Migration
+```bash
+docker-compose exec api alembic current
+# Should show: 011_convert_decision_log_to_timescaledb_hypertable
+```
+
+---
+
+## 📁 Key Files Reference
+
+### Agent Implementations
+```
+src/agents/
+├── analysis/
+│   ├── technical_analyst.py       [TechnicalAnalystAgent]
+│   ├── fundamental_analyst.py     [FundamentalAnalystAgent]
+│   └── sentiment_analyst.py       [SentimentAnalystAgent]
+│
+├── decision/
+│   ├── position_sizing_agent.py   [PositionSizingAgent]
+│   ├── stop_loss_agent.py         [StopLossAgent]
+│   └── take_profit_agent.py       [TakeProfitAgent]
+│
+└── execution_layer/
+    ├── trade_executor.py          [TradeExecutorAgent]
+    └── position_monitor.py        [PositionMonitorAgent]
+```
+
+### Supporting Infrastructure
+```
+src/agents/
+├── base/
+│   ├── base_agent.py              [BaseAgent abstract class]
+│   └── agent_config.py            [Config schemas]
+│
+├── providers/
+│   └── model_router.py            [LLMRouter]
+│
+├── tools/
+│   └── mcp_tools.py               [8 MCP tool functions]
+│
+├── teams/
+│   ├── analysis_team.py           [RoundRobinGroupChat]
+│   ├── debate_team.py             [SelectorGroupChat]
+│   └── team_factory.py            [AgentTeamFactory]
+│
+└── coordination/
+    └── agent_registry.py          [AgentRegistry]
+```
+
+### Documentation
+```
+.serena/
+├── AGENT_IMPLEMENTATION_SESSION_SUMMARY.md  [Complete summary]
+├── T036-T038_AGENT_IMPLEMENTATION_COMPLETE.md
+└── QUICK_START_NEXT_SESSION.md (this file)
+
+examples/
+└── agent_usage_example.py         [Complete usage walkthrough]
+```
+
+---
+
+## 🧪 Quick Test Commands
+
+### Run Usage Example (No DB Required)
+```bash
+cd /Users/slimrouissi/Documents/VSCode/Rise/RiseTraderMVP
+python examples/agent_usage_example.py
+```
+
+### Test Agent Import
 ```python
-BaseAgent (Abstract)
-├── _autogen_agent: AssistantAgent (AutoGen 0.4)
-├── _model_client: OllamaChatCompletionClient
-├── _session: AsyncSession (database)
-├── _agent_repo: AgentRepository
-├── _decision_log_repo: DecisionLogRepository
-└── _state: AgentStateModel (runtime tracking)
+from src.agents.analysis import create_technical_analyst
+from src.agents.decision import create_position_sizing_agent
+from src.agents.execution_layer import create_trade_executor
 
-Methods:
-├── run(task, context, correlation_id) -> decision_data
-├── health_check() -> health_status
-├── get_state() -> AgentStateModel
-├── pause() / resume() / shutdown()
-└── Abstract: _get_system_message(), _extract_decision()
+print("✅ All agents imported successfully")
 ```
 
-**Test Agent**: SimpleTestAgent created for testing infrastructure
-
-### ✅ COMPLETED: BaseAgent Testing & Ollama Integration (T029 Complete!)
-
-**Status**: All testing complete ✅
-
-**What Was Tested**:
-1. ✅ BaseAgent imports successful
-2. ✅ OpenAIChatCompletionClient configured for Ollama
-3. ✅ Live Ollama connectivity verified (192.168.0.123:11434)
-4. ✅ AutoGen 0.4 + Ollama integration working
-5. ✅ LLM inference test passed (qwen3:14b responded successfully)
-
-**Key Fix**: AutoGen 0.4 doesn't have native Ollama client - use `OpenAIChatCompletionClient` with:
-- `base_url`: `http://192.168.0.123:11434/v1` (Ollama's OpenAI-compatible endpoint)
-- `api_key`: "ollama" (dummy key)
-- `model_info`: ModelInfo object (required for non-OpenAI models)
-
-**Models Available**:
-- ✅ qwen3:14b (Quick-think)
-- ✅ deepseek-r1:14b (Deep-think)
-- ✅ qwen3:30b-a3b (User's third model)
-
-### 🎯 NEXT: First Production Agent - Technical Analyst (T030)
-
-**Ready to implement**: Create first real trading agent with technical analysis capabilities
-
----
-
-## File Locations Reference
-
-### Configuration Files
-```
-config/agents/agents.yaml.template              # Main agent config
-config/agents/rl_training_config.yaml.template  # RL hyperparameters
-config/agents/portfolio_allocation.yaml.template # Portfolio allocation
-.pre-commit-config.yaml                          # Code quality hooks
-```
-
-### Database Models
-```
-src/database/models/agent.py                     # Agent model
-src/database/models/decision_log.py              # DecisionLog (TimescaleDB)
-src/database/models/rl_training_run.py           # RL training tracking
-src/database/models/model_configuration.py       # Config versioning
-src/database/models/portfolio_allocation.py      # Capital allocation
-src/database/models/strategy_team.py             # Team management
-src/database/models/mcp_tool.py                  # Tool registry
-```
-
-### Pydantic Schemas
-```
-src/agents/schemas/events.py                     # BaseEvent, EventType
-src/agents/schemas/decisions.py                  # 5 decision schemas
-src/agents/schemas/reports.py                    # 4 report schemas
-src/agents/base/agent_config.py                  # AgentConfig, AgentState
-```
-
-### Repositories
-```
-src/database/repositories/agent_repository.py
-src/database/repositories/decision_log_repository.py
-src/database/repositories/rl_training_run_repository.py
-src/database/repositories/model_configuration_repository.py
-src/database/repositories/portfolio_allocation_repository.py
-src/database/repositories/strategy_team_repository.py
-src/database/repositories/mcp_tool_repository.py
-```
-
-### Migration
-```
-src/database/migrations/versions/010_create_agent_system_tables.py
-```
-
----
-
-## Key Architecture Decisions Made
-
-1. **Dual-LLM Strategy**
-   - Quick-think: Qwen2.5:14b (temperature 0.1, 500 tokens)
-   - Deep-think: DeepSeek-R1:14b (temperature 0.7, 2000 tokens)
-
-2. **RL Validation Requirements**
-   - Walk-forward: 252 train / 63 test / 21 step days
-   - OOS Sharpe > 1.2 required for production promotion
-   - Algorithms: PPO (discrete), SAC (continuous)
-
-3. **TimescaleDB for Decision Log**
-   - Partitioned by `decided_at` timestamp
-   - 90-day retention policy
-   - Composite indexes for time-series queries
-
-4. **Event-Driven Architecture**
-   - BaseEvent with correlation_id for multi-agent coordination
-   - EventPriority: critical, high, normal, low
-   - 20+ event types across 5 layers
-
-5. **Portfolio Allocation**
-   - Static mode: Config-based (e.g., 40% Gold, 40% Crude, 20% Reserve)
-   - Dynamic mode: Portfolio Allocator Agent (future)
-   - Rebalancing triggers: Sharpe, Drawdown, Correlation thresholds
-
----
-
-## Docker Services Available
-
-```bash
-# Start all services
-docker-compose up -d
-
-# Check status
-docker-compose ps
-
-# Services:
-# - postgres:5432    (PostgreSQL 17)
-# - redis:6379       (Redis 7)
-# - mlflow:5000      (MLflow tracking)
-# - ollama:11434     (Local LLM inference)
-# - api:8003         (FastAPI)
-```
-
-### Pull Ollama Models
-```bash
-# After starting ollama service
-docker exec -it risetrader-ollama ollama pull qwen2.5:14b
-docker exec -it risetrader-ollama ollama pull deepseek-r1:14b
-```
-
----
-
-## Testing the Foundation
-
-### Verify Database Models
+### Check Prometheus Metrics
 ```python
-# Test imports
-from src.database.models import (
-    Agent, DecisionLog, RLTrainingRun,
-    ModelConfiguration, PortfolioAllocation,
-    StrategyTeam, MCPTool
-)
+from src.monitoring.agent_metrics import record_agent_decision
 
-# Test repositories
-from src.database.repositories import (
-    AgentRepository, DecisionLogRepository,
-    RLTrainingRunRepository, ModelConfigurationRepository,
-    PortfolioAllocationRepository, StrategyTeamRepository,
-    MCPToolRepository
+record_agent_decision(
+    agent_type="technical_analyst",
+    symbol="Gold",
+    decision_type="technical_report",
+    duration_seconds=1.5,
+    success=True
 )
+print("✅ Metrics recorded")
 ```
 
-### Verify Pydantic Schemas
+---
+
+## 💡 Implementation Tips
+
+### Agent Service Layer Design
 ```python
-# Test imports
-from src.agents.schemas import (
-    BaseEvent, EventType, MarketTickEvent,
-    TradeIntent, PositionSize, StopLoss, TakeProfit,
-    TechnicalReport, FundamentalReport, DebateOutcome
-)
+class AgentService:
+    """High-level agent orchestration service."""
 
-from src.agents.base import (
-    AgentConfig, AgentStateModel, AgentType, AgentLayer
-)
+    def __init__(self, session: AsyncSession):
+        self.session = session
+        self.registry = AgentRegistry()
+        self.llm_router = LLMRouter()
+
+    async def run_analysis_pipeline(self, symbol: str) -> Dict[str, Any]:
+        """Run all analysis agents for a symbol."""
+        # Create agents
+        technical = create_technical_analyst(...)
+        fundamental = create_fundamental_analyst(...)
+        sentiment = create_sentiment_analyst(...)
+
+        # Run in parallel
+        results = await asyncio.gather(
+            technical.run(...),
+            fundamental.run(...),
+            sentiment.run(...),
+        )
+
+        return {"technical": results[0], ...}
+
+    async def run_decision_pipeline(
+        self,
+        analysis: Dict[str, Any],
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Run decision agents sequentially."""
+        # Position sizing
+        position = await position_sizer.run(...)
+
+        # Stop-loss
+        stop = await stop_agent.run(...)
+
+        # Take-profit
+        tp = await tp_agent.run(...)
+
+        return {"position": position, "stop": stop, "target": tp}
 ```
 
-### Run Pre-Commit Hooks
-```bash
-# Install hooks
-pre-commit install
+### API Endpoint Pattern
+```python
+@router.post("/agents/analysis/run")
+async def run_analysis(
+    request: AnalysisRequest,
+    session: AsyncSession = Depends(get_session),
+) -> AnalysisResponse:
+    """Run analysis agents for a symbol."""
 
-# Run on all files
-pre-commit run --all-files
+    service = AgentService(session)
+    result = await service.run_analysis_pipeline(request.symbol)
 
-# Should pass:
-# - trailing-whitespace
-# - end-of-file-fixer
-# - check-yaml
-# - black, isort, flake8, mypy
-# - validate-pydantic-schemas
-```
-
----
-
-## Common Commands
-
-### Database
-```bash
-# Apply migrations
-docker-compose exec api alembic upgrade head
-
-# Rollback
-docker-compose exec api alembic downgrade -1
-
-# Create new migration
-docker-compose exec api alembic revision --autogenerate -m "description"
-
-# Access PostgreSQL
-docker-compose exec postgres psql -U postgres -d risetrader
-```
-
-### MLflow
-```bash
-# Access MLflow UI
-open http://localhost:5000
-
-# List experiments
-docker-compose exec api python -c "
-import mlflow
-mlflow.set_tracking_uri('http://mlflow:5000')
-print(mlflow.list_experiments())
-"
-```
-
-### Ollama
-```bash
-# Test LLM
-docker exec -it risetrader-ollama ollama run qwen2.5:14b "Hello, I'm a trading agent"
-
-# List models
-docker exec -it risetrader-ollama ollama list
+    return AnalysisResponse(**result)
 ```
 
 ---
 
-## Known Issues / TODOs
+## 📊 Feature 005 Progress Tracker
 
-### Must Complete Before Agent Implementation
-- [ ] T015: Apply Alembic migration
-- [ ] T016: Setup TimescaleDB hypertable
-- [ ] Research AutoGen 0.4 API
+### Phase 1: Setup (100% ✅)
+- Directory structure
+- Dependencies
+- Config templates
+
+### Phase 2: Foundational (100% ✅)
+- Database models/repos
+- Core agent infrastructure
+- LLM providers
+- MCP tools
+- Team orchestration
+
+### Phase 3: Implementation (50% 🚧)
+- ✅ Concrete agents (8/8)
+- ⏳ Service layer (0/1)
+- ⏳ API endpoints (0/6)
+- ⏳ Integration tests (0/1)
+
+### Phase 4: Advanced (0% ⏳)
+- RL training
+- A/B testing
+- Production deployment
+
+**Overall Progress**: ~45% complete
+
+---
+
+## 🎯 Success Criteria for Next Session
+
+### Must Complete
+- [ ] AgentService class with lifecycle management
+- [ ] All 6 API endpoints functional
+- [ ] Basic integration test passing
+- [ ] Ollama models pulled and tested
 
 ### Nice to Have
-- [ ] Create example agent config YAML (copy from templates)
-- [ ] Test database connection in Docker
-- [ ] Verify MLflow tracking works
-- [ ] Test Ollama LLM inference
+- [ ] Comprehensive test suite
+- [ ] API documentation (OpenAPI/Swagger)
+- [ ] Grafana dashboard for metrics
+- [ ] Error recovery examples
 
 ---
 
-## Session Progress Tracking
+## 🚨 Known Issues / TODOs
 
-**Completed**: 26/174 tasks (15%)
-**Phase 1**: 6/6 tasks ✅
-**Phase 2 Foundation**: 20/47 tasks (43%)
-**Phase 2 Remaining**: Skipped T015-T016 (migration), T029+ (agents)
+### Configuration
+- [ ] API keys not configured (optional, for <5% of decisions)
+- [ ] Ollama models need to be pulled
 
-**Next Milestone**: Complete T029-T038 (Core Agent Infrastructure with AutoGen 0.4)
+### Dependencies
+- [ ] Feature 003 ML API must be running for MCP tools
+- [ ] TimescaleDB extension not installed (optional optimization)
 
----
-
-## Resources
-
-**Documentation**:
-- AutoGen 0.4: https://microsoft.github.io/autogen/
-- Stable-Baselines3: https://stable-baselines3.readthedocs.io/
-- MLflow: https://mlflow.org/docs/latest/
-- TimescaleDB: https://docs.timescale.com/
-
-**Project Docs**:
-- Feature Spec: `specs/005-intelligent-agent-trading/spec.md`
-- Tasks: `specs/005-intelligent-agent-trading/tasks.md`
-- Session Progress: `.serena/SESSION_PROGRESS_2025-12-02.md`
-
-**Key Files to Review**:
-- `CLAUDE.md` - Project overview
-- `docker-compose.yml` - Service configuration
-- `requirements.txt` - Dependencies
+### Testing
+- [ ] Need real market data for integration testing
+- [ ] Need MT4 connection for execution testing (can mock initially)
 
 ---
 
-## Quick Wins for Next Session
+## 📞 Key Integration Points
 
-1. **Apply migration** (5 min)
-2. **Research AutoGen 0.4** (30-60 min)
-3. **Create first agent** (Technical Analyst - simplest)
-4. **Test end-to-end flow** (Event → Decision → Log)
+### With Feature 003 (ML Forecasting)
+- MCP tools call ML API at `http://localhost:8004`
+- 8 tool endpoints expected:
+  - `/forecast/tcn`
+  - `/forecast/xgboost`
+  - `/forecast/lstm`
+  - `/regime/classify`
+  - `/indicators`
+  - `/market-data/{symbol}`
+  - `/forecast/accuracy`
+  - Kelly criterion (local calculation)
+
+### With Feature 001 (MT4 Integration)
+- TradeExecutorAgent calls MT4/ZMQ bridge
+- Order placement, fill confirmation, slippage tracking
+- Position updates flow back to PositionMonitorAgent
+
+### With Feature 002 (Dashboard API)
+- Agent metrics exposed via Prometheus
+- Health endpoints for monitoring
+- Decision logs queryable via API
 
 ---
 
-**Status**: Ready for AutoGen 0.4 implementation! 🚀
-**Last Updated**: 2025-12-02
+## 🔗 Useful Commands
+
+### Start All Services
+```bash
+docker-compose up -d postgres redis ml-forecasting-api
+```
+
+### Check Agent Registry Stats
+```python
+from src.agents.coordination import get_global_registry
+
+registry = get_global_registry()
+stats = registry.get_statistics()
+print(stats)
+```
+
+### View Decision Logs
+```sql
+SELECT
+    decided_at,
+    agent_type,
+    confidence,
+    decision_latency_ms,
+    was_executed
+FROM decision_log
+ORDER BY decided_at DESC
+LIMIT 10;
+```
+
+---
+
+**Ready for Next Session**: Create AgentService, API endpoints, and integration testing
+
+**Estimated Time**: 6 hours to complete T044-T050 + testing
+
+**Current Branch**: `005-intelligent-agent-trading`
+
+---
+
+*Last Updated: 2025-12-02 by Claude Code*

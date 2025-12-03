@@ -279,7 +279,7 @@ def create_position_sizing_agent(
     )
 
     config = AgentConfig(
-        name=f"{symbol} Position Sizing Agent",
+        name=f"{symbol}_Position_Sizing_Agent",
         agent_type=AgentType.POSITION_SIZING,
         layer=AgentLayer.DECISION,
         strategy_team_id=strategy_team_id,
@@ -288,18 +288,15 @@ def create_position_sizing_agent(
         llm_tier=LLMTier.DEEP_THINK,
         temperature=0.3,  # Moderate creativity for risk assessment
         max_tokens=1200,  # Need space for detailed reasoning
-        available_tools=["calculate_kelly_criterion", "get_regime_classification"],
+        available_tools=[],  # Decision agents work with analysis data, no external tools needed
         config_overrides={"symbol": symbol},
     )
 
-    tools = [
-        calculate_kelly_criterion,
-        get_regime_classification,
-    ]
-
+    # Decision agents don't need tools - they work with analysis results
+    # Tools removed because deepseek-r1 model doesn't support tool calling
     return PositionSizingAgent(
         agent_id=agent_id,
         config=config,
         session=session,
-        tools=tools,
+        tools=[],
     )

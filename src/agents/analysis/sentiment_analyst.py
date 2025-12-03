@@ -260,7 +260,7 @@ def create_sentiment_analyst(
     )
 
     config = AgentConfig(
-        name=f"{symbol} Sentiment Analyst",
+        name=f"{symbol}_Sentiment_Analyst",
         agent_type=AgentType.SENTIMENT_ANALYST,
         layer=AgentLayer.ANALYSIS,
         strategy_team_id=strategy_team_id,

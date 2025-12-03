@@ -26,7 +26,7 @@ from .middleware import (
     register_exception_handlers,
     setup_logging,
 )
-from .routes import agents, trading, market_data, forecasts, performance, strategies, system, ml_forecasting
+from .routes import agents, trading, market_data, forecasts, performance, strategies, system, ml_forecasting, agent_pipelines
 
 # Configure structured logging
 setup_logging()
@@ -110,6 +110,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Include routers
 app.include_router(agents.router, prefix="/api")
+app.include_router(agent_pipelines.router, prefix="/api")  # New intelligent agent pipelines
 app.include_router(trading.router, prefix="/api")
 app.include_router(market_data.router, prefix="/api")
 app.include_router(forecasts.router, prefix="/api")

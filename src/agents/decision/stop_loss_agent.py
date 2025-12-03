@@ -280,7 +280,7 @@ def create_stop_loss_agent(
     )
 
     config = AgentConfig(
-        name=f"{symbol} Stop-Loss Agent",
+        name=f"{symbol}_StopLoss_Agent",
         agent_type=AgentType.STOP_LOSS,
         layer=AgentLayer.DECISION,
         strategy_team_id=strategy_team_id,
@@ -289,23 +289,15 @@ def create_stop_loss_agent(
         llm_tier=LLMTier.DEEP_THINK,
         temperature=0.2,  # Lower temp for precise stop placement
         max_tokens=1000,
-        available_tools=[
-            "get_technical_indicators",
-            "get_regime_classification",
-            "get_market_data",
-        ],
+        available_tools=[],  # Decision agents work with analysis data, no external tools needed
         config_overrides={"symbol": symbol},
     )
 
-    tools = [
-        get_technical_indicators,
-        get_regime_classification,
-        get_market_data,
-    ]
-
+    # Decision agents don't need tools - they work with analysis results
+    # Tools removed because deepseek-r1 model doesn't support tool calling
     return StopLossAgent(
         agent_id=agent_id,
         config=config,
         session=session,
-        tools=tools,
+        tools=[],
     )

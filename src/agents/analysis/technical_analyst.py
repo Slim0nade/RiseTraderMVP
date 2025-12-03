@@ -264,7 +264,7 @@ def create_technical_analyst(
     )
 
     config = AgentConfig(
-        name=f"{symbol} Technical Analyst",
+        name=f"{symbol}_Technical_Analyst",
         agent_type=AgentType.TECHNICAL_ANALYST,
         layer=AgentLayer.ANALYSIS,
         strategy_team_id=strategy_team_id,

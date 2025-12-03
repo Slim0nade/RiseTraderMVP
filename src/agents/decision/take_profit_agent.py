@@ -300,7 +300,7 @@ def create_take_profit_agent(
     )
 
     config = AgentConfig(
-        name=f"{symbol} Take-Profit Agent",
+        name=f"{symbol}_TakeProfit_Agent",
         agent_type=AgentType.TAKE_PROFIT,
         layer=AgentLayer.DECISION,
         strategy_team_id=strategy_team_id,
@@ -309,27 +309,15 @@ def create_take_profit_agent(
         llm_tier=LLMTier.DEEP_THINK,
         temperature=0.3,  # Moderate creativity for EV optimization
         max_tokens=1200,
-        available_tools=[
-            "get_tcn_forecast",
-            "get_xgboost_forecast",
-            "get_lstm_forecast",
-            "get_technical_indicators",
-            "get_market_data",
-        ],
+        available_tools=[],  # Decision agents work with analysis data, no external tools needed
         config_overrides={"symbol": symbol},
     )
 
-    tools = [
-        get_tcn_forecast,
-        get_xgboost_forecast,
-        get_lstm_forecast,
-        get_technical_indicators,
-        get_market_data,
-    ]
-
+    # Decision agents don't need tools - they work with analysis results
+    # Tools removed because deepseek-r1 model doesn't support tool calling
     return TakeProfitAgent(
         agent_id=agent_id,
         config=config,
         session=session,
-        tools=tools,
+        tools=[],
     )
