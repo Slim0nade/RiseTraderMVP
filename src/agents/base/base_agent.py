@@ -9,6 +9,7 @@ Provides common infrastructure for:
 - Health monitoring
 - Performance tracking
 """
+import os
 from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
@@ -113,7 +114,7 @@ class BaseAgent(ABC):
         """
         # Get Ollama host from config or use default
         ollama_host = self.config.config_overrides.get(
-            "ollama_host", "http://192.168.0.123:11434"
+            "ollama_host", os.getenv("OLLAMA_BASE_URL", "http://75.154.254.186:11434")
         )
 
         # Default models per tier
@@ -322,14 +323,14 @@ class BaseAgent(ABC):
         try:
             await self._decision_log_repo.create(
                 agent_id=self.agent_id,
+                agent_type=self.config.agent_type.value,
+                decided_at=datetime.utcnow(),
                 decision_type=self.config.agent_type.value,
                 decision_data=decision_data,
                 reasoning=reasoning,
                 input_data=input_data,
-                execution_time_ms=execution_time_ms,
-                model_name=self.config.llm_model,
-                temperature=self.config.temperature,
-                correlation_id=correlation_id,
+                decision_latency_ms=int(execution_time_ms),
+                model_version=self.config.llm_model,
             )
 
             logger.debug(

@@ -61,7 +61,7 @@ async def test_circuit_breaker_states():
 
     # Test 5: HALF_OPEN state
     print("\n5. Testing HALF_OPEN state...")
-    cb3 = CircuitBreaker(recovery_timeout=0)
+    cb3 = CircuitBreaker(failure_threshold=3, recovery_timeout=0)
     cb3.record_failure()
     cb3.record_failure()
     cb3.record_failure()
