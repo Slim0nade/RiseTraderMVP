@@ -1,0 +1,9 @@
+WARNING: autogen-ext 0.0.1 does not provide the extra 'openai'
+  WARNING: The script f2py is installed in '/Users/slimrouissi/Library/Python/3.9/bin' which is not on PATH.
+  Consider adding this directory to PATH or, if you prefer to suppress this warning, use --no-warn-script-location.
+  WARNING: The script distro is installed in '/Users/slimrouissi/Library/Python/3.9/bin' which is not on PATH.
+  Consider adding this directory to PATH or, if you prefer to suppress this warning, use --no-warn-script-location.
+  WARNING: The script openai is installed in '/Users/slimrouissi/Library/Python/3.9/bin' which is not on PATH.
+  Consider adding this directory to PATH or, if you prefer to suppress this warning, use --no-warn-script-location.
+WARNING: You are using pip version 21.2.4; however, version 25.3 is available.
+You should consider upgrading via the '/Library/Developer/CommandLineTools/usr/bin/python3 -m pip install --upgrade pip' command.
