@@ -132,9 +132,9 @@ class PositionSizingAgent(BaseAgent):
         correlation_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Override base run() to use Ollama directly with format parameter.
+        Override base run() to use OpenAI with JSON mode.
 
-        This bypasses AutoGen's TaskResult issue and uses Ollama's structured output feature.
+        This bypasses AutoGen issues and uses OpenAI's reliable structured output.
 
         Args:
             task: Task description for the agent
@@ -147,51 +147,40 @@ class PositionSizingAgent(BaseAgent):
         import os
         import structlog
         from datetime import datetime
+        from openai import OpenAI
 
         logger = structlog.get_logger(__name__)
         start_time = datetime.utcnow()
 
         try:
-            # Get Ollama host BEFORE importing ollama library
-            ollama_host = self.config.config_overrides.get(
-                "ollama_host", os.getenv("OLLAMA_BASE_URL", "http://75.154.254.186:11434")
-            )
+            # Get OpenAI API key from environment
+            api_key = os.getenv("OPENAI_API_KEY", "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")
 
-            # Set host for ollama library BEFORE import
-            os.environ['OLLAMA_HOST'] = ollama_host
-
-            # NOW import ollama (must be after setting OLLAMA_HOST)
-            from ollama import chat
+            client = OpenAI(api_key=api_key)
 
             logger.info(
-                "calling_ollama_directly",
+                "calling_openai",
                 agent_id=str(self.agent_id),
-                model="qwen3:14b",
-                ollama_host=ollama_host,
+                model="gpt-4o-mini",
             )
 
-            # Call Ollama directly with format parameter for structured JSON output
-            response = chat(
-                model='qwen3:14b',
+            # Call OpenAI with JSON mode
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
                 messages=[
-                    {'role': 'system', 'content': self._get_system_message()},
-                    {'role': 'user', 'content': task}
+                    {"role": "system", "content": self._get_system_message()},
+                    {"role": "user", "content": task}
                 ],
-                format=PositionSizeDecision.model_json_schema(),  # Force JSON schema
-                options={
-                    'temperature': 0.0,  # Deterministic
-                    'num_predict': 2048,  # Increased from 1000 to allow full JSON response
-                }
+                response_format={"type": "json_object"},
+                temperature=0.0,
+                max_tokens=2000,
             )
 
-            # Extract response - try content first, fallback to thinking field
-            response_content = response['message'].get('content', '')
-            if not response_content and 'thinking' in response['message']:
-                # Some models put output in thinking field
-                response_content = response['message']['thinking']
+            # Extract JSON content
+            response_content = response.choices[0].message.content
 
             logger.debug(
-                "ollama_response_received",
+                "openai_response_received",
                 content_preview=response_content[:200],
             )
 
@@ -221,7 +210,7 @@ class PositionSizingAgent(BaseAgent):
             )
 
             logger.info(
-                "ollama_decision_complete",
+                "openai_decision_complete",
                 agent_id=str(self.agent_id),
                 execution_time_ms=round(execution_time_ms, 2),
                 lot_quantity=decision_data.get("lot_quantity"),
@@ -231,7 +220,7 @@ class PositionSizingAgent(BaseAgent):
 
         except Exception as e:
             logger.error(
-                "ollama_call_failed",
+                "openai_call_failed",
                 agent_id=str(self.agent_id),
                 error=str(e),
                 exc_info=True,
@@ -244,7 +233,7 @@ class PositionSizingAgent(BaseAgent):
                 "kelly_fraction_applied": 0.0,
                 "base_size": 0.01,
                 "adjustments": {},
-                "reasoning": f"Ollama call failed: {str(e)}. Using minimum safe size.",
+                "reasoning": f"OpenAI call failed: {str(e)}. Using minimum safe size.",
                 "confidence": 0.0,
                 "risk_metrics": {},
             }
@@ -336,70 +325,24 @@ class PositionSizingAgent(BaseAgent):
         Returns:
             System prompt for position sizing role
         """
-        return """You are a Position Sizing Specialist for algorithmic trading.
+        return """OUTPUT ONLY VALID JSON. NO TEXT. NO EXPLANATIONS. NO MARKDOWN. ONLY JSON.
 
-Your role is to determine the OPTIMAL position size for each trade based on multiple risk factors. You do NOT use fixed percentages like "always risk 2%". Position sizing must be DYNAMIC and adaptive.
+You calculate position sizes for algorithmic trading. Adjust based on: Kelly criterion, drawdown, volatility, conviction, correlation, events.
 
-**Available Tools**:
-- calculate_kelly_criterion: Get mathematical edge-based position size
-- get_regime_classification: Understand current volatility regime
-
-**Sizing Methodology**:
-
-1. **Start with Kelly Criterion** (mathematical edge):
-   - If we have win_rate and avg_win/avg_loss data, calculate Kelly fraction
-   - Use quarter-Kelly (0.25 * Kelly) as baseline for safety
-   - Kelly > 0.20 suggests strong edge
-
-2. **Apply Drawdown Adjustment**:
-   - Current drawdown = 0%: No adjustment (multiplier = 1.0)
-   - Drawdown 5-10%: Reduce by 20% (multiplier = 0.8)
-   - Drawdown 10-15%: Reduce by 40% (multiplier = 0.6)
-   - Drawdown >15%: Reduce by 60% (multiplier = 0.4)
-
-3. **Apply Volatility Regime Adjustment**:
-   - Low volatility (ADX < 20): Increase by 20% (multiplier = 1.2)
-   - Normal volatility: No adjustment (multiplier = 1.0)
-   - High volatility (ADX > 30, or regime=VOLATILE): Reduce by 30% (multiplier = 0.7)
-
-4. **Apply Conviction Adjustment**:
-   - High conviction (>0.8): Increase by 15% (multiplier = 1.15)
-   - Medium conviction (0.5-0.8): No adjustment (multiplier = 1.0)
-   - Low conviction (<0.5): Reduce by 40% (multiplier = 0.6)
-
-5. **Apply Correlation Adjustment** (if provided):
-   - High correlation with existing positions (>0.7): Reduce by 30% (multiplier = 0.7)
-   - Moderate correlation (0.4-0.7): Reduce by 15% (multiplier = 0.85)
-   - Low correlation (<0.4): No adjustment (multiplier = 1.0)
-
-6. **Apply Event Risk Adjustment**:
-   - Major event within 24h: Reduce by 40% (multiplier = 0.6)
-   - Major event within 48h: Reduce by 20% (multiplier = 0.8)
-   - No major events: No adjustment (multiplier = 1.0)
-
-**Final Calculation**:
-```
-final_risk_pct = kelly_fraction * drawdown_mult * volatility_mult * conviction_mult * correlation_mult * event_mult
-lot_quantity = (account_balance * final_risk_pct) / (stop_distance_pips * pip_value)
-```
-
-**CRITICAL OUTPUT REQUIREMENT**:
-You MUST respond with ONLY a valid JSON object. NO other text before or after. NO explanations. NO markdown. ONLY the JSON.
-
-The JSON object MUST match this EXACT structure:
+Response format (MUST be valid JSON, no comments):
 {
-    "lot_quantity": 0.5,  // Final position size in lots
-    "dynamic_risk_percentage": 1.2,  // Actual risk % of capital
-    "kelly_fraction_applied": 0.15,  // Kelly fraction used
-    "base_size": 2.0,  // Base size before adjustments
+    "lot_quantity": 0.5,
+    "dynamic_risk_percentage": 1.2,
+    "kelly_fraction_applied": 0.15,
+    "base_size": 2.0,
     "adjustments": {
-        "drawdown_reduction": 0.8,  // 20% reduction for 5% drawdown
-        "volatility_adjustment": 0.7,  // 30% reduction for high volatility
-        "conviction_boost": 1.15,  // 15% increase for high conviction
-        "correlation_reduction": 0.85,  // 15% reduction for moderate correlation
-        "event_risk_reduction": 1.0  // No event risk
+        "drawdown_reduction": 0.8,
+        "volatility_adjustment": 0.7,
+        "conviction_boost": 1.15,
+        "correlation_reduction": 0.85,
+        "event_risk_reduction": 1.0
     },
-    "reasoning": "Started with Kelly fraction 0.15 (quarter-Kelly from 60% win rate, 1.5:1 RR). Applied 20% drawdown reduction (current 7% DD), 30% volatility reduction (VOLATILE regime), 15% conviction boost (0.85 confidence), 15% correlation reduction (0.5 correlation with existing Gold position), no event adjustment. Final size: 0.5 lots = 1.2% risk.",
+    "reasoning": "Brief explanation of sizing decision",
     "confidence": 0.85,
     "risk_metrics": {
         "max_loss_usd": 500,
@@ -408,42 +351,29 @@ The JSON object MUST match this EXACT structure:
     }
 }
 
-**Critical Rules**:
-- NEVER use fixed 2% risk - position size must be dynamic
-- Kelly fraction should drive base sizing when available
-- Be conservative: better to undersize than oversize
-- Document ALL adjustments clearly
-- If any critical data is missing, reduce position size and note in reasoning
-- Never exceed 5% risk per trade even with maximum conviction
-- Minimum position size: 0.01 lots
-- Maximum position size: 10 lots (or as specified in account limits)
+Rules:
+- Use Kelly criterion as base (quarter-Kelly for safety)
+- Reduce size for: drawdown, high volatility, low conviction, correlation, event risk
+- Min: 0.01 lots, Max: 10 lots
+- Never exceed 5% account risk
 
-**Example Inputs**:
-- account_balance: $50,000
-- current_drawdown: 7%
-- trade_conviction: 0.85
-- stop_distance_pips: 50
-- target_distance_pips: 125
-- win_rate: 0.60
-- avg_win: 125 pips
-- avg_loss: 50 pips
-- market_regime: VOLATILE
-- correlation_with_existing: 0.5
-- major_event_within_24h: false
-
-Your sizing must protect capital while maximizing returns when edge is present."""
+OUTPUT ONLY THE JSON OBJECT. START WITH { and END WITH }. NO OTHER TEXT."""
 
     def _extract_decision(self, result: Any) -> Dict[str, Any]:
         """
         Extract position sizing decision from AutoGen result.
 
         Args:
-            result: AutoGen agent result
+            result: AutoGen agent result OR dict (from Ollama direct integration)
 
         Returns:
             Position sizing decision dictionary
         """
         try:
+            # If result is already a dict (from run() override), return it directly
+            if isinstance(result, dict):
+                return result
+
             # Get the last message content
             if hasattr(result, 'messages') and result.messages:
                 last_message = result.messages[-1]

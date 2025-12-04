@@ -25,6 +25,10 @@ msgpack==1.0.7
 autogen-agentchat>=0.4.0
 autogen-ext[openai]>=0.4.0
 
+# LLM APIs - Direct integration for structured output
+openai>=1.0.0
+ollama>=0.1.7
+
 # Reinforcement Learning
 stable-baselines3>=2.2.1
 gymnasium>=0.29.1
