@@ -132,9 +132,10 @@ class PositionSizingAgent(BaseAgent):
         correlation_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Override base run() to use OpenAI with JSON mode.
+        Override base run() to use OpenAI or Anthropic with JSON mode.
 
-        This bypasses AutoGen issues and uses OpenAI's reliable structured output.
+        This bypasses AutoGen issues and uses proprietary API's reliable structured output.
+        Set LLM_PROVIDER env var to 'openai' (default) or 'anthropic'.
 
         Args:
             task: Task description for the agent
@@ -147,44 +148,91 @@ class PositionSizingAgent(BaseAgent):
         import os
         import structlog
         from datetime import datetime
-        from openai import OpenAI
 
         logger = structlog.get_logger(__name__)
         start_time = datetime.utcnow()
 
+        # Get LLM provider from environment (default: openai)
+        llm_provider = os.getenv("LLM_PROVIDER", "openai").lower()
+
         try:
-            # Get OpenAI API key from environment
-            api_key = os.getenv("OPENAI_API_KEY", "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")
+            if llm_provider == "anthropic":
+                # Use Anthropic Claude
+                import anthropic
 
-            client = OpenAI(api_key=api_key)
+                api_key = os.getenv("ANTHROPIC_API_KEY", "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")
+                client = anthropic.Anthropic(api_key=api_key)
 
-            logger.info(
-                "calling_openai",
-                agent_id=str(self.agent_id),
-                model="gpt-4o-mini",
-            )
+                logger.info(
+                    "calling_anthropic",
+                    agent_id=str(self.agent_id),
+                    model="claude-sonnet-4-5-20250929",
+                )
 
-            # Call OpenAI with JSON mode
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": self._get_system_message()},
-                    {"role": "user", "content": task}
-                ],
-                response_format={"type": "json_object"},
-                temperature=0.0,
-                max_tokens=2000,
-            )
+                # Call Anthropic - Claude Sonnet 4.5 supports structured output
+                response = client.messages.create(
+                    model="claude-sonnet-4-5-20250929",
+                    max_tokens=2000,
+                    temperature=0.0,
+                    system=[
+                        {
+                            "type": "text",
+                            "text": self._get_system_message()
+                        }
+                    ],
+                    messages=[
+                        {"role": "user", "content": task}
+                    ]
+                )
 
-            # Extract JSON content
-            response_content = response.choices[0].message.content
+                # Extract JSON content
+                response_content = response.content[0].text
 
-            logger.debug(
-                "openai_response_received",
-                content_preview=response_content[:200],
-            )
+                logger.debug(
+                    "anthropic_response_received",
+                    content_preview=response_content[:200],
+                )
 
-            # Validate against Pydantic model
+                # Strip markdown code blocks if present
+                import re
+                if response_content.startswith("```"):
+                    response_content = re.sub(r'^```(?:json)?\s*\n?', '', response_content)
+                    response_content = re.sub(r'\n?```\s*$', '', response_content)
+
+            else:
+                # Use OpenAI (default)
+                from openai import OpenAI
+
+                api_key = os.getenv("OPENAI_API_KEY", "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")
+                client = OpenAI(api_key=api_key)
+
+                logger.info(
+                    "calling_openai",
+                    agent_id=str(self.agent_id),
+                    model="gpt-4o-mini",
+                )
+
+                # Call OpenAI with JSON mode
+                response = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": self._get_system_message()},
+                        {"role": "user", "content": task}
+                    ],
+                    response_format={"type": "json_object"},
+                    temperature=0.0,
+                    max_tokens=2000,
+                )
+
+                # Extract JSON content
+                response_content = response.choices[0].message.content
+
+                logger.debug(
+                    "openai_response_received",
+                    content_preview=response_content[:200],
+                )
+
+            # Validate against Pydantic model (works for both providers)
             decision = PositionSizeDecision.model_validate_json(response_content)
 
             # Convert to dict
@@ -210,7 +258,7 @@ class PositionSizingAgent(BaseAgent):
             )
 
             logger.info(
-                "openai_decision_complete",
+                f"{llm_provider}_decision_complete",
                 agent_id=str(self.agent_id),
                 execution_time_ms=round(execution_time_ms, 2),
                 lot_quantity=decision_data.get("lot_quantity"),
@@ -220,7 +268,7 @@ class PositionSizingAgent(BaseAgent):
 
         except Exception as e:
             logger.error(
-                "openai_call_failed",
+                f"{llm_provider}_call_failed",
                 agent_id=str(self.agent_id),
                 error=str(e),
                 exc_info=True,
@@ -233,7 +281,7 @@ class PositionSizingAgent(BaseAgent):
                 "kelly_fraction_applied": 0.0,
                 "base_size": 0.01,
                 "adjustments": {},
-                "reasoning": f"OpenAI call failed: {str(e)}. Using minimum safe size.",
+                "reasoning": f"{llm_provider.upper()} call failed: {str(e)}. Using minimum safe size.",
                 "confidence": 0.0,
                 "risk_metrics": {},
             }

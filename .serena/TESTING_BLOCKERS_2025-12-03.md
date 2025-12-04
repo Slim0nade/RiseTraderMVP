@@ -8,19 +8,29 @@ Integration testing of the MCPToolService (Phase 2 completion) is blocked by Pyt
 
 ## Blocker Details
 
-### Issue 1: AutoGen Version Mismatch
+### Issue 1: Python Version Incompatibility (ROOT CAUSE)
 
-**Problem**: Code expects AutoGen 0.4, but only AutoGen 0.2.x is available on PyPI.
+**Problem**: AutoGen 0.4+ requires Python 3.10+, but system is running Python 3.9.6.
 
 **Details**:
-- `requirements.txt` specifies: `autogen-agentchat>=0.4.0`
-- Latest available version: `autogen-agentchat==0.2.40`
-- Error: `ModuleNotFoundError: No module named 'autogen_agentchat'`
+- `requirements.txt` specifies: `autogen-agentchat>=0.4.0` (CORRECT - latest is 0.7.5)
+- AutoGen 0.4+ requirement: **Python >=3.10**
+- Current Python version: **3.9.6**
+- Error when trying to install: `ERROR: Ignored the following versions that require a different python version: 0.4.0 Requires-Python >=3.10`
+- Fallback installs AutoGen 0.2.40 (last version supporting Python 3.9)
+- Then import fails: `ModuleNotFoundError: No module named 'autogen_agentchat'`
 
-**Impact**: Cannot import agent modules which depend on AutoGen
+**Impact**: Cannot use AutoGen 0.4 features without upgrading Python
 
 **File affected**:
 - `src/agents/base/base_agent.py:18` - imports `from autogen_agentchat.agents import AssistantAgent`
+
+**Why AutoGen 0.4 Matters**:
+- Complete architecture rewrite (as specified in plan.md)
+- `AssistantAgent` with model_client injection
+- `Swarm`, `SelectorGroupChat`, `RoundRobinGroupChat` orchestration patterns
+- `OpenAIChatCompletionClient` unified interface
+- These features don't exist in AutoGen 0.2.x
 
 ### Issue 2: XGBoost OpenMP Dependency
 
@@ -95,48 +105,68 @@ python3 examples/test_mcp_service_integration.py
 
 ## Recommended Fixes
 
-### Option A: Fix Environment (Recommended)
+### Option A: Upgrade Python to 3.11+ (Recommended - Required for AutoGen 0.4)
 
-1. **Install OpenMP for XGBoost**:
+**Why**: AutoGen 0.4 requires Python 3.10+, and project specifies Python 3.11+ in plan.md.
+
+1. **Install Python 3.11**:
+```bash
+# macOS with Homebrew
+brew install python@3.11
+
+# Or download from python.org
+```
+
+2. **Create virtual environment with Python 3.11**:
+```bash
+python3.11 -m venv venv
+source venv/bin/activate
+pip install --upgrade pip
+```
+
+3. **Install dependencies** (including AutoGen 0.4+):
+```bash
+pip install -r requirements.txt
+# This will now install autogen-agentchat 0.7.5 (latest)
+```
+
+4. **Install OpenMP for XGBoost**:
 ```bash
 brew install libomp
 ```
 
-2. **Update requirements.txt for AutoGen 0.2**:
+5. **Run tests**:
 ```bash
-# Change from:
-autogen-agentchat>=0.4.0
-# To:
-autogen-agentchat>=0.2.0
-
-# Also update import in base_agent.py:
-# from autogen_agentchat.agents import AssistantAgent
-# To:
-# from autogen.agentchat import AssistantAgent
+python examples/test_mcp_service_integration.py
 ```
 
-3. **Reinstall dependencies**:
-```bash
-pip3 install -r requirements.txt
-```
+### Option B: Docker Environment (Preferred for CI/CD)
 
-4. **Run tests**:
-```bash
-python3 examples/test_mcp_service_integration.py
-```
-
-### Option B: Docker Environment
-
-**Rationale**: Avoid local environment issues
+**Rationale**: Avoid local environment issues, ensures Python 3.11+
 
 **Steps**:
-1. Build Docker image with all dependencies
-2. Run tests inside container
-3. Ensures consistent environment across machines
-
-```bash
-docker-compose exec api python3 examples/test_mcp_service_integration.py
+1. **Verify Dockerfile uses Python 3.11+**:
+```dockerfile
+# Should be:
+FROM python:3.11-slim
+# NOT python:3.9
 ```
+
+2. **Build Docker image with all dependencies**:
+```bash
+docker-compose build api
+```
+
+3. **Run tests inside container**:
+```bash
+docker-compose exec api python examples/test_mcp_service_integration.py
+```
+
+**Benefits**:
+- Consistent Python 3.11+ environment
+- All dependencies pre-installed
+- Same environment as production
+- No OpenMP installation needed (handled in Dockerfile)
 
 ### Option C: Skip Testing, Proceed to User Stories
 
@@ -256,12 +286,36 @@ Once environment is fixed, target coverage:
 
 ## Conclusion
 
-**Phase 2 implementation is complete and code-reviewed**. Testing is blocked by local Python environment issues that can be resolved with:
-1. AutoGen version update (0.4 → 0.2)
-2. OpenMP installation for XGBoost
-3. Or: Use Docker environment for testing
+**Phase 2 implementation is complete and code-reviewed**. Testing is blocked by **Python 3.9 on local machine** which cannot run AutoGen 0.4+ (requires Python 3.10+).
 
-**Recommendation**: Fix environment and run tests OR proceed to User Story 1 and test during integration.
+### Summary of Root Cause
+
+The issue is NOT that AutoGen 0.4 doesn't exist (it does - latest is 0.7.5). The issue is that:
+- ✅ Plan correctly specifies Python 3.11+ and AutoGen 0.4+
+- ✅ Docker environment uses Python 3.11-slim (ready to go)
+- ❌ Local machine has Python 3.9.6 (too old for AutoGen 0.4)
+- ❌ Pip falls back to AutoGen 0.2.40 (last Python 3.9 compatible version)
+- ❌ AutoGen 0.2 uses different import paths than 0.4
+
+### Resolution Options (in order of preference)
+
+1. **Use Docker** (immediate - 5 min):
+   ```bash
+   docker-compose build api
+   docker-compose exec api python examples/test_mcp_service_integration.py
+   ```
+
+2. **Upgrade local Python to 3.11** (30 min):
+   ```bash
+   brew install python@3.11
+   python3.11 -m venv venv
+   source venv/bin/activate
+   pip install -r requirements.txt
+   ```
+
+3. **Proceed to User Story 1** and test in Docker environment during development
+
+**Recommendation**: **Use Docker for testing** - this matches production environment and avoids local Python upgrade.
 
 ---
 

@@ -27,6 +27,7 @@ autogen-ext[openai]>=0.4.0
 
 # LLM APIs - Direct integration for structured output
 openai>=1.0.0
+anthropic>=0.18.0
 ollama>=0.1.7
 
 # Reinforcement Learning
