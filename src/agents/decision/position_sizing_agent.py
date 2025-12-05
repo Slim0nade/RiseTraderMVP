@@ -132,10 +132,13 @@ class PositionSizingAgent(BaseAgent):
         correlation_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Override base run() to use OpenAI or Anthropic with JSON mode.
+        Override base run() to use OpenAI, Anthropic, or Ollama with JSON mode.
 
-        This bypasses AutoGen issues and uses proprietary API's reliable structured output.
-        Set LLM_PROVIDER env var to 'openai' (default) or 'anthropic'.
+        This bypasses AutoGen issues and uses LLM's reliable structured output.
+        Set LLM_PROVIDER env var to:
+        - 'openai' (default) - GPT-4o-mini
+        - 'anthropic' - Claude Sonnet 4.5
+        - 'ollama' - Local models (mistral:7b-instruct, phi3:mini, phi4-mini, mistral-small3.1)
 
         Args:
             task: Task description for the agent
@@ -156,7 +159,65 @@ class PositionSizingAgent(BaseAgent):
         llm_provider = os.getenv("LLM_PROVIDER", "openai").lower()
 
         try:
-            if llm_provider == "anthropic":
+            if llm_provider == "ollama":
+                # Use local Ollama model (optimized for speed)
+                from ollama import chat
+                import re
+
+                ollama_host = os.getenv("OLLAMA_BASE_URL", "http://75.154.254.186:11434")
+                os.environ["OLLAMA_HOST"] = ollama_host
+
+                # Default to mistral:7b-instruct (best JSON reliability)
+                model = os.getenv("OLLAMA_MODEL", "mistral:7b-instruct")
+
+                logger.info(
+                    "calling_ollama",
+                    agent_id=str(self.agent_id),
+                    model=model,
+                    ollama_host=ollama_host,
+                )
+
+                # Call Ollama with JSON mode and optimized settings
+                response = chat(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": self._get_system_message_ollama()},
+                        {"role": "user", "content": task}
+                    ],
+                    format="json",  # Force JSON output
+                    options={
+                        "temperature": 0.0,
+                        "num_predict": 1500,  # Limit tokens for speed
+                        "num_thread": 8,  # Use more CPU cores
+                        "repeat_penalty": 1.1,  # Reduce repetition
+                        "stop": ["}```", "}\n\n", "}\n```"],  # Stop after JSON closes
+                    },
+                )
+
+                # Extract content from Ollama response (ollama.chat returns dict)
+                if isinstance(response, dict):
+                    response_content = response['message']['content']
+                else:
+                    response_content = response.message.content
+
+                logger.debug(
+                    "ollama_response_received",
+                    content_preview=response_content[:200],
+                )
+
+                # Clean up response: handle Python dict syntax and markdown
+                if response_content.startswith("```"):
+                    response_content = re.sub(r'^```(?:json)?\s*\n?', '', response_content)
+                    response_content = re.sub(r'\n?```\s*$', '', response_content)
+
+                # Fix Python dict syntax → JSON (single quotes → double quotes)
+                if "'" in response_content:
+                    response_content = response_content.replace("'", '"')
+                    response_content = response_content.replace('True', 'true')
+                    response_content = response_content.replace('False', 'false')
+                    response_content = response_content.replace('None', 'null')
+
+            elif llm_provider == "anthropic":
                 # Use Anthropic Claude
                 import anthropic
 
@@ -206,15 +267,18 @@ class PositionSizingAgent(BaseAgent):
                 api_key = os.getenv("OPENAI_API_KEY", "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")
                 client = OpenAI(api_key=api_key)
 
+                # Allow model selection via environment variable
+                model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+
                 logger.info(
                     "calling_openai",
                     agent_id=str(self.agent_id),
-                    model="gpt-4o-mini",
+                    model=model,
                 )
 
                 # Call OpenAI with JSON mode
                 response = client.chat.completions.create(
-                    model="gpt-4o-mini",
+                    model=model,
                     messages=[
                         {"role": "system", "content": self._get_system_message()},
                         {"role": "user", "content": task}
@@ -365,6 +429,48 @@ class PositionSizingAgent(BaseAgent):
                     "error": str(e),
                 },
             }
+
+    def _get_system_message_ollama(self) -> str:
+        """
+        Get simplified system message for Ollama models (optimized for speed and JSON compliance).
+        """
+        return """You MUST return ONLY valid JSON with these EXACT field names. Do NOT change field names.
+
+REQUIRED FIELDS (use these names EXACTLY):
+- lot_quantity (number, NOT position_size)
+- dynamic_risk_percentage (number)
+- kelly_fraction_applied (number)
+- base_size (number)
+- adjustments (object with 5 fields)
+- reasoning (string)
+- confidence (number 0-1)
+- risk_metrics (object)
+
+Example output:
+{
+    "lot_quantity": 0.5,
+    "dynamic_risk_percentage": 1.2,
+    "kelly_fraction_applied": 0.15,
+    "base_size": 2.0,
+    "adjustments": {
+        "drawdown_reduction": 0.8,
+        "volatility_adjustment": 0.7,
+        "conviction_boost": 1.15,
+        "correlation_reduction": 0.85,
+        "event_risk_reduction": 1.0
+    },
+    "reasoning": "Brief explanation",
+    "confidence": 0.85,
+    "risk_metrics": {
+        "max_loss_usd": 500,
+        "risk_reward_ratio": 2.5,
+        "position_value_usd": 5000
+    }
+}
+
+Calculate lot_quantity using: Kelly * account_balance / (stop_pips * pip_value)
+Apply adjustments for drawdown, volatility, conviction, correlation, event risk.
+Min: 0.01 lots, Max: 10 lots."""
 
     def _get_system_message(self) -> str:
         """
