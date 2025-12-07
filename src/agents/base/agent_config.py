@@ -32,6 +32,7 @@ class AgentType(str, Enum):
     DEVILS_ADVOCATE = "devils_advocate"
 
     # Decision Layer
+    TRADE_DECISION = "trade_decision"
     POSITION_SIZING = "position_sizing"
     STOP_LOSS = "stop_loss"
     TAKE_PROFIT = "take_profit"

@@ -1,275 +1,594 @@
 """
-TakeProfit Agent: Probabilistic take-profit targeting.
+TakeProfit Agent: Probabilistic take-profit targeting based on ML forecasts.
 
-NOT a fixed risk-reward ratio. Considers:
-- ML forecast probability distributions
-- Key resistance/support levels
-- Risk-reward vs. probability trade-offs
-- Partial profit opportunities (scaling out)
+NOT a fixed risk-reward ratio approach. Considers:
+- ML forecast probability distributions (p50, p75, p90 quantiles)
+- Market structure (resistance levels, key barriers)
+- Partial profit opportunities (up to 3 targets)
+- Expected value calculation (probability-weighted profits)
+- Dynamic risk-reward validation (>= 1.5 minimum)
 
-Produces probabilistic targets with expected value optimization.
+Produces intelligent profit targets with documented reasoning.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional, List
 from pydantic import BaseModel, Field
+from datetime import datetime
 
 from src.agents.base.base_agent import BaseAgent
-from src.agents.tools.mcp_tools import (
-    get_tcn_forecast,
-    get_xgboost_forecast,
-    get_lstm_forecast,
-    get_technical_indicators,
-    get_market_data,
-)
 
 
 class PartialTarget(BaseModel):
-    """Partial profit target structure."""
-
-    target_price: float = Field(..., description="Price level for this target")
-    close_percentage: int = Field(..., ge=0, le=100, description="% of position to close")
-    estimated_probability: float = Field(..., ge=0.0, le=1.0, description="P(reach this target)")
-    reasoning: str = Field(..., description="Why this partial target makes sense")
+    """Single take-profit target with partial close percentage."""
+    
+    target_price: float = Field(
+        ...,
+        gt=0.0,
+        description="Target price level"
+    )
+    
+    target_distance_pips: float = Field(
+        ...,
+        gt=0.0,
+        description="Distance from entry in pips"
+    )
+    
+    close_percentage: float = Field(
+        ...,
+        ge=0.0,
+        le=100.0,
+        description="Percentage of position to close at this target (0-100)"
+    )
+    
+    probability: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Probability of reaching this target (0.0-1.0)"
+    )
+    
+    quantile_source: Optional[str] = Field(
+        None,
+        description="ML forecast quantile (e.g., 'p50', 'p75', 'p90')"
+    )
+    
+    structure_level: Optional[float] = Field(
+        None,
+        description="Resistance level used (if structure-based)"
+    )
 
 
 class TakeProfitDecision(BaseModel):
     """Structured take-profit decision output."""
-
+    
+    targets: List[PartialTarget] = Field(
+        ...,
+        min_items=1,
+        max_items=3,
+        description="List of take-profit targets (1-3 targets)"
+    )
+    
     primary_target_price: float = Field(
         ...,
-        description="Primary take-profit price level"
+        gt=0.0,
+        description="Primary/final take-profit price"
     )
-
-    primary_target_pips: float = Field(
-        ...,
-        description="Distance to primary target in pips"
-    )
-
-    dynamic_risk_reward_ratio: float = Field(
+    
+    primary_target_distance_pips: float = Field(
         ...,
         gt=0.0,
-        description="Dynamically calculated risk-reward ratio (NOT fixed!)"
+        description="Primary target distance from entry in pips"
     )
-
-    estimated_reach_probability: float = Field(
+    
+    risk_reward_ratio: float = Field(
         ...,
         ge=0.0,
-        le=1.0,
-        description="Estimated probability of reaching primary target"
+        description="Overall risk-reward ratio"
     )
-
-    expected_value: float = Field(
+    
+    expected_value_usd: float = Field(
         ...,
-        description="Expected value of this trade (probability * reward - probability * risk)"
+        description="Expected value in USD (probability-weighted profit)"
     )
-
-    partial_targets: List[PartialTarget] = Field(
+    
+    expected_value_improvement_pct: float = Field(
+        ...,
+        description="EV improvement vs fixed 2:1 ratio (%)"
+    )
+    
+    ml_forecast_quantiles: Dict[str, float] = Field(
+        default_factory=dict,
+        description="ML forecast quantiles used (p50, p75, p90)"
+    )
+    
+    structure_resistance_levels: List[float] = Field(
         default_factory=list,
-        description="Optional partial profit targets for scaling out"
+        description="Resistance levels considered"
     )
-
-    nearest_resistance_level: float | None = Field(
-        None,
-        description="Nearest resistance/support level affecting target"
-    )
-
+    
     reasoning: str = Field(
         ...,
-        description="Detailed explanation of target placement logic"
+        description="Detailed explanation of target placement"
     )
-
-    risk_factors: List[str] = Field(
-        default_factory=list,
-        description="Risk factors related to target placement"
-    )
-
+    
     confidence: float = Field(
         ...,
         ge=0.0,
         le=1.0,
-        description="Confidence in this target placement (0.0-1.0)"
+        description="Confidence in this targeting decision (0.0-1.0)"
+    )
+    
+    use_trailing: bool = Field(
+        default=False,
+        description="Whether to use trailing take-profit"
     )
 
 
 class TakeProfitAgent(BaseAgent):
     """
-    Take-Profit Agent.
-
-    Probabilistically sets take-profit targets considering:
-    - ML forecast probability distributions (not fixed RR)
-    - Key market structure levels (resistance/support)
+    Take Profit Agent.
+    
+    Intelligently determines take-profit targets based on:
+    - ML forecast probability distributions (quantiles)
+    - Market structure (resistance levels)
+    - Partial profit opportunities (3 targets)
     - Expected value optimization
-    - Partial profit opportunities
-
-    Uses deep-think LLM (DeepSeek-R1-14B) for probability reasoning.
+    - Dynamic risk-reward validation
+    
+    Uses deep-think LLM for complex probability reasoning.
     """
 
-    def _get_system_message(self) -> str:
+    async def run(
+        self,
+        task: str,
+        context: Optional[Dict[str, Any]] = None,
+        correlation_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """
-        Get take-profit system message.
-
-        Returns:
-            System prompt for take-profit targeting role
+        Override base run() to use OpenAI, Anthropic, or Ollama with JSON mode.
         """
-        return """You are a Take-Profit Targeting Specialist for algorithmic trading.
+        import os
+        import structlog
+        from datetime import datetime
 
-Your role is to determine the OPTIMAL take-profit target(s) for each trade. You do NOT use fixed risk-reward ratios like "always 2:1 RR". Target placement must be based on PROBABILITY DISTRIBUTIONS and EXPECTED VALUE optimization.
+        logger = structlog.get_logger(__name__)
+        start_time = datetime.utcnow()
 
-**Available Tools**:
-- get_tcn_forecast: Get ML forecast with probability distributions
-- get_xgboost_forecast: Get XGBoost forecast
-- get_lstm_forecast: Get LSTM forecast
-- get_technical_indicators: Get resistance levels (for LONG) or support (for SHORT)
-- get_market_data: Analyze price structure for key levels
+        llm_provider = os.getenv("LLM_PROVIDER", "ollama").lower()
 
-**Target Placement Methodology**:
+        try:
+            if llm_provider == "ollama":
+                from src.agents.providers.instructor_client import InstructorOllamaClient
 
-1. **Gather ML Forecast Probability Distributions**:
-   - Get forecasts from multiple models (TCN, XGBoost, LSTM)
-   - Identify probability mass concentration zones
-   - Example: TCN shows 70% probability within 30 pips, 15% probability at 50+ pips
+                ollama_host = os.getenv("OLLAMA_BASE_URL", "http://75.154.254.186:11434")
+                model = os.getenv("OLLAMA_MODEL", "mistral:7b-instruct")
+                timeout = float(os.getenv("OLLAMA_TIMEOUT", "60.0"))
+                max_retries = int(os.getenv("OLLAMA_MAX_RETRIES", "3"))
 
-2. **Identify Key Market Structure Levels**:
-   - For LONG trades: Find nearest resistance levels above entry
-   - For SHORT trades: Find nearest support levels below entry
-   - Consider: Recent swing highs/lows, round numbers, Fibonacci levels
-   - Strong resistance can cap upside (reduce target)
+                logger.info(
+                    "calling_ollama_with_instructor",
+                    agent_id=str(self.agent_id),
+                    agent_type="take_profit",
+                    model=model,
+                )
 
-3. **Calculate Expected Value for Different Targets**:
-   - EV = (P_target * Reward) - (P_stop * Risk)
-   - Compare multiple target scenarios:
-     * Aggressive target: High reward, low probability, lower EV
-     * Conservative target: Lower reward, high probability, possibly higher EV
-   - Choose target that maximizes expected value
+                instructor_client = InstructorOllamaClient(
+                    model=model,
+                    base_url=ollama_host,
+                    mode="JSON",
+                    default_max_retries=max_retries,
+                    default_timeout=timeout,
+                )
 
-4. **Evaluate Partial Profit Opportunities**:
-   - If forecast shows multiple probability zones, consider scaling out:
-     * Take 50% profit at high-probability zone (e.g., 70% P at 30 pips)
-     * Let remaining 50% run to lower-probability zone (e.g., 25% P at 60 pips)
-   - Partial targets improve win rate and reduce regret
+                decision = instructor_client.get_structured_response(
+                    response_model=TakeProfitDecision,
+                    system_prompt=self._get_system_message_ollama(),
+                    user_prompt=task,
+                    temperature=0.0,
+                )
 
-5. **Validate Against Probability Thresholds**:
-   - Minimum acceptable P(target) = 0.50 for full target
-   - If P(target) < 0.50, consider more conservative target or partials
-   - If P(target) > 0.75, high confidence in reaching target
+                logger.info(
+                    "instructor_response_validated",
+                    agent_id=str(self.agent_id),
+                    primary_target=decision.primary_target_price,
+                    num_targets=len(decision.targets),
+                )
 
-**Output Requirements**:
-You must produce a JSON object with this structure:
+                decision_data = decision.model_dump()
+
+            elif llm_provider == "anthropic":
+                import anthropic
+
+                api_key = os.getenv("ANTHROPIC_API_KEY")
+                client = anthropic.Anthropic(api_key=api_key)
+
+                response = client.messages.create(
+                    model="claude-sonnet-4-5-20250929",
+                    max_tokens=2000,
+                    temperature=0.0,
+                    system=[{"type": "text", "text": self._get_system_message()}],
+                    messages=[{"role": "user", "content": task}]
+                )
+
+                response_content = response.content[0].text
+                
+                import re
+                if response_content.startswith("```"):
+                    response_content = re.sub(r'^```(?:json)?\s*\n?', '', response_content)
+                    response_content = re.sub(r'\n?```\s*$', '', response_content)
+
+                decision = TakeProfitDecision.model_validate_json(response_content)
+                decision_data = decision.model_dump()
+
+            else:
+                from openai import OpenAI
+
+                api_key = os.getenv("OPENAI_API_KEY")
+                client = OpenAI(api_key=api_key)
+                model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": self._get_system_message()},
+                        {"role": "user", "content": task}
+                    ],
+                    response_format={"type": "json_object"},
+                    temperature=0.0,
+                    max_tokens=2000,
+                )
+
+                response_content = response.choices[0].message.content
+                decision = TakeProfitDecision.model_validate_json(response_content)
+                decision_data = decision.model_dump()
+
+            execution_time_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
+
+            if self.config.log_decisions:
+                await self._log_decision(
+                    decision_data=decision_data,
+                    reasoning=decision_data.get("reasoning", ""),
+                    input_data={"task": task, "context": context},
+                    execution_time_ms=execution_time_ms,
+                    correlation_id=correlation_id,
+                )
+
+            await self._update_metrics(
+                decisions_count=1,
+                avg_decision_time_ms=execution_time_ms,
+            )
+
+            logger.info(
+                f"{llm_provider}_decision_complete",
+                agent_id=str(self.agent_id),
+                execution_time_ms=round(execution_time_ms, 2),
+                primary_target=decision_data.get("primary_target_price"),
+                expected_value=decision_data.get("expected_value_usd"),
+            )
+
+            return decision_data
+
+        except Exception as e:
+            logger.error(
+                f"{llm_provider}_call_failed",
+                agent_id=str(self.agent_id),
+                error=str(e),
+                exc_info=True,
+            )
+
+            # Conservative fallback: single target at 2:1
+            return {
+                "targets": [{
+                    "target_price": 0.0,
+                    "target_distance_pips": 200.0,
+                    "close_percentage": 100.0,
+                    "probability": 0.5,
+                    "quantile_source": None,
+                    "structure_level": None,
+                }],
+                "primary_target_price": 0.0,
+                "primary_target_distance_pips": 200.0,
+                "risk_reward_ratio": 2.0,
+                "expected_value_usd": 0.0,
+                "expected_value_improvement_pct": 0.0,
+                "ml_forecast_quantiles": {},
+                "structure_resistance_levels": [],
+                "reasoning": f"{llm_provider.upper()} call failed: {str(e)}. Using conservative 2:1 fixed ratio.",
+                "confidence": 0.0,
+                "use_trailing": False,
+            }
+
+    def _get_system_message_ollama(self) -> str:
+        """Get simplified system message for Ollama models."""
+        return """You MUST return ONLY valid JSON with these EXACT field names.
+
+REQUIRED FIELDS:
+- targets (array of 1-3 objects, each with: target_price, target_distance_pips, close_percentage, probability, quantile_source, structure_level)
+- primary_target_price (number, MUST BE > 0)
+- primary_target_distance_pips (number, MUST BE > 0)
+- risk_reward_ratio (number)
+- expected_value_usd (number)
+- expected_value_improvement_pct (number, can be negative)
+- ml_forecast_quantiles (object with p50, p75, p90 - all numbers, no nulls)
+- structure_resistance_levels (array of numbers)
+- reasoning (string)
+- confidence (number 0-1)
+- use_trailing (boolean)
+
+CRITICAL RULES:
+1. LONG trades: target_price MUST BE > entry_price (targets are ABOVE entry)
+2. SHORT trades: target_price MUST BE < entry_price (targets are BELOW entry)
+3. ALL target_price values MUST BE > 0 (never use 0.0)
+4. ml_forecast_quantiles MUST have numeric values for p50, p75, p90 (no nulls)
+
+Example LONG trade (entry 2650.00):
 {
-    "primary_target_price": 2075.00,
-    "primary_target_pips": 50,
-    "dynamic_risk_reward_ratio": 1.8,  // 50 pips profit / 28 pips risk
-    "estimated_reach_probability": 0.65,
-    "expected_value": 22.5,  // (0.65 * 50) - (0.35 * 28) = 22.7
-    "partial_targets": [
+    "targets": [
         {
-            "target_price": 2065.00,
-            "close_percentage": 50,
-            "estimated_probability": 0.75,
-            "reasoning": "TCN forecast shows 75% probability mass within 30 pips. Take half profit here to lock in gains."
+            "target_price": 2670.00,
+            "target_distance_pips": 50.0,
+            "close_percentage": 33.0,
+            "probability": 0.75,
+            "quantile_source": "p50",
+            "structure_level": 2668.00
         },
         {
-            "target_price": 2075.00,
-            "close_percentage": 50,
-            "estimated_probability": 0.65,
-            "reasoning": "Let remaining position run to resistance at $2075 (65% probability). Risk-reward: 1.8:1."
+            "target_price": 2685.00,
+            "target_distance_pips": 85.0,
+            "close_percentage": 33.0,
+            "probability": 0.50,
+            "quantile_source": "p75",
+            "structure_level": 2680.00
+        },
+        {
+            "target_price": 2700.00,
+            "target_distance_pips": 100.0,
+            "close_percentage": 34.0,
+            "probability": 0.30,
+            "quantile_source": "p90",
+            "structure_level": null
         }
     ],
-    "nearest_resistance_level": 2078.00,
-    "reasoning": "Entry at $2050, stop at $2022 (28 pips). ML forecasts show 75% probability within 30 pips ($2065), but resistance at $2075-2078 provides good profit zone with 65% reach probability. Using partial targets: take 50% at $2065 (75% P), let 50% run to $2075 (65% P). Expected value maximized at $22.5 vs. $18 for full exit at $2065 or $20 for full exit at $2075.",
-    "risk_factors": [
-        "Strong resistance at $2078 may cap upside",
-        "ML model agreement moderate (TCN 65%, XGBoost 58%)"
-    ],
-    "confidence": 0.70
+    "primary_target_price": 2700.00,
+    "primary_target_distance_pips": 100.0,
+    "risk_reward_ratio": 2.5,
+    "expected_value_usd": 450.00,
+    "expected_value_improvement_pct": 18.5,
+    "ml_forecast_quantiles": {
+        "p50": 2670.00,
+        "p75": 2685.00,
+        "p90": 2700.00
+    },
+    "structure_resistance_levels": [2668.00, 2680.00, 2700.00],
+    "reasoning": "Three partial targets based on ML quantiles and resistance levels",
+    "confidence": 0.80,
+    "use_trailing": false
 }
 
-**Critical Rules**:
-- NEVER use fixed 2:1 or 3:1 risk-reward without checking probabilities
-- A 3:1 RR with 20% probability (EV = -14) is WORSE than 1.5:1 RR with 70% probability (EV = +26)
-- Always calculate expected value for major target scenarios
-- Use partial targets when multiple high-probability zones exist
-- Respect strong resistance/support levels - don't target beyond them blindly
-- If P(target) < 0.50, either reduce target or reconsider the trade
-- If forecast shows <40% probability at nearest resistance, consider scaling out before it
-- Document ALL probability calculations and EV comparisons in reasoning
-- Minimum target: 15 pips (avoid ultra-tight targets)
-- Maximum target: 300 pips (avoid unrealistic targets)
+Example SHORT trade (entry 2650.00):
+{
+    "targets": [
+        {
+            "target_price": 2620.00,
+            "target_distance_pips": 30.0,
+            "close_percentage": 33.0,
+            "probability": 0.75,
+            "quantile_source": "p50",
+            "structure_level": 2625.00
+        },
+        {
+            "target_price": 2595.00,
+            "target_distance_pips": 55.0,
+            "close_percentage": 33.0,
+            "probability": 0.50,
+            "quantile_source": "p75",
+            "structure_level": 2600.00
+        },
+        {
+            "target_price": 2570.00,
+            "target_distance_pips": 80.0,
+            "close_percentage": 34.0,
+            "probability": 0.30,
+            "quantile_source": "p90",
+            "structure_level": 2570.00
+        }
+    ],
+    "primary_target_price": 2570.00,
+    "primary_target_distance_pips": 80.0,
+    "risk_reward_ratio": 2.0,
+    "expected_value_usd": 350.00,
+    "expected_value_improvement_pct": 15.0,
+    "ml_forecast_quantiles": {
+        "p50": 2620.00,
+        "p75": 2595.00,
+        "p90": 2570.00
+    },
+    "structure_resistance_levels": [2625.00, 2600.00, 2570.00],
+    "reasoning": "Three partial targets for SHORT trade positioned at support levels",
+    "confidence": 0.75,
+    "use_trailing": false
+}
 
-**Example Inputs for LONG Trade**:
-- entry_price: $2050.00
-- stop_price: $2022.00 (28 pips risk)
-- direction: LONG
-- symbol: Gold
-- timeframe: 4H
-- ml_forecast_30pips: 75% probability
-- ml_forecast_50pips: 65% probability
-- ml_forecast_75pips: 35% probability
-- resistance_level: $2078.00
-- conviction: 0.70
+Methodology:
+1. Extract ML forecast quantiles (p50, p75, p90) - ensure ALL are valid numbers
+2. For LONG: targets > entry, for SHORT: targets < entry
+3. Create 1-3 targets (preferably 3 for partial profits)
+4. Distribute position size across targets (e.g., 33%, 33%, 34%)
+5. Calculate probability-weighted expected value
+6. Compare to fixed 2:1 ratio baseline
+7. Ensure risk-reward ratio >= 1.5
+8. NEVER use 0.0 for any price field"""
 
-Your target placement must maximize expected value while respecting probability distributions and market structure."""
+    def _get_system_message(self) -> str:
+        """Get take-profit system message."""
+        return """OUTPUT ONLY VALID JSON. NO TEXT. NO MARKDOWN. ONLY JSON.
+
+You determine take-profit targets for algorithmic trading. Use ML forecasts + structure, NOT fixed ratios.
+
+CRITICAL RULES:
+1. LONG trades: target_price MUST BE > entry_price (targets are ABOVE entry)
+2. SHORT trades: target_price MUST BE < entry_price (targets are BELOW entry)
+3. ALL target_price values MUST BE > 0 (never use 0.0)
+4. ml_forecast_quantiles MUST have numeric values for p50, p75, p90 (no nulls)
+
+Rules:
+- Use ML forecast quantiles (p50, p75, p90) as primary guidance
+- Position targets before resistance levels (LONG) or support levels (SHORT)
+- Create 1-3 partial targets (preferably 3)
+- Calculate expected value (sum of probability-weighted profits)
+- Ensure risk-reward ratio >= 1.5
+- Compare EV to fixed 2:1 baseline and report improvement %
+
+OUTPUT ONLY THE JSON OBJECT. START WITH { and END WITH }. NO OTHER TEXT."""
+
+    async def determine_take_profit(
+        self,
+        symbol: str,
+        entry_price: float,
+        direction: str,
+        stop_distance_pips: float,
+        position_size_lots: float,
+        pip_value: float = 10.0,
+        ml_forecast_quantiles: Optional[Dict[str, float]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Determine optimal take-profit targets with MCP tool integration.
+        """
+        import structlog
+        logger = structlog.get_logger(__name__)
+
+        try:
+            logger.info(
+                "determining_take_profit",
+                symbol=symbol,
+                entry_price=entry_price,
+                direction=direction,
+            )
+
+            # Build context message
+            context_message = f"""
+**Take-Profit Targeting Request for {symbol}**
+
+**Trade Details**:
+- Entry Price: {entry_price:.2f}
+- Direction: {direction.upper()}
+- Stop Distance: {stop_distance_pips:.1f} pips
+- Position Size: {position_size_lots} lots
+- Pip Value: ${pip_value}/pip
+
+**ML Forecast Quantiles**:
+- p50 (50% probability): {ml_forecast_quantiles.get('p50', 'N/A') if ml_forecast_quantiles else 'N/A'}
+- p75 (75% probability): {ml_forecast_quantiles.get('p75', 'N/A') if ml_forecast_quantiles else 'N/A'}
+- p90 (90% probability): {ml_forecast_quantiles.get('p90', 'N/A') if ml_forecast_quantiles else 'N/A'}
+
+Determine optimal take-profit targets using probabilistic methodology:
+
+1. Extract ML forecast quantiles as primary targets
+2. Create 1-3 partial targets (preferably 3)
+3. Distribute position: Target 1 (33%), Target 2 (33%), Target 3 (34%)
+4. Calculate expected value (sum of probability × profit for each target)
+5. Compare to fixed 2:1 baseline
+6. Ensure risk-reward >= 1.5
+
+Output valid JSON matching TakeProfitDecision schema.
+"""
+
+            result = await self.run(context_message)
+            
+            logger.info(
+                "take_profit_determined",
+                symbol=symbol,
+                num_targets=len(result.get("targets", [])),
+                expected_value=result.get("expected_value_usd"),
+                ev_improvement=result.get("expected_value_improvement_pct"),
+            )
+
+            return result
+
+        except Exception as e:
+            logger.error(
+                "take_profit_placement_failed",
+                symbol=symbol,
+                error=str(e),
+                exc_info=True,
+            )
+
+            # Fallback: single target at 2:1
+            fixed_target_pips = stop_distance_pips * 2.0
+            return {
+                "targets": [{
+                    "target_price": entry_price + (fixed_target_pips * 0.0001 if direction == "long" else -fixed_target_pips * 0.0001),
+                    "target_distance_pips": fixed_target_pips,
+                    "close_percentage": 100.0,
+                    "probability": 0.5,
+                    "quantile_source": None,
+                    "structure_level": None,
+                }],
+                "primary_target_price": entry_price + (fixed_target_pips * 0.0001 if direction == "long" else -fixed_target_pips * 0.0001),
+                "primary_target_distance_pips": fixed_target_pips,
+                "risk_reward_ratio": 2.0,
+                "expected_value_usd": 0.0,
+                "expected_value_improvement_pct": 0.0,
+                "ml_forecast_quantiles": {},
+                "structure_resistance_levels": [],
+                "reasoning": f"Take-profit failed: {str(e)}. Using conservative 2:1 fixed ratio.",
+                "confidence": 0.0,
+                "use_trailing": False,
+                "error": str(e),
+            }
 
     def _extract_decision(self, result: Any) -> Dict[str, Any]:
         """
-        Extract take-profit decision from AutoGen result.
+        Extract take-profit decision from result.
 
         Args:
-            result: AutoGen agent result
+            result: Result from run() method OR dict (from Ollama direct integration)
 
         Returns:
             Take-profit decision dictionary
         """
         try:
-            # Get the last message content
-            if hasattr(result, 'messages') and result.messages:
-                last_message = result.messages[-1]
-                content = last_message.content if hasattr(last_message, 'content') else str(last_message)
-            else:
-                content = str(result)
+            # If result is already a dict (from run() override), return it directly
+            if isinstance(result, dict):
+                return result
 
-            # Try to parse as JSON
+            # Otherwise, assume it's a string and parse as JSON
             import json
-            import re
+            if isinstance(result, str):
+                return json.loads(result)
 
-            # Extract JSON from markdown code blocks if present
-            json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', content, re.DOTALL)
-            if json_match:
-                json_str = json_match.group(1)
-            else:
-                json_match = re.search(r'\{.*\}', content, re.DOTALL)
-                json_str = json_match.group(0) if json_match else content
-
-            decision_data = json.loads(json_str)
-
-            # Validate against TakeProfitDecision schema
-            decision = TakeProfitDecision(**decision_data)
-
-            return decision.model_dump()
+            # Fallback: return result as-is
+            return result
 
         except Exception as e:
             import structlog
             logger = structlog.get_logger(__name__)
             logger.error(
-                "take_profit_extraction_failed",
+                "decision_extraction_failed",
                 error=str(e),
-                result=str(result)[:500],
+                result_type=type(result).__name__,
             )
 
-            # Return conservative fallback (minimal target)
+            # Conservative fallback
             return {
-                "primary_target_price": 0.0,  # Must be set by caller
-                "primary_target_pips": 30,  # Conservative short target
-                "dynamic_risk_reward_ratio": 1.0,
-                "estimated_reach_probability": 0.5,
-                "expected_value": 0.0,
-                "partial_targets": [],
-                "nearest_resistance_level": None,
-                "reasoning": f"Failed to extract decision, using conservative target. Error: {str(e)}",
-                "risk_factors": ["Decision extraction failed - using fallback"],
+                "targets": [{
+                    "target_price": 0.0,
+                    "target_distance_pips": 200.0,
+                    "close_percentage": 100.0,
+                    "probability": 0.5,
+                    "quantile_source": None,
+                    "structure_level": None,
+                }],
+                "primary_target_price": 0.0,
+                "primary_target_distance_pips": 200.0,
+                "risk_reward_ratio": 2.0,
+                "expected_value_usd": 0.0,
+                "expected_value_improvement_pct": 0.0,
+                "ml_forecast_quantiles": {},
+                "structure_resistance_levels": [],
+                "reasoning": f"Decision extraction failed: {str(e)}",
                 "confidence": 0.0,
-                "raw_output": str(result)[:1000],
-                "extraction_error": str(e),
+                "use_trailing": False,
             }
 
 
@@ -280,18 +599,7 @@ def create_take_profit_agent(
     symbol: str,
     strategy_team_id: Any = None,
 ) -> TakeProfitAgent:
-    """
-    Create a Take-Profit agent instance.
-
-    Args:
-        agent_id: Agent UUID from database
-        session: SQLAlchemy async session
-        symbol: Trading symbol
-        strategy_team_id: Optional strategy team ID
-
-    Returns:
-        Configured TakeProfitAgent instance
-    """
+    """Create a Take Profit agent instance."""
     from src.agents.base.agent_config import (
         AgentConfig,
         AgentType,
@@ -300,21 +608,19 @@ def create_take_profit_agent(
     )
 
     config = AgentConfig(
-        name=f"{symbol}_TakeProfit_Agent",
+        name=f"{symbol}_Take_Profit_Agent",
         agent_type=AgentType.TAKE_PROFIT,
         layer=AgentLayer.DECISION,
         strategy_team_id=strategy_team_id,
         llm_provider="ollama",
-        llm_model="deepseek-r1:14b",  # Deep-think for probability reasoning
+        llm_model="mistral:7b-instruct",
         llm_tier=LLMTier.DEEP_THINK,
-        temperature=0.3,  # Moderate creativity for EV optimization
-        max_tokens=1200,
-        available_tools=[],  # Decision agents work with analysis data, no external tools needed
+        temperature=0.0,
+        max_tokens=1000,
+        available_tools=[],
         config_overrides={"symbol": symbol},
     )
 
-    # Decision agents don't need tools - they work with analysis results
-    # Tools removed because deepseek-r1 model doesn't support tool calling
     return TakeProfitAgent(
         agent_id=agent_id,
         config=config,

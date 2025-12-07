@@ -10,17 +10,36 @@ Provides unified interface for different LLM providers using AutoGen 0.4 model c
 All clients return AutoGen-compatible model clients that can be used with AssistantAgent.
 """
 
-from src.agents.providers.ollama_client import create_ollama_client
+from src.agents.providers.ollama_client import (
+    create_ollama_client,
+    create_quick_think_client,
+    create_deep_think_client,
+)
 from src.agents.providers.openai_client import create_openai_client
 from src.agents.providers.anthropic_client import create_anthropic_client
 from src.agents.providers.google_client import create_google_client
 from src.agents.providers.model_router import LLMRouter, LLMTier
+from src.agents.providers.instructor_client import (
+    InstructorOllamaClient,
+    create_instructor_client,
+    create_fast_json_client,
+    create_reliable_json_client,
+    create_llama_json_client,
+)
 
 __all__ = [
     "create_ollama_client",
+    "create_quick_think_client",
+    "create_deep_think_client",
     "create_openai_client",
     "create_anthropic_client",
     "create_google_client",
     "LLMRouter",
     "LLMTier",
+    # Instructor-based clients (guaranteed JSON schema)
+    "InstructorOllamaClient",
+    "create_instructor_client",
+    "create_fast_json_client",
+    "create_reliable_json_client",
+    "create_llama_json_client",
 ]

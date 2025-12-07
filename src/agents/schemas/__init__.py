@@ -29,6 +29,32 @@ from .reports import (
     TrendDirection,
 )
 
+# Phase 6: Adversarial Debate & Safety Gates (NEW - 2025-12-06)
+from .debate import (
+    ArgumentCase,
+    BearCase,
+    BullCase,
+    DebatePosition,
+    DebateOutcome as Phase6DebateOutcome,
+    EvidencePoint,
+    RiskDebateOutcome,
+    RiskPerspective,
+    RiskTolerance,
+)
+from .trade_decision import (
+    ConflictResolution,
+    TradeDirection as Phase6TradeDirection,
+    TradeIntent as Phase6TradeIntent,
+)
+from .approval import (
+    ApprovalDecision,
+    FundManagerApproval,
+    ModificationType,
+    PortfolioLimits,
+    RejectionReason,
+    TradeModification,
+)
+
 __all__ = [
     # Events
     "BaseEvent",
@@ -36,7 +62,7 @@ __all__ = [
     "EventPriority",
     "MarketTickEvent",
     "AgentErrorEvent",
-    # Decisions
+    # Decisions (Legacy)
     "TradeDirection",
     "OrderType",
     "ConfidenceLevel",
@@ -45,7 +71,7 @@ __all__ = [
     "StopLoss",
     "TakeProfit",
     "EntryTiming",
-    # Reports
+    # Reports (Legacy)
     "TrendDirection",
     "MarketRegime",
     "SentimentPolarity",
@@ -53,4 +79,25 @@ __all__ = [
     "FundamentalReport",
     "SentimentReport",
     "DebateOutcome",
+    # Phase 6: Debate schemas
+    "ArgumentCase",
+    "BearCase",
+    "BullCase",
+    "DebatePosition",
+    "Phase6DebateOutcome",
+    "EvidencePoint",
+    "RiskDebateOutcome",
+    "RiskPerspective",
+    "RiskTolerance",
+    # Phase 6: Trade decision schemas
+    "ConflictResolution",
+    "Phase6TradeDirection",
+    "Phase6TradeIntent",
+    # Phase 6: Approval schemas
+    "ApprovalDecision",
+    "FundManagerApproval",
+    "ModificationType",
+    "PortfolioLimits",
+    "RejectionReason",
+    "TradeModification",
 ]

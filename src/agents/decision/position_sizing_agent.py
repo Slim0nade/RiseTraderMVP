@@ -160,62 +160,54 @@ class PositionSizingAgent(BaseAgent):
 
         try:
             if llm_provider == "ollama":
-                # Use local Ollama model (optimized for speed)
-                from ollama import chat
-                import re
+                # Use local Ollama model with INSTRUCTOR for guaranteed JSON schema
+                from src.agents.providers.instructor_client import InstructorOllamaClient
 
                 ollama_host = os.getenv("OLLAMA_BASE_URL", "http://75.154.254.186:11434")
-                os.environ["OLLAMA_HOST"] = ollama_host
 
-                # Default to mistral:7b-instruct (best JSON reliability)
+                # Default to mistral:7b-instruct (best speed + JSON reliability)
                 model = os.getenv("OLLAMA_MODEL", "mistral:7b-instruct")
+                
+                # Timeout configuration (longer for bigger models)
+                timeout = float(os.getenv("OLLAMA_TIMEOUT", "60.0"))
+                max_retries = int(os.getenv("OLLAMA_MAX_RETRIES", "3"))
 
                 logger.info(
-                    "calling_ollama",
+                    "calling_ollama_with_instructor",
                     agent_id=str(self.agent_id),
                     model=model,
                     ollama_host=ollama_host,
+                    timeout=timeout,
+                    max_retries=max_retries,
                 )
 
-                # Call Ollama with JSON mode and optimized settings
-                response = chat(
+                # Create Instructor client (GBNF grammar enforces schema)
+                instructor_client = InstructorOllamaClient(
                     model=model,
-                    messages=[
-                        {"role": "system", "content": self._get_system_message_ollama()},
-                        {"role": "user", "content": task}
-                    ],
-                    format="json",  # Force JSON output
-                    options={
-                        "temperature": 0.0,
-                        "num_predict": 1500,  # Limit tokens for speed
-                        "num_thread": 8,  # Use more CPU cores
-                        "repeat_penalty": 1.1,  # Reduce repetition
-                        "stop": ["}```", "}\n\n", "}\n```"],  # Stop after JSON closes
-                    },
+                    base_url=ollama_host,
+                    mode="JSON",
+                    default_max_retries=max_retries,
+                    default_timeout=timeout,
                 )
 
-                # Extract content from Ollama response (ollama.chat returns dict)
-                if isinstance(response, dict):
-                    response_content = response['message']['content']
-                else:
-                    response_content = response.message.content
-
-                logger.debug(
-                    "ollama_response_received",
-                    content_preview=response_content[:200],
+                # Get GUARANTEED valid response using Pydantic schema
+                # Instructor auto-retries on validation failure
+                decision = instructor_client.get_structured_response(
+                    response_model=PositionSizeDecision,
+                    system_prompt=self._get_system_message_ollama(),
+                    user_prompt=task,
+                    temperature=0.0,
                 )
 
-                # Clean up response: handle Python dict syntax and markdown
-                if response_content.startswith("```"):
-                    response_content = re.sub(r'^```(?:json)?\s*\n?', '', response_content)
-                    response_content = re.sub(r'\n?```\s*$', '', response_content)
+                logger.info(
+                    "instructor_response_validated",
+                    agent_id=str(self.agent_id),
+                    lot_quantity=decision.lot_quantity,
+                    dynamic_risk_percentage=decision.dynamic_risk_percentage,
+                )
 
-                # Fix Python dict syntax → JSON (single quotes → double quotes)
-                if "'" in response_content:
-                    response_content = response_content.replace("'", '"')
-                    response_content = response_content.replace('True', 'true')
-                    response_content = response_content.replace('False', 'false')
-                    response_content = response_content.replace('None', 'null')
+                # Convert validated Pydantic model to dict
+                decision_data = decision.model_dump()
 
             elif llm_provider == "anthropic":
                 # Use Anthropic Claude
@@ -296,11 +288,10 @@ class PositionSizingAgent(BaseAgent):
                     content_preview=response_content[:200],
                 )
 
-            # Validate against Pydantic model (works for both providers)
-            decision = PositionSizeDecision.model_validate_json(response_content)
-
-            # Convert to dict
-            decision_data = decision.model_dump()
+            # For non-Ollama providers, validate against Pydantic model
+            if llm_provider != "ollama":
+                decision = PositionSizeDecision.model_validate_json(response_content)
+                decision_data = decision.model_dump()
 
             # Calculate execution time
             execution_time_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
