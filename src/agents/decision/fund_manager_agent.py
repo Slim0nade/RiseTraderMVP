@@ -19,7 +19,6 @@ from datetime import datetime
 from typing import Dict, Any, Optional, List
 import structlog
 
-from src.agents.base.base_agent import BaseAgent
 from src.agents.base.agent_config import AgentConfig, AgentType, AgentLayer
 from src.agents.schemas.approval import (
     FundManagerApproval,
@@ -31,7 +30,9 @@ from src.agents.schemas.approval import (
 )
 from src.agents.schemas.decisions import PositionSize, StopLoss, TakeProfit
 from src.agents.schemas.trade_decision import TradeIntent as Phase6TradeIntent
-from src.agents.providers import create_deep_think_client
+from src.agents.providers.instructor_client import create_instructor_client
+from src.database.repositories.decision_log_repository import DecisionLogRepository
+from uuid import uuid4
 
 logger = structlog.get_logger(__name__)
 
@@ -131,7 +132,7 @@ Be rigorous. Be disciplined. Protect capital.
 """
 
 
-class FundManagerAgent(BaseAgent):
+class FundManagerAgent:
     """
     Fund Manager Agent - Final approval gate with hard portfolio limits.
 
@@ -141,12 +142,15 @@ class FundManagerAgent(BaseAgent):
     - REJECT trades (hard limit violations, poor quality)
 
     Critical for capital preservation and portfolio risk management.
+
+    Uses Instructor client for guaranteed Pydantic schema output.
     """
 
     def __init__(
         self,
         config: AgentConfig,
-        portfolio_limits: Optional[PortfolioLimits] = None
+        portfolio_limits: Optional[PortfolioLimits] = None,
+        decision_log_repo: Optional[DecisionLogRepository] = None
     ):
         """
         Initialize Fund Manager Agent.
@@ -154,58 +158,36 @@ class FundManagerAgent(BaseAgent):
         Args:
             config: Agent configuration
             portfolio_limits: Hard portfolio limits (uses defaults if not provided)
+            decision_log_repo: Optional repository for logging decisions
         """
-        # Validate agent type
-        if config.agent_type != AgentType.RISK_OVERSEER:
-            logger.warning(
-                "fund_manager_agent_type_mismatch",
-                expected=AgentType.RISK_OVERSEER.value,
-                actual=config.agent_type.value
-            )
-
-        # Validate layer
-        if config.layer != AgentLayer.DECISION:
-            logger.warning(
-                "fund_manager_agent_layer_mismatch",
-                expected=AgentLayer.DECISION.value,
-                actual=config.layer.value
-            )
-
-        super().__init__(config)
+        self.agent_id = uuid4()
+        self.config = config
+        self.decision_log_repo = decision_log_repo
 
         # Set portfolio limits
         self.portfolio_limits = portfolio_limits or PortfolioLimits()
 
-        # Override system prompt with portfolio limits
-        if not config.system_prompt:
-            self.config.system_prompt = FUND_MANAGER_SYSTEM_PROMPT.format(
-                max_account_risk=self.portfolio_limits.max_account_risk_percent,
-                max_portfolio_risk=self.portfolio_limits.max_portfolio_risk_percent,
-                max_correlated_positions=self.portfolio_limits.max_correlated_positions,
-                event_risk_veto_hours=self.portfolio_limits.event_risk_veto_hours,
-                min_trade_quality=self.portfolio_limits.min_trade_quality_score
-            )
+        # Build system prompt with portfolio limits
+        self.system_prompt = FUND_MANAGER_SYSTEM_PROMPT.format(
+            max_account_risk=self.portfolio_limits.max_account_risk_percent,
+            max_portfolio_risk=self.portfolio_limits.max_portfolio_risk_percent,
+            max_correlated_positions=self.portfolio_limits.max_correlated_positions,
+            event_risk_veto_hours=self.portfolio_limits.event_risk_veto_hours,
+            min_trade_quality=self.portfolio_limits.min_trade_quality_score
+        )
+
+        # Create Instructor client for structured Pydantic output
+        self.client, self.model_name = create_instructor_client(
+            model=config.llm_model
+        )
 
         logger.info(
             "fund_manager_agent_initialized",
             agent_id=str(self.agent_id),
             llm_model=config.llm_model,
             max_account_risk=self.portfolio_limits.max_account_risk_percent,
-            max_portfolio_risk=self.portfolio_limits.max_portfolio_risk_percent
-        )
-
-    def _create_model_client(self):
-        """
-        Create LLM model client for fund manager decisions.
-
-        Uses deep-think tier for critical approval decisions.
-
-        Returns:
-            AutoGen model client configured for structured output
-        """
-        return create_deep_think_client(
-            temperature=self.config.temperature,
-            response_format=FundManagerApproval
+            max_portfolio_risk=self.portfolio_limits.max_portfolio_risk_percent,
+            logging_enabled=decision_log_repo is not None
         )
 
     async def approve_trade(
@@ -236,7 +218,7 @@ class FundManagerAgent(BaseAgent):
             agent_id=str(self.agent_id),
             symbol=symbol,
             direction=trade_intent.direction,
-            proposed_lots=position_size.lot_size,
+            proposed_lots=position_size.position_size_lots,
             proposed_risk=position_size.risk_percentage
         )
 
@@ -250,12 +232,19 @@ class FundManagerAgent(BaseAgent):
             symbol=symbol
         )
 
-        # Execute approval decision
+        # Execute approval decision using Instructor client for guaranteed Pydantic output
         try:
-            result = await self.execute(approval_prompt)
-
-            # Extract FundManagerApproval from result
-            approval = self._extract_approval(result)
+            # Use Instructor client to get structured FundManagerApproval
+            approval = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=[
+                    {"role": "system", "content": self.system_prompt},
+                    {"role": "user", "content": approval_prompt}
+                ],
+                response_model=FundManagerApproval,
+                temperature=self.config.temperature or 0.2,
+                max_tokens=self.config.max_tokens or 2000
+            )
 
             logger.info(
                 "fund_manager_approval_complete",
@@ -266,6 +255,18 @@ class FundManagerAgent(BaseAgent):
                 approved_risk=approval.approved_risk_percentage,
                 portfolio_risk_after=approval.portfolio_risk_after_trade
             )
+
+            # Log decision to database if repository provided
+            if self.decision_log_repo:
+                await self._log_fund_manager_decision(
+                    approval=approval,
+                    trade_intent=trade_intent,
+                    position_size=position_size,
+                    stop_loss=stop_loss,
+                    take_profit=take_profit,
+                    current_portfolio=current_portfolio,
+                    symbol=symbol
+                )
 
             return approval
 
@@ -331,21 +332,19 @@ Direction: {trade_intent.direction}
 Conviction: {trade_intent.conviction:.2f}
 
 **Position Sizing**:
-Lot Size: {position_size.lot_size:.2f} lots
+Lot Size: {position_size.position_size_lots:.2f} lots
 Risk Percentage: {position_size.risk_percentage:.2f}%
-Risk Amount: ${position_size.risk_amount:.2f}
-Entry Price: ${position_size.entry_price:.2f}
+Risk Amount: ${position_size.risk_amount_usd:.2f}
 
 **Risk Management**:
-Stop-Loss: ${stop_loss.stop_price:.2f} ({stop_loss.distance_in_pips:.1f} pips)
-Stop Type: {stop_loss.placement_type}
-Probability of Stop Hit: {stop_loss.probability_of_stop_hit:.2f}
+Stop-Loss: ${stop_loss.stop_loss_price:.2f} ({stop_loss.distance_pips or 0:.1f} pips)
+Stop Type: {stop_loss.stop_loss_type.value}
+Distance Percentage: {stop_loss.distance_percentage or 0:.2f}%
 
 **Profit Targets**:
-Primary Target: ${take_profit.primary_target:.2f}
-Risk:Reward Ratio: {take_profit.risk_reward_ratio:.2f}:1
-Expected Value: ${take_profit.expected_value:.2f}
-Number of Targets: {len(take_profit.partial_targets)}
+Primary Target: ${take_profit.take_profit_price:.2f}
+Risk:Reward Ratio: {take_profit.reward_risk_ratio or 0:.2f}:1
+Partial Close: {take_profit.partial_close_percentage or 0:.1f}%
 
 **Trade Rationale**:
 {trade_intent.rationale}
@@ -479,6 +478,88 @@ Remember: You are the last line of defense. Be rigorous.
                 result=str(result)[:500]
             )
             raise
+
+    async def _log_fund_manager_decision(
+        self,
+        approval: FundManagerApproval,
+        trade_intent: Phase6TradeIntent,
+        position_size: PositionSize,
+        stop_loss: StopLoss,
+        take_profit: TakeProfit,
+        current_portfolio: Dict[str, Any],
+        symbol: str
+    ) -> None:
+        """
+        Log fund manager decision to decision_log table.
+
+        Args:
+            approval: Fund manager approval decision
+            trade_intent: Original trade intent
+            position_size: Position sizing decision
+            stop_loss: Stop-loss placement
+            take_profit: Take-profit targets
+            current_portfolio: Portfolio state
+            symbol: Trading symbol
+        """
+        try:
+            from src.database.models.decision_log import DecisionLog
+
+            decision_log = DecisionLog(
+                id=uuid4(),
+                decided_at=datetime.utcnow(),
+                agent_id=self.agent_id,
+                agent_type="fund_manager",
+                strategy_team_id=None,
+                symbol=symbol,
+                timeframe=None,
+                input_data={
+                    "trade_intent": trade_intent.model_dump(),
+                    "position_size": position_size.model_dump(),
+                    "stop_loss": stop_loss.model_dump(),
+                    "take_profit": take_profit.model_dump(),
+                    "current_portfolio": current_portfolio
+                },
+                reasoning_trace={
+                    "decision": approval.decision.value,
+                    "rationale": approval.rationale,
+                    "modifications": [m.model_dump() for m in approval.modifications] if approval.modifications else [],
+                    "rejected_reason": approval.rejection_reason.value if approval.rejection_reason else None,
+                    "rejected_details": approval.rejection_details or []
+                },
+                output_decision={
+                    "decision": approval.decision.value,
+                    "approved_position_size": float(approval.approved_position_size) if approval.approved_position_size else 0.0,
+                    "approved_risk_percentage": float(approval.approved_risk_percentage) if approval.approved_risk_percentage else 0.0,
+                    "hard_limits_passed": approval.hard_limits_passed,
+                    "trade_quality_score": float(approval.trade_quality_score),
+                    "portfolio_risk_after_trade": float(approval.portfolio_risk_after_trade)
+                },
+                confidence_score=float(approval.confidence),
+                execution_outcome=None,  # Will be updated after execution
+                metadata={
+                    "portfolio_limits": self.portfolio_limits.model_dump(),
+                    "hard_limits_passed": approval.hard_limits_passed
+                },
+                llm_cost_usd=None,  # TODO: Track LLM costs
+                processing_time_ms=None  # TODO: Track processing time
+            )
+
+            await self.decision_log_repo.create(decision_log)
+
+            logger.info(
+                "fund_manager_decision_logged",
+                symbol=symbol,
+                decision_id=str(decision_log.id),
+                decision=approval.decision.value
+            )
+
+        except Exception as e:
+            logger.error(
+                "fund_manager_decision_logging_failed",
+                symbol=symbol,
+                error=str(e)
+            )
+            # Don't raise - logging failure shouldn't break approval flow
 
     async def health_check(self) -> bool:
         """

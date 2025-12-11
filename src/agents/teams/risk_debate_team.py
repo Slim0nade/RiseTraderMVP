@@ -22,6 +22,7 @@ from src.agents.schemas.debate import (
 )
 from src.agents.schemas.decisions import PositionSize
 from src.agents.providers import create_deep_think_client
+from src.database.repositories.decision_log_repository import DecisionLogRepository
 
 logger = structlog.get_logger(__name__)
 
@@ -129,19 +130,23 @@ class RiskDebateTeam:
 
     def __init__(
         self,
-        llm_tier: LLMTier = LLMTier.DEEP_THINK
+        llm_tier: LLMTier = LLMTier.DEEP_THINK,
+        decision_log_repo: Optional[DecisionLogRepository] = None
     ):
         """
         Initialize Risk Debate Team.
 
         Args:
             llm_tier: LLM tier for debate moderation (default: DEEP_THINK)
+            decision_log_repo: Optional repository for logging decisions
         """
         self.llm_tier = llm_tier
+        self.decision_log_repo = decision_log_repo
 
         logger.info(
             "risk_debate_team_initialized",
-            llm_tier=llm_tier.value
+            llm_tier=llm_tier.value,
+            logging_enabled=decision_log_repo is not None
         )
 
     async def run_risk_debate(
@@ -232,6 +237,15 @@ class RiskDebateTeam:
                 warnings_count=len(debate_outcome.key_warnings)
             )
 
+            # Log decision to database if repository provided
+            if self.decision_log_repo:
+                await self._log_risk_debate_decision(
+                    debate_outcome=debate_outcome,
+                    position_size=position_size,
+                    trade_context=trade_context,
+                    symbol=symbol
+                )
+
             return debate_outcome
 
         except Exception as e:
@@ -317,6 +331,75 @@ Return a complete RiskDebateOutcome JSON object with all three perspectives and 
 Be authentic in each perspective - genuine adversarial debate produces better decisions.
 """
         return prompt
+
+    async def _log_risk_debate_decision(
+        self,
+        debate_outcome: RiskDebateOutcome,
+        position_size: PositionSize,
+        trade_context: Dict[str, Any],
+        symbol: str
+    ) -> None:
+        """
+        Log risk debate decision to decision_log table.
+
+        Args:
+            debate_outcome: Complete risk debate outcome
+            position_size: Baseline position size
+            trade_context: Trade context
+            symbol: Trading symbol
+        """
+        try:
+            from src.database.models.decision_log import DecisionLog
+            from uuid import uuid4
+
+            decision_log = DecisionLog(
+                id=uuid4(),
+                decided_at=datetime.utcnow(),
+                agent_id=uuid4(),  # Placeholder - risk debate team doesn't have single agent ID
+                agent_type="risk_debate_team",
+                strategy_team_id=None,
+                symbol=symbol,
+                timeframe=None,
+                input_data={
+                    "baseline_position_size": position_size.model_dump(),
+                    "trade_context": trade_context
+                },
+                reasoning_trace={
+                    "risky_perspective": debate_outcome.risky_perspective.model_dump(),
+                    "neutral_perspective": debate_outcome.neutral_perspective.model_dump(),
+                    "safe_perspective": debate_outcome.safe_perspective.model_dump(),
+                    "consensus_reached": debate_outcome.consensus_reached,
+                    "divergence_rationale": debate_outcome.divergence_rationale
+                },
+                output_decision={
+                    "consensus_adjustment": float(debate_outcome.consensus_adjustment),
+                    "final_position_size": float(debate_outcome.final_position_size),
+                    "final_risk_percentage": float(debate_outcome.final_risk_percentage),
+                    "key_warnings": debate_outcome.key_warnings
+                },
+                confidence_score=float(debate_outcome.consensus_adjustment),  # Use adjustment as proxy for confidence
+                execution_outcome=None,
+                metadata=debate_outcome.metadata,
+                llm_cost_usd=None,  # TODO: Track LLM costs
+                processing_time_ms=debate_outcome.metadata.get("debate_duration_ms", 0)
+            )
+
+            await self.decision_log_repo.create(decision_log)
+
+            logger.info(
+                "risk_debate_decision_logged",
+                symbol=symbol,
+                decision_id=str(decision_log.id),
+                consensus_adjustment=debate_outcome.consensus_adjustment
+            )
+
+        except Exception as e:
+            logger.error(
+                "risk_debate_decision_logging_failed",
+                symbol=symbol,
+                error=str(e)
+            )
+            # Don't raise - logging failure shouldn't break debate flow
 
     async def health_check(self) -> bool:
         """

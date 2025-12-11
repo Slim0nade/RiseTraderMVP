@@ -20,6 +20,7 @@ from src.agents.debate.bear_researcher_agent import BearResearcherAgent
 from src.agents.base.agent_config import AgentConfig, AgentType, AgentLayer, LLMTier
 from src.agents.schemas.debate import DebateOutcome, BullCase, BearCase
 from src.agents.providers import create_quick_think_client
+from src.database.repositories.decision_log_repository import DecisionLogRepository
 
 logger = structlog.get_logger(__name__)
 
@@ -65,7 +66,8 @@ class BullBearDebateTeam:
         self,
         bull_config: AgentConfig,
         bear_config: AgentConfig,
-        moderator_llm_tier: LLMTier = LLMTier.QUICK_THINK
+        moderator_llm_tier: LLMTier = LLMTier.QUICK_THINK,
+        decision_log_repo: Optional[DecisionLogRepository] = None
     ):
         """
         Initialize Bull/Bear Debate Team.
@@ -74,6 +76,7 @@ class BullBearDebateTeam:
             bull_config: Configuration for bull researcher
             bear_config: Configuration for bear researcher
             moderator_llm_tier: LLM tier for debate moderator
+            decision_log_repo: Optional repository for logging decisions
         """
         # Create researcher agents
         self.bull_researcher = BullResearcherAgent(bull_config)
@@ -82,11 +85,15 @@ class BullBearDebateTeam:
         # Store moderator config
         self.moderator_llm_tier = moderator_llm_tier
 
+        # Store decision log repository
+        self.decision_log_repo = decision_log_repo
+
         logger.info(
             "debate_team_initialized",
             bull_agent_id=str(self.bull_researcher.agent_id),
             bear_agent_id=str(self.bear_researcher.agent_id),
-            moderator_tier=moderator_llm_tier.value
+            moderator_tier=moderator_llm_tier.value,
+            logging_enabled=decision_log_repo is not None
         )
 
     async def run_debate(
@@ -166,6 +173,14 @@ class BullBearDebateTeam:
                 disagreement_count=len(debate_outcome.key_disagreements),
                 total_risks=len(debate_outcome.consolidated_risks)
             )
+
+            # Log decision to database if repository provided
+            if self.decision_log_repo:
+                await self._log_debate_decision(
+                    debate_outcome=debate_outcome,
+                    symbol=symbol,
+                    analyst_reports=analyst_reports
+                )
 
             return debate_outcome
 
@@ -340,6 +355,73 @@ class BullBearDebateTeam:
 
         # Overall quality (weighted average)
         return sum(quality_factors) / len(quality_factors)
+
+    async def _log_debate_decision(
+        self,
+        debate_outcome: DebateOutcome,
+        symbol: str,
+        analyst_reports: Dict[str, Any]
+    ) -> None:
+        """
+        Log debate decision to decision_log table.
+
+        Args:
+            debate_outcome: Complete debate outcome
+            symbol: Trading symbol
+            analyst_reports: Input analyst reports
+        """
+        try:
+            from src.database.models.decision_log import DecisionLog
+            from uuid import uuid4
+
+            decision_log = DecisionLog(
+                id=uuid4(),
+                decided_at=datetime.utcnow(),
+                agent_id=self.bull_researcher.agent_id,  # Use bull agent ID as primary
+                agent_type="bull_bear_debate_team",
+                strategy_team_id=None,  # TODO: Add strategy team support
+                symbol=symbol,
+                timeframe=None,  # Not applicable for debate
+                input_data={
+                    "analyst_reports": analyst_reports,
+                    "bull_conviction": float(debate_outcome.bull_case.conviction_score),
+                    "bear_conviction": float(debate_outcome.bear_case.conviction_score)
+                },
+                reasoning_trace={
+                    "bull_evidence": [e.model_dump() for e in debate_outcome.bull_case.evidence_points],
+                    "bear_evidence": [e.model_dump() for e in debate_outcome.bear_case.evidence_points],
+                    "key_disagreements": debate_outcome.key_disagreements,
+                    "consolidated_risks": debate_outcome.consolidated_risks
+                },
+                output_decision={
+                    "consensus_direction": debate_outcome.consensus_direction,
+                    "debate_quality_score": float(debate_outcome.debate_quality_score),
+                    "bull_case": debate_outcome.bull_case.model_dump(),
+                    "bear_case": debate_outcome.bear_case.model_dump()
+                },
+                confidence_score=float(debate_outcome.debate_quality_score),
+                execution_outcome=None,  # Not applicable for debate
+                metadata=debate_outcome.metadata,
+                llm_cost_usd=None,  # TODO: Track LLM costs
+                processing_time_ms=debate_outcome.metadata.get("debate_duration_ms", 0)
+            )
+
+            await self.decision_log_repo.create(decision_log)
+
+            logger.info(
+                "debate_decision_logged",
+                symbol=symbol,
+                decision_id=str(decision_log.id),
+                consensus_direction=debate_outcome.consensus_direction
+            )
+
+        except Exception as e:
+            logger.error(
+                "debate_decision_logging_failed",
+                symbol=symbol,
+                error=str(e)
+            )
+            # Don't raise - logging failure shouldn't break debate flow
 
     async def health_check(self) -> bool:
         """

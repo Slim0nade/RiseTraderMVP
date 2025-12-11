@@ -39,6 +39,13 @@ python-dotenv>=1.0.0
 # Utilities
 python-dateutil>=2.8.2
 
+# LLM Structured Output (GBNF grammar enforcement for Ollama)
+instructor>=1.7.0
+
+# AutoGen 0.4 for Multi-Agent Orchestration (Phase 6)
+autogen-agentchat>=0.4.0
+autogen-ext[openai]>=0.4.0
+
 # Development
 pytest>=7.4.3
 pytest-asyncio>=0.21.1
