@@ -37,8 +37,42 @@ export const marketDataApi = {
 
 // Trading
 export const tradingApi = {
-  getOpenPositions: () =>
-    apiClient.get<Position[]>('/api/trading/positions'),
+  getOpenPositions: async () => {
+    // API returns PositionResponse with different field names than frontend Position type
+    interface ApiPosition {
+      id: string;
+      number: string;
+      type: 'BUY' | 'SELL';
+      size: number;
+      symbol: string;
+      price: number;
+      stop_loss?: number;
+      take_profit?: number;
+      commission: number;
+      last_profit?: number;
+      last_update: string;
+      last_strategy: string;
+      simulation: boolean;
+    }
+
+    const response = await apiClient.get<{ positions: ApiPosition[] }>('/api/trading/positions');
+
+    // Transform API response to match frontend Position interface
+    // API returns string numbers, convert to actual numbers
+    return response.positions.map((apiPos): Position => ({
+      id: apiPos.id,
+      symbol: apiPos.symbol,
+      action: apiPos.type,  // API: 'type', Frontend: 'action'
+      entry_price: parseFloat(apiPos.price as any),  // API: 'price', Frontend: 'entry_price'
+      current_price: parseFloat(apiPos.price as any),  // TODO: API doesn't send current_price yet, using entry for now
+      quantity: parseFloat(apiPos.size as any),  // API: 'size', Frontend: 'quantity'
+      unrealized_pnl: parseFloat(apiPos.last_profit as any) || 0,  // API: 'last_profit', Frontend: 'unrealized_pnl'
+      stop_loss: apiPos.stop_loss ? parseFloat(apiPos.stop_loss as any) : undefined,
+      take_profit: apiPos.take_profit ? parseFloat(apiPos.take_profit as any) : undefined,
+      entry_time: apiPos.last_update,  // Using last_update as entry_time for now
+      strategy_name: apiPos.last_strategy,
+    }));
+  },
 
   getPosition: (positionId: string) =>
     apiClient.get<Position>(`/api/trading/positions/${positionId}`),
@@ -151,20 +185,73 @@ export const performanceApi = {
 
 // Backtesting
 export const backtestApi = {
+  // Configurations
+  getConfigurations: (params?: { symbol?: string; limit?: number; offset?: number }) =>
+    apiClient.get<{ total: number; items: any[] }>('/api/backtesting/configurations', params),
+
+  getConfiguration: (configId: string) =>
+    apiClient.get<any>(`/api/backtesting/configurations/${configId}`),
+
+  createConfiguration: (data: {
+    name: string;
+    symbol: string;
+    start_date: string;
+    end_date: string;
+    initial_capital: string;
+    execution_mode: 'full_pipeline' | 'synthetic_fast';
+    agent_config_ref?: string;
+    slippage_pct?: number;
+    commission_pct?: number;
+    commission_fixed?: number;
+    max_leverage?: number;
+    allow_short_selling?: boolean;
+    config_params?: Record<string, any>;
+  }) =>
+    apiClient.post<any>('/api/backtesting/configurations', data),
+
+  validateConfiguration: (configId: string, timeframe: string = 'M5') =>
+    apiClient.post<any>(`/api/backtesting/configurations/${configId}/validate?timeframe=${timeframe}`),
+
+  // Runs
+  listRuns: (params?: { config_id?: string; status?: string; limit?: number; offset?: number }) =>
+    apiClient.get<{ total: number; items: any[]; limit: number; offset: number }>('/api/backtesting/runs', params),
+
+  runBacktest: (data: {
+    config_id: string;
+    timeframe: string;
+    random_seed?: number;
+    synthetic_strategy?: string;
+    synthetic_params?: Record<string, any>;
+  }) =>
+    apiClient.post<any>('/api/backtesting/runs', data),
+
+  getRunStatus: (runId: string) =>
+    apiClient.get<any>(`/api/backtesting/runs/${runId}/status`),
+
+  getRunMetrics: (runId: string) =>
+    apiClient.get<any>(`/api/backtesting/runs/${runId}/metrics`),
+
+  getRunTrades: (runId: string, params?: { limit?: number; offset?: number }) =>
+    apiClient.get<{ total: number; closed_trades: number; open_trades: number; items: any[] }>(
+      `/api/backtesting/runs/${runId}/trades`,
+      params
+    ),
+
+  getRunDecisions: (runId: string, params?: { limit?: number; offset?: number }) =>
+    apiClient.get<{ total: number; items: any[] }>(
+      `/api/backtesting/runs/${runId}/decisions`,
+      params
+    ),
+
+  cancelRun: (runId: string) =>
+    apiClient.delete<{ success: boolean; message: string }>(`/api/backtesting/runs/${runId}`),
+
+  // Legacy
   getBacktests: () =>
     apiClient.get<BacktestResult[]>('/api/backtests'),
 
   getBacktest: (backtestId: string) =>
     apiClient.get<BacktestResult>(`/api/backtests/${backtestId}`),
-
-  runBacktest: (data: {
-    strategy_name: string;
-    start_date: string;
-    end_date: string;
-    initial_capital?: number;
-    symbols?: string[];
-  }) =>
-    apiClient.post<BacktestResult>('/api/backtests/run', data),
 };
 
 // News & Events
@@ -195,4 +282,29 @@ export const riskApi = {
     apiClient.get<{ var_daily: number; confidence: number }>('/api/risk/var', {
       confidence: confidence || 0.95,
     }),
+};
+
+// System / Network Location
+export const systemApi = {
+  getNetworkLocation: () =>
+    apiClient.get<{
+      location: string;
+      mt4_host: string;
+      mt4_command_endpoint: string;
+      mt4_stream_endpoint: string;
+      ollama_base_url: string;
+      ollama_timeout: number;
+      ollama_max_retries: number;
+    }>('/api/system/network-location'),
+
+  setNetworkLocation: (location: 'local' | 'remote') =>
+    apiClient.post<{
+      location: string;
+      mt4_host: string;
+      mt4_command_endpoint: string;
+      mt4_stream_endpoint: string;
+      ollama_base_url: string;
+      ollama_timeout: number;
+      ollama_max_retries: number;
+    }>('/api/system/network-location', { location }),
 };

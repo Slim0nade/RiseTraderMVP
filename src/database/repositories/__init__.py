@@ -4,6 +4,7 @@ Database repositories for RiseTrader.
 All repository classes for database operations.
 """
 from .agent_repository import AgentRepository
+from .backtest_repository import BacktestRepository
 from .base import BaseRepository
 from .decision_log_repository import DecisionLogRepository
 from .forecasts_repository import ForecastsRepository
@@ -13,6 +14,7 @@ from .mcp_tool_repository import MCPToolRepository
 from .model_configuration_repository import ModelConfigurationRepository
 from .mt4_connection_repository import MT4ConnectionRepository
 from .mt4_order_repository import MT4OrderRepository
+from .parameter_grid_repository import ParameterGridRepository
 from .portfolio_allocation_repository import PortfolioAllocationRepository
 from .positions_repository import PositionsRepository
 from .rl_training_run_repository import RLTrainingRunRepository
@@ -42,4 +44,7 @@ __all__ = [
     "PortfolioAllocationRepository",
     "StrategyTeamRepository",
     "MCPToolRepository",
+    # Backtesting repositories (Feature 006)
+    "BacktestRepository",
+    "ParameterGridRepository",
 ]

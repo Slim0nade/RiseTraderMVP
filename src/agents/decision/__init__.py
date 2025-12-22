@@ -18,7 +18,7 @@ from src.agents.decision.position_sizing_agent import (
 from src.agents.decision.stop_loss_agent import (
     StopLossAgent,
     StopLossDecision,
-    StopPlacementStrategy,
+    # StopPlacementStrategy,  # TODO: Class not yet implemented
     create_stop_loss_agent,
 )
 from src.agents.decision.take_profit_agent import (
@@ -36,7 +36,7 @@ __all__ = [
     # Stop-Loss
     "StopLossAgent",
     "StopLossDecision",
-    "StopPlacementStrategy",
+    # "StopPlacementStrategy",  # TODO: Class not yet implemented
     "create_stop_loss_agent",
     # Take-Profit
     "TakeProfitAgent",

@@ -26,7 +26,8 @@ from .middleware import (
     register_exception_handlers,
     setup_logging,
 )
-from .routes import agents, trading, market_data, forecasts, performance, strategies, system, ml_forecasting, agent_pipelines
+from .routes import agents, trading, market_data, forecasts, performance, strategies, system, ml_forecasting, agent_pipelines, backtesting
+from src.services.mt4_sync_service import get_mt4_sync_service
 
 # Configure structured logging
 setup_logging()
@@ -48,11 +49,17 @@ async def lifespan(app: FastAPI):
     logger.info("application_starting", version=settings.app_version)
 
     try:
-        # Initialize agent coordinator (temporarily disabled until agents are implemented)
-        # TODO: Re-enable after implementing BaseAgent and agent configurations
+        # Initialize agent coordinator
+        # TODO: Fix config structure mismatch between agents.yaml and agent_coordinator.py
+        # Current config uses "strategy_teams" but coordinator expects "agents" dict
         # await init_agent_coordinator()
         # logger.info("agent_coordinator_initialized")
-        logger.info("agent_coordinator_initialization_skipped", reason="Agents not yet implemented")
+        logger.info("agent_coordinator_init_skipped", reason="Config structure mismatch - needs refactoring")
+
+        # Start MT4 sync service for real-time position/account updates
+        mt4_sync = get_mt4_sync_service()
+        await mt4_sync.start()
+        logger.info("mt4_sync_service_started")
 
     except Exception as e:
         logger.error("startup_failed", error=str(e), exc_info=True)
@@ -66,6 +73,11 @@ async def lifespan(app: FastAPI):
     logger.info("application_shutting_down")
 
     try:
+        # Stop MT4 sync service
+        mt4_sync = get_mt4_sync_service()
+        await mt4_sync.stop()
+        logger.info("mt4_sync_service_stopped")
+
         # Shutdown agent coordinator
         await shutdown_agent_coordinator()
         logger.info("agent_coordinator_shutdown")
@@ -111,6 +123,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # Include routers
 app.include_router(agents.router, prefix="/api")
 app.include_router(agent_pipelines.router, prefix="/api")  # New intelligent agent pipelines
+app.include_router(backtesting.router, prefix="/api")  # Backtesting endpoints
 app.include_router(trading.router, prefix="/api")
 app.include_router(market_data.router, prefix="/api")
 app.include_router(forecasts.router, prefix="/api")

@@ -5,10 +5,12 @@ Enhanced endpoints for accessing market data with Redis caching and keyset pagin
 Implements T049-T051 from 002-fastapi-dashboard-api specification.
 """
 import structlog
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select, func, and_, distinct
 from sqlalchemy.ext.asyncio import AsyncSession
+from src.database.models.market_data import MarketData
 
 from src.database.repositories.market_data_repository import MarketDataRepository
 from src.services.market_data_service import MarketDataService
@@ -484,4 +486,199 @@ async def stream_market_data(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to setup stream: {str(e)}",
+        )
+
+
+@router.get("/availability/{symbol}")
+async def get_data_availability(
+    symbol: str,
+    timeframe: str = Query("M5", description="Timeframe (M1, M5, M15, H1, H4, D1)"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get data availability information for intelligent date picker.
+
+    Returns date range, trading days, and gaps for a symbol/timeframe.
+    Used by frontend to validate backtest date selection.
+    """
+    try:
+        # Get date range and total candles
+        range_query = select(
+            func.min(MarketData.time).label('first_date'),
+            func.max(MarketData.time).label('last_date'),
+            func.count(MarketData.id).label('total_candles')
+        ).where(
+            and_(
+                MarketData.symbol == symbol,
+                MarketData.timeframe == timeframe
+            )
+        )
+
+        result = await db.execute(range_query)
+        row = result.first()
+
+        if not row or not row.first_date:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No data found for {symbol} {timeframe}"
+            )
+
+        first_date = row.first_date
+        last_date = row.last_date
+        total_candles = row.total_candles
+
+        # Get dates with data (grouped by day) - last 180 days for performance
+        recent_cutoff = last_date - timedelta(days=180)
+
+        date_trunc_expr = func.date_trunc('day', MarketData.time)
+        dates_query = select(
+            date_trunc_expr.label('date'),
+            func.count(MarketData.id).label('candle_count')
+        ).where(
+            and_(
+                MarketData.symbol == symbol,
+                MarketData.timeframe == timeframe,
+                MarketData.time >= recent_cutoff
+            )
+        ).group_by(
+            date_trunc_expr
+        ).order_by(
+            date_trunc_expr.desc()
+        )
+
+        dates_result = await db.execute(dates_query)
+        trading_days = [
+            row.date.date().isoformat()
+            for row in dates_result.all()
+        ]
+
+        # Recommended backtest period (last 6 months, ending 1 month ago)
+        recommended_end = last_date - timedelta(days=30)
+        recommended_start = recommended_end - timedelta(days=180)
+        if recommended_start < first_date:
+            recommended_start = first_date
+
+        return {
+            'symbol': symbol,
+            'timeframe': timeframe,
+            'first_date': first_date.isoformat(),
+            'last_date': last_date.isoformat(),
+            'recommended_start': recommended_start.isoformat(),
+            'recommended_end': recommended_end.isoformat(),
+            'total_candles': total_candles,
+            'trading_days': trading_days,  # Last 180 days with data
+            'has_data': True,
+            'summary': {
+                'total_days_with_data': len(trading_days),
+                'avg_candles_per_day': total_candles / max(len(trading_days), 1),
+                'data_quality': 'good' if total_candles > 10000 else 'limited'
+            }
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("data_availability_error", error=str(e), symbol=symbol, timeframe=timeframe)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get data availability: {str(e)}"
+        )
+
+
+@router.get("/preview/{symbol}")
+async def get_candle_preview(
+    symbol: str,
+    start_date: str = Query(..., description="Start date (YYYY-MM-DD)"),
+    end_date: str = Query(..., description="End date (YYYY-MM-DD)"),
+    timeframe: str = Query("M5", description="Timeframe (M1, M5, M15, H1, H4, D1)"),
+    max_candles: int = Query(200, description="Maximum candles to return (default 200)"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get sample candle data for chart preview.
+    Returns evenly-spaced candles from the selected period for visualization.
+    """
+    try:
+        start_dt = datetime.fromisoformat(start_date)
+        end_dt = datetime.fromisoformat(end_date)
+
+        # Get total candles in range
+        count_query = select(func.count(MarketData.id)).where(
+            and_(
+                MarketData.symbol == symbol,
+                MarketData.timeframe == timeframe,
+                MarketData.time >= start_dt,
+                MarketData.time <= end_dt
+            )
+        )
+        count_result = await db.execute(count_query)
+        total_candles = count_result.scalar()
+
+        if not total_candles:
+            raise HTTPException(status_code=404, detail=f"No data found for {symbol} {timeframe} in date range")
+
+        # Calculate sampling interval
+        sample_interval = max(1, total_candles // max_candles)
+
+        # Fetch sampled candles using PostgreSQL row_number for efficient sampling
+        # This uses a subquery with row_number() to select every Nth row
+        from sqlalchemy import literal_column
+
+        # Use PostgreSQL's efficient OFFSET/LIMIT sampling
+        # If we need every 300th candle, fetch every sample_interval-th row
+        if sample_interval > 1:
+            # Use modulo-based sampling in database for large datasets
+            sampled_query = select(MarketData).where(
+                and_(
+                    MarketData.symbol == symbol,
+                    MarketData.timeframe == timeframe,
+                    MarketData.time >= start_dt,
+                    MarketData.time <= end_dt,
+                    # Use id modulo for pseudo-random but consistent sampling
+                    literal_column(f"(id::bigint % {sample_interval}) = 0")
+                )
+            ).order_by(MarketData.time).limit(max_candles)
+        else:
+            # If sample_interval is 1, just limit the results
+            sampled_query = select(MarketData).where(
+                and_(
+                    MarketData.symbol == symbol,
+                    MarketData.timeframe == timeframe,
+                    MarketData.time >= start_dt,
+                    MarketData.time <= end_dt
+                )
+            ).order_by(MarketData.time).limit(max_candles)
+
+        result = await db.execute(sampled_query)
+        sampled_candles = result.scalars().all()
+
+        return {
+            'symbol': symbol,
+            'timeframe': timeframe,
+            'start_date': start_date,
+            'end_date': end_date,
+            'total_candles': total_candles,
+            'sampled_candles': len(sampled_candles),
+            'candles': [
+                {
+                    'time': candle.time.isoformat(),
+                    'open': float(candle.open),
+                    'high': float(candle.high),
+                    'low': float(candle.low),
+                    'close': float(candle.close),
+                    'volume': int(candle.volume) if candle.volume else 0,
+                }
+                for candle in sampled_candles
+            ]
+        }
+
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid date format: {str(e)}")
+    except Exception as e:
+        logger.error("candle_preview_error", error=str(e), symbol=symbol, timeframe=timeframe)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get candle preview: {str(e)}"
         )

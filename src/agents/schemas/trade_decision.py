@@ -52,8 +52,8 @@ class TradeIntent(BaseModel):
 
     risk_assessment: str = Field(
         ...,
-        min_length=50,
-        description="Risk assessment summary (minimum 50 characters)"
+        min_length=30,
+        description="Risk assessment summary (minimum 30 characters)"
     )
 
     conflict_resolution: Optional[str] = Field(

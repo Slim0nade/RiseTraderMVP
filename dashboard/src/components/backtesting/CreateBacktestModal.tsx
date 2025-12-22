@@ -1,0 +1,485 @@
+import React, { useState, useEffect } from 'react';
+import { X, Plus, Calendar, DollarSign, Settings, Sparkles } from 'lucide-react';
+import { backtestApi } from '@/api/endpoints';
+import { IntelligentDatePicker } from './IntelligentDatePicker';
+import type { ExecutionMode } from '@/types';
+
+interface CreateBacktestModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSuccess?: (runId: string) => void;
+}
+
+interface BacktestFormData {
+  name: string;
+  symbol: string;
+  startDate: string;
+  endDate: string;
+  initialCapital: string;
+  executionMode: ExecutionMode;
+  model: string;
+  timeframe: string;
+  slippagePct: string;
+  commissionPct: string;
+}
+
+const SYMBOLS = [
+  { value: 'CrudeOIL', label: 'Crude Oil' },
+  { value: 'Gold', label: 'Gold' },
+  { value: 'EURUSD', label: 'EUR/USD' },
+  { value: 'GBPUSD', label: 'GBP/USD' },
+  { value: 'USDJPY', label: 'USD/JPY' },
+];
+
+const MODELS = [
+  { value: 'mistral:7b-instruct', label: 'Mistral 7B Instruct (Recommended)' },
+  { value: 'qwen2.5:14b', label: 'Qwen 2.5 14B (Fast, Efficient)' },
+  { value: 'deepseek-r1:14b', label: 'DeepSeek R1 14B (Better Reasoning)' },
+  { value: 'llama3.1:70b', label: 'Llama 3.1 70B (Most Capable)' },
+  { value: 'phi3:mini', label: 'Phi-3 Mini (Ultra Fast)' },
+  { value: 'phi4-mini', label: 'Phi-4 Mini (Latest Small Model)' },
+  { value: 'mistral-small3.1', label: 'Mistral Small 3.1 (Balanced)' },
+  { value: 'qwen3:14b', label: 'Qwen3 14B (Alternative)' },
+];
+
+const TIMEFRAMES = [
+  { value: 'M1', label: '1 Minute (Recommended - Data until Nov 2025)' },
+  { value: 'M5', label: '5 Minutes (Data until Dec 2024)' },
+  { value: 'M15', label: '15 Minutes' },
+  { value: 'H1', label: '1 Hour' },
+  { value: 'H4', label: '4 Hours' },
+  { value: 'D1', label: 'Daily' },
+];
+
+export const CreateBacktestModal: React.FC<CreateBacktestModalProps> = ({
+  isOpen,
+  onClose,
+  onSuccess,
+}) => {
+  const [formData, setFormData] = useState<BacktestFormData>({
+    name: '',
+    symbol: 'CrudeOIL',
+    startDate: '2024-01-01',
+    endDate: '2024-02-01',
+    initialCapital: '10000',
+    executionMode: 'synthetic_fast',
+    model: 'mistral:7b-instruct',
+    timeframe: 'M1', // Changed to M1 - we have data until Nov 2025
+    slippagePct: '0.001',
+    commissionPct: '0.0002',
+  });
+
+  // Auto-generate backtest name based on configuration
+  const generateBacktestName = (data: BacktestFormData): string => {
+    const symbolLabel = SYMBOLS.find(s => s.value === data.symbol)?.label || data.symbol;
+    const startMonth = new Date(data.startDate).toLocaleDateString('en-US', { month: 'short' });
+    const endMonth = new Date(data.endDate).toLocaleDateString('en-US', { month: 'short' });
+    const startYear = new Date(data.startDate).getFullYear();
+    const endYear = new Date(data.endDate).getFullYear();
+    const yearRange = startYear === endYear ? startYear : `${startYear}-${endYear}`;
+    const modeLabel = data.executionMode === 'synthetic_fast' ? 'Synthetic' : 'Agent';
+
+    return `${symbolLabel} ${data.timeframe} ${modeLabel} ${startMonth}-${endMonth} ${yearRange}`;
+  };
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isDatesValid, setIsDatesValid] = useState(true);
+
+  const handleChange = (field: keyof BacktestFormData, value: string) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
+    setError(null); // Clear error on input change
+  };
+
+  // Auto-generate name when modal opens or key config changes
+  useEffect(() => {
+    if (isOpen && !formData.name) {
+      const generatedName = generateBacktestName(formData);
+      setFormData((prev) => ({ ...prev, name: generatedName }));
+    }
+  }, [isOpen]);
+
+  // Manual regenerate name function
+  const handleRegenerateName = () => {
+    const generatedName = generateBacktestName(formData);
+    setFormData((prev) => ({ ...prev, name: generatedName }));
+  };
+
+  const validateForm = (): string | null => {
+    if (!formData.name.trim()) return 'Name is required';
+    if (!formData.symbol) return 'Symbol is required';
+    if (!formData.startDate) return 'Start date is required';
+    if (!formData.endDate) return 'End date is required';
+
+    const start = new Date(formData.startDate);
+    const end = new Date(formData.endDate);
+    if (start >= end) return 'End date must be after start date';
+
+    const capital = parseFloat(formData.initialCapital);
+    if (isNaN(capital) || capital <= 0) return 'Initial capital must be greater than 0';
+
+    return null;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    const validationError = validateForm();
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError(null);
+
+    try {
+      // Step 1: Create configuration
+      const configData: any = {
+        name: formData.name,
+        symbol: formData.symbol,
+        start_date: new Date(formData.startDate).toISOString(),
+        end_date: new Date(formData.endDate).toISOString(),
+        initial_capital: formData.initialCapital,
+        execution_mode: formData.executionMode,
+        slippage_pct: parseFloat(formData.slippagePct),
+        commission_pct: parseFloat(formData.commissionPct),
+        allow_short_selling: true,
+        config_params: {},
+      };
+
+      // Add agent config if using full pipeline mode
+      if (formData.executionMode === 'full_pipeline') {
+        configData.config_params = {
+          agent_config: {
+            model: formData.model,
+            ollama_base_url: 'http://75.154.254.186:11434/v1',
+            temperature: 0.7,
+            max_tokens: 500,
+          },
+        };
+      }
+
+      // Add synthetic strategy if using synthetic mode
+      if (formData.executionMode === 'synthetic_fast') {
+        configData.config_params = {
+          synthetic_strategy: 'crude_oil_v3',
+          synthetic_params: {
+            ema_fast: 8,
+            ema_slow: 29,
+            rsi_period: 10,
+            rsi_overbought: 68,
+            rsi_oversold: 32,
+            cci_period: 20,
+            cci_overbought: 100,
+            cci_oversold: -80,
+            atr_period: 10,
+            atr_multiplier: 2.0,
+            risk_reward_ratio: 2.5,
+            momentum_period: 10,
+            use_cci_filter: true,
+            use_strict_filter: false,
+            use_time_filter: true,
+            trading_start_hour: 8,
+            trading_end_hour: 20,
+            quantity: 1.0,
+          },
+        };
+      }
+
+      const config = await backtestApi.createConfiguration(configData);
+
+      // Step 2: Start backtest run
+      const run = await backtestApi.runBacktest({
+        config_id: config.id,
+        timeframe: formData.timeframe,
+      });
+
+      // Success - close modal and call onSuccess callback
+      onClose();
+      if (onSuccess) {
+        onSuccess(run.run_id);
+      }
+    } catch (err: any) {
+      console.error('Failed to create backtest:', err);
+      setError(err.message || 'Failed to create backtest. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-dark-900 rounded-lg border border-dark-700 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-dark-700">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-primary-500/10 rounded-lg">
+              <Plus className="w-5 h-5 text-primary-500" />
+            </div>
+            <div>
+              <h2 className="text-xl font-semibold text-dark-50">Create New Backtest</h2>
+              <p className="text-sm text-dark-400 mt-1">
+                Configure and run a new backtest simulation
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            disabled={isSubmitting}
+            className="p-2 hover:bg-dark-800 rounded-lg transition-colors disabled:opacity-50"
+          >
+            <X className="w-5 h-5 text-dark-400" />
+          </button>
+        </div>
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+          {/* Error Message */}
+          {error && (
+            <div className="bg-danger-500/10 border border-danger-500/50 rounded-lg p-4">
+              <p className="text-sm text-danger-400">{error}</p>
+            </div>
+          )}
+
+          {/* Basic Information */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-medium text-dark-300 flex items-center gap-2">
+              <Settings className="w-4 h-4" />
+              Basic Information
+            </h3>
+
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-dark-300">
+                  Backtest Name
+                </label>
+                <button
+                  type="button"
+                  onClick={handleRegenerateName}
+                  className="text-xs text-primary-500 hover:text-primary-400 transition-colors flex items-center gap-1"
+                  disabled={isSubmitting}
+                >
+                  <Sparkles className="w-3 h-3" />
+                  AI Generate
+                </button>
+              </div>
+              <input
+                type="text"
+                value={formData.name}
+                onChange={(e) => handleChange('name', e.target.value)}
+                placeholder="e.g., CrudeOIL Swing Strategy Test"
+                className="w-full bg-dark-800 border border-dark-600 rounded-lg px-4 py-2.5 text-dark-50 placeholder-dark-500 focus:outline-none focus:border-primary-500 transition-colors"
+                disabled={isSubmitting}
+              />
+              <p className="text-xs text-dark-500 mt-1">
+                Auto-generated based on symbol, dates, and settings. Click to customize.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-dark-300 mb-2">
+                  Symbol
+                </label>
+                <select
+                  value={formData.symbol}
+                  onChange={(e) => handleChange('symbol', e.target.value)}
+                  className="w-full bg-dark-800 border border-dark-600 rounded-lg px-4 py-2.5 text-dark-50 focus:outline-none focus:border-primary-500 transition-colors"
+                  disabled={isSubmitting}
+                >
+                  {SYMBOLS.map((sym) => (
+                    <option key={sym.value} value={sym.value}>
+                      {sym.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-dark-300 mb-2">
+                  Timeframe
+                </label>
+                <select
+                  value={formData.timeframe}
+                  onChange={(e) => handleChange('timeframe', e.target.value)}
+                  className="w-full bg-dark-800 border border-dark-600 rounded-lg px-4 py-2.5 text-dark-50 focus:outline-none focus:border-primary-500 transition-colors"
+                  disabled={isSubmitting}
+                >
+                  {TIMEFRAMES.map((tf) => (
+                    <option key={tf.value} value={tf.value}>
+                      {tf.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Date Range - Intelligent Picker */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-medium text-dark-300 flex items-center gap-2">
+              <Calendar className="w-4 h-4" />
+              Date Range
+            </h3>
+
+            <IntelligentDatePicker
+              symbol={formData.symbol}
+              timeframe={formData.timeframe}
+              startDate={formData.startDate}
+              endDate={formData.endDate}
+              onStartDateChange={(date) => handleChange('startDate', date)}
+              onEndDateChange={(date) => handleChange('endDate', date)}
+              onValidationChange={setIsDatesValid}
+            />
+          </div>
+
+          {/* Capital & Execution */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-medium text-dark-300 flex items-center gap-2">
+              <DollarSign className="w-4 h-4" />
+              Capital & Execution
+            </h3>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-dark-300 mb-2">
+                  Initial Capital ($)
+                </label>
+                <input
+                  type="number"
+                  value={formData.initialCapital}
+                  onChange={(e) => handleChange('initialCapital', e.target.value)}
+                  min="100"
+                  step="100"
+                  className="w-full bg-dark-800 border border-dark-600 rounded-lg px-4 py-2.5 text-dark-50 focus:outline-none focus:border-primary-500 transition-colors"
+                  disabled={isSubmitting}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-dark-300 mb-2">
+                  Execution Mode
+                </label>
+                <select
+                  value={formData.executionMode}
+                  onChange={(e) =>
+                    handleChange('executionMode', e.target.value as ExecutionMode)
+                  }
+                  className="w-full bg-dark-800 border border-dark-600 rounded-lg px-4 py-2.5 text-dark-50 focus:outline-none focus:border-primary-500 transition-colors"
+                  disabled={isSubmitting}
+                >
+                  <option value="synthetic_fast">Synthetic (Fast)</option>
+                  <option value="full_pipeline">Agent Pipeline (with LLM)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Agent Configuration - Only show if full_pipeline mode */}
+          {formData.executionMode === 'full_pipeline' && (
+            <div className="space-y-4 bg-primary-500/5 border border-primary-500/20 rounded-lg p-4">
+              <h3 className="text-sm font-medium text-primary-400">Agent Configuration</h3>
+              <div>
+                <label className="block text-sm font-medium text-dark-300 mb-2">
+                  LLM Model
+                </label>
+                <select
+                  value={formData.model}
+                  onChange={(e) => handleChange('model', e.target.value)}
+                  className="w-full bg-dark-800 border border-dark-600 rounded-lg px-4 py-2.5 text-dark-50 focus:outline-none focus:border-primary-500 transition-colors"
+                  disabled={isSubmitting}
+                >
+                  {MODELS.map((model) => (
+                    <option key={model.value} value={model.value}>
+                      {model.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-dark-500 mt-2">
+                  Note: Agents are currently disabled due to config mismatch. Synthetic mode
+                  is recommended.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Advanced Settings */}
+          <div className="space-y-4">
+            <details className="group">
+              <summary className="text-sm font-medium text-dark-300 cursor-pointer list-none flex items-center justify-between">
+                <span>Advanced Settings</span>
+                <span className="text-dark-500 group-open:rotate-180 transition-transform">
+                  ▼
+                </span>
+              </summary>
+              <div className="mt-4 grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-dark-300 mb-2">
+                    Slippage (%)
+                  </label>
+                  <input
+                    type="number"
+                    value={formData.slippagePct}
+                    onChange={(e) => handleChange('slippagePct', e.target.value)}
+                    min="0"
+                    step="0.0001"
+                    className="w-full bg-dark-800 border border-dark-600 rounded-lg px-4 py-2.5 text-dark-50 focus:outline-none focus:border-primary-500 transition-colors"
+                    disabled={isSubmitting}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-dark-300 mb-2">
+                    Commission (%)
+                  </label>
+                  <input
+                    type="number"
+                    value={formData.commissionPct}
+                    onChange={(e) => handleChange('commissionPct', e.target.value)}
+                    min="0"
+                    step="0.0001"
+                    className="w-full bg-dark-800 border border-dark-600 rounded-lg px-4 py-2.5 text-dark-50 focus:outline-none focus:border-primary-500 transition-colors"
+                    disabled={isSubmitting}
+                  />
+                </div>
+              </div>
+            </details>
+          </div>
+
+          {/* Actions */}
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-dark-700">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isSubmitting}
+              className="px-6 py-2.5 bg-dark-800 hover:bg-dark-700 text-dark-300 rounded-lg transition-colors disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmitting || !isDatesValid}
+              className="px-6 py-2.5 bg-primary-500 hover:bg-primary-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              title={!isDatesValid ? 'Please select valid dates with available data' : ''}
+            >
+              {isSubmitting ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <Plus className="w-4 h-4" />
+                  Create & Run Backtest
+                </>
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};

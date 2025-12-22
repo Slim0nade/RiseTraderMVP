@@ -26,13 +26,23 @@ export const useFormatters = () => {
       },
 
       // Format date
-      date: (date: string | Date, formatStr = 'MMM dd, yyyy HH:mm:ss'): string => {
-        return format(new Date(date), formatStr);
+      date: (date: string | Date | null | undefined, formatStr = 'MMM dd, yyyy HH:mm:ss'): string => {
+        if (!date) return 'N/A';
+        try {
+          return format(new Date(date), formatStr);
+        } catch {
+          return 'Invalid date';
+        }
       },
 
       // Format relative time
-      relativeTime: (date: string | Date): string => {
-        return formatDistanceToNow(new Date(date), { addSuffix: true });
+      relativeTime: (date: string | Date | null | undefined): string => {
+        if (!date) return 'N/A';
+        try {
+          return formatDistanceToNow(new Date(date), { addSuffix: true });
+        } catch {
+          return 'Invalid date';
+        }
       },
 
       // Format duration in seconds

@@ -92,14 +92,14 @@ class TradingRepository:
 
     async def get_open_positions(
         self,
-        symbol_filter: Optional[str] = None,
+        symbol: Optional[str] = None,
         limit: int = 100,
     ) -> List[OpenPosition]:
         """
         Get all open positions with optional symbol filter.
 
         Args:
-            symbol_filter: Optional symbol to filter positions
+            symbol: Optional symbol to filter positions
             limit: Maximum number of positions to return
 
         Returns:
@@ -110,12 +110,12 @@ class TradingRepository:
             positions = await trading_repo.get_open_positions()
 
             # Get positions for specific symbol
-            crude_positions = await trading_repo.get_open_positions(symbol_filter="CrudeOIL")
+            crude_positions = await trading_repo.get_open_positions(symbol="CrudeOIL")
         """
         query = select(OpenPosition)
 
-        if symbol_filter:
-            query = query.where(OpenPosition.symbol == symbol_filter)
+        if symbol:
+            query = query.where(OpenPosition.symbol == symbol)
 
         query = query.order_by(desc(OpenPosition.last_update)).limit(limit)
 

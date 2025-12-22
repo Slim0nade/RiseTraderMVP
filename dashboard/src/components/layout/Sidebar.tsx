@@ -10,6 +10,8 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
+  FlaskConical,
+  MessageSquare,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
@@ -21,10 +23,12 @@ interface SidebarProps {
 const navItems = [
   { path: '/', icon: Home, label: 'Dashboard' },
   { path: '/agents', icon: Activity, label: 'Agents' },
+  { path: '/agent-chat', icon: MessageSquare, label: 'Agent Chat' },
   { path: '/market', icon: TrendingUp, label: 'Market Data' },
   { path: '/trading', icon: Target, label: 'Trading' },
   { path: '/strategies', icon: BarChart3, label: 'Strategies' },
   { path: '/forecasts', icon: Brain, label: 'Forecasts' },
+  { path: '/backtesting', icon: FlaskConical, label: 'Backtesting' },
   { path: '/performance', icon: BarChart3, label: 'Performance' },
   { path: '/settings', icon: Settings, label: 'Settings' },
 ];

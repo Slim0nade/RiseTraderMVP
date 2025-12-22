@@ -8,11 +8,13 @@ import { MainLayout } from './components/layout/MainLayout';
 // Pages
 import { Dashboard } from './pages/Dashboard';
 import { Agents } from './pages/Agents';
+import { AgentChat } from './pages/AgentChat';
 import { MarketData } from './pages/MarketData';
 import { Trading } from './pages/Trading';
 import { Strategies } from './pages/Strategies';
 import { Performance } from './pages/Performance';
 import { Forecasts } from './pages/Forecasts';
+import { Backtesting } from './pages/Backtesting';
 import { Settings } from './pages/Settings';
 
 // Create query client
@@ -35,11 +37,13 @@ function App() {
             <Route element={<MainLayout />}>
               <Route index element={<Dashboard />} />
               <Route path="/agents" element={<Agents />} />
+              <Route path="/agent-chat" element={<AgentChat />} />
               <Route path="/market" element={<MarketData />} />
               <Route path="/trading" element={<Trading />} />
               <Route path="/strategies" element={<Strategies />} />
               <Route path="/performance" element={<Performance />} />
               <Route path="/forecasts" element={<Forecasts />} />
+              <Route path="/backtesting" element={<Backtesting />} />
               <Route path="/settings" element={<Settings />} />
             </Route>
           </Routes>

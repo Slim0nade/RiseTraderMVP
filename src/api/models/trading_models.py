@@ -127,6 +127,7 @@ class PositionResponse(BaseModel):
     updated_at: Optional[datetime] = None
 
     class Config:
+        from_attributes = True
         json_schema_extra = {
             "example": {
                 "id": 1,

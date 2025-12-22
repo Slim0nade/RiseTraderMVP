@@ -212,6 +212,95 @@ export interface UserSettings {
 }
 
 // Backtest Types
+export type ExecutionMode = 'full_pipeline' | 'synthetic_fast';
+export type RunStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+
+export interface BacktestConfiguration {
+  id: string;
+  name: string;
+  symbol: string;
+  start_date: string;
+  end_date: string;
+  initial_capital: number;
+  execution_mode: ExecutionMode;
+  agent_config_ref?: string;
+  slippage_pct?: number;
+  commission_pct?: number;
+  commission_fixed?: number;
+  max_leverage?: number;
+  allow_short_selling: boolean;
+  config_params?: Record<string, any>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BacktestRun {
+  run_id: string;
+  config_id: string;
+  status: RunStatus;
+  start_time: string;
+  end_time?: string;
+  candles_processed: number;
+  total_trades: number;
+  agent_decisions_count: number;
+  final_capital?: number;
+  error_message?: string;
+  metrics?: BacktestMetrics;
+}
+
+export interface BacktestMetrics {
+  total_return: number;
+  total_return_pct: number;
+  sharpe_ratio: number;
+  sortino_ratio: number;
+  calmar_ratio: number;
+  max_drawdown: number;
+  max_drawdown_pct: number;
+  win_rate: number;
+  profit_factor: number;
+  total_trades: number;
+  winning_trades: number;
+  losing_trades: number;
+  avg_win: number;
+  avg_loss: number;
+  avg_trade_duration_minutes?: number;
+  largest_win: number;
+  largest_loss: number;
+}
+
+export interface SimulatedTrade {
+  id: string;
+  run_id: string;
+  symbol: string;
+  action: 'BUY' | 'SELL';
+  entry_timestamp: string;
+  entry_price: number;
+  quantity: number;
+  exit_timestamp?: string;
+  exit_price?: number;
+  pnl?: number;
+  commission?: number;
+  slippage?: number;
+  stop_loss?: number;
+  take_profit?: number;
+  decision_id?: string;
+}
+
+export interface AgentDecision {
+  id: string;
+  run_id?: string;
+  timestamp: string;
+  decision_type: 'BUY' | 'SELL' | 'HOLD';
+  symbol: string;
+  conviction_score: number;
+  quantity?: number;
+  stop_loss?: number;
+  take_profit?: number;
+  risk_assessment: string;
+  reasoning?: string;
+  market_context?: Record<string, any>;
+}
+
 export interface BacktestResult {
   id: string;
   strategy_name: string;

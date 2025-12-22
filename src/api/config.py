@@ -34,8 +34,10 @@ class APISettings(BaseSettings):
     cors_origins: Union[str, List[str]] = [
         "http://localhost:3000",  # React Dashboard
         "http://localhost:3001",  # Grafana
+        "http://localhost:3003",  # React Dashboard (alternate port)
         "http://127.0.0.1:3000",
         "http://127.0.0.1:3001",
+        "http://127.0.0.1:3003",
     ]
 
     @field_validator("cors_origins", mode="before")
@@ -92,6 +94,7 @@ class APISettings(BaseSettings):
     mt4_command_port: int = 5555
     mt4_stream_port: int = 5556
     mt4_timeout: int = 10
+    mt4_sync_interval_seconds: int = 60  # Sync positions/account every 60 seconds
 
     # Monitoring
     prometheus_enabled: bool = True

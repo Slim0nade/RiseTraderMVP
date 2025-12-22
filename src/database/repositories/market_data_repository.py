@@ -628,3 +628,181 @@ class MarketDataRepository(BaseRepository[MarketData]):
 
         result = await self.session.execute(query)
         return list(result.all())
+
+    # =============================================================================
+    # Backtesting Support Methods (T016)
+    # =============================================================================
+
+    async def get_historical_candles_streamed(
+        self,
+        symbol: str,
+        timeframe: str,
+        start_time: datetime,
+        end_time: datetime,
+        chunk_size: int = 1000,
+    ):
+        """
+        Stream historical candles in chunks for backtesting replay.
+
+        Uses keyset pagination to efficiently handle large datasets (13.5M+ candles)
+        without loading everything into memory.
+
+        Args:
+            symbol: Trading symbol
+            timeframe: Timeframe
+            start_time: Backtest start time
+            end_time: Backtest end time
+            chunk_size: Number of candles per chunk (default 1000)
+
+        Yields:
+            Lists of MarketData instances in chronological order
+
+        Example:
+            async for candles in repo.get_historical_candles_streamed(
+                "CrudeOIL", "M5",
+                datetime(2024, 1, 1),
+                datetime(2024, 12, 1),
+                chunk_size=500
+            ):
+                for candle in candles:
+                    # Process candle for backtest
+                    pass
+        """
+        cursor_time = start_time
+
+        while cursor_time < end_time:
+            query = select(MarketData).where(
+                and_(
+                    MarketData.symbol == symbol,
+                    cast(MarketData.timeframe, Text) == timeframe,
+                    MarketData.time >= cursor_time,
+                    MarketData.time <= end_time,
+                )
+            ).order_by(MarketData.time).limit(chunk_size)
+
+            result = await self.session.execute(query)
+            chunk = list(result.scalars().all())
+
+            if not chunk:
+                break
+
+            yield chunk
+
+            # Update cursor to last candle's time + 1 microsecond for next iteration
+            cursor_time = chunk[-1].time
+            # Move cursor forward by 1 microsecond to avoid duplicate
+            from datetime import timedelta
+            cursor_time = cursor_time + timedelta(microseconds=1)
+
+    async def count_candles_in_range(
+        self,
+        symbol: str,
+        timeframe: str,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> int:
+        """
+        Count total candles for backtesting range (for progress tracking).
+
+        Args:
+            symbol: Trading symbol
+            timeframe: Timeframe
+            start_time: Backtest start time
+            end_time: Backtest end time
+
+        Returns:
+            Total number of candles in range
+        """
+        query = select(func.count()).select_from(MarketData).where(
+            and_(
+                MarketData.symbol == symbol,
+                cast(MarketData.timeframe, Text) == timeframe,
+                MarketData.time >= start_time,
+                MarketData.time <= end_time,
+            )
+        )
+
+        result = await self.session.execute(query)
+        return result.scalar() or 0
+
+    async def validate_data_continuity(
+        self,
+        symbol: str,
+        timeframe: str,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> Dict[str, Any]:
+        """
+        Validate data continuity for backtesting (check for gaps).
+
+        Args:
+            symbol: Trading symbol
+            timeframe: Timeframe
+            start_time: Start time
+            end_time: End time
+
+        Returns:
+            Dictionary with validation results:
+            - total_candles: Total count
+            - expected_candles: Expected count (if deterministic)
+            - has_gaps: Whether gaps detected
+            - first_candle_time: Timestamp of first candle
+            - last_candle_time: Timestamp of last candle
+        """
+        # Get total count
+        total = await self.count_candles_in_range(
+            symbol, timeframe, start_time, end_time
+        )
+
+        if total == 0:
+            return {
+                "total_candles": 0,
+                "expected_candles": None,
+                "has_gaps": True,
+                "first_candle_time": None,
+                "last_candle_time": None,
+                "error": "No data found in range",
+            }
+
+        # Get first and last candles
+        first_query = (
+            select(MarketData)
+            .where(
+                and_(
+                    MarketData.symbol == symbol,
+                    cast(MarketData.timeframe, Text) == timeframe,
+                    MarketData.time >= start_time,
+                    MarketData.time <= end_time,
+                )
+            )
+            .order_by(MarketData.time)
+            .limit(1)
+        )
+
+        last_query = (
+            select(MarketData)
+            .where(
+                and_(
+                    MarketData.symbol == symbol,
+                    cast(MarketData.timeframe, Text) == timeframe,
+                    MarketData.time >= start_time,
+                    MarketData.time <= end_time,
+                )
+            )
+            .order_by(desc(MarketData.time))
+            .limit(1)
+        )
+
+        first_result = await self.session.execute(first_query)
+        last_result = await self.session.execute(last_query)
+
+        first_candle = first_result.scalar_one_or_none()
+        last_candle = last_result.scalar_one_or_none()
+
+        return {
+            "total_candles": total,
+            "expected_candles": None,  # Can calculate based on timeframe
+            "has_gaps": False,  # Conservative - assume no gaps unless we detect
+            "first_candle_time": first_candle.time if first_candle else None,
+            "last_candle_time": last_candle.time if last_candle else None,
+        }

@@ -82,18 +82,22 @@ class TradingService:
                     "leverage": None,
                 }
 
+            # AccountInfo model only has: time, balance, equity, margin, free_margin, margin_level
+            # Calculate profit as equity - balance
+            profit = account.equity - account.balance if account.equity and account.balance else Decimal("0.00")
+
             return {
-                "account_number": account.account_number,
+                "account_number": "MT4",  # Not stored in AccountInfo model
                 "balance": account.balance,
                 "equity": account.equity,
                 "margin": account.margin,
                 "free_margin": account.free_margin,
                 "margin_level": account.margin_level,
-                "profit": account.profit,
-                "currency": account.currency,
-                "leverage": account.leverage,
-                "created_at": account.created_at,
-                "updated_at": account.updated_at,
+                "profit": profit,
+                "currency": "USD",  # Not stored in AccountInfo model
+                "leverage": None,  # Not stored in AccountInfo model
+                "created_at": account.created_at if hasattr(account, 'created_at') else None,
+                "updated_at": account.updated_at if hasattr(account, 'updated_at') else None,
             }
 
         if self.redis_client:

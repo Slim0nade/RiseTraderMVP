@@ -4,6 +4,7 @@ import { Bell, Wifi, WifiOff, AlertCircle } from 'lucide-react';
 import { healthApi } from '@/api/endpoints';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { StatusBadge } from '@/components/common/StatusBadge';
+import { NetworkSwitcher } from '@/components/common/NetworkSwitcher';
 import { cn } from '@/utils/cn';
 
 export const Header: React.FC = () => {
@@ -40,6 +41,9 @@ export const Header: React.FC = () => {
 
       {/* Right side - Actions */}
       <div className="flex items-center gap-3">
+        {/* Network Switcher */}
+        <NetworkSwitcher />
+
         {/* Notifications */}
         <button className="p-2 hover:bg-dark-800 rounded-lg transition-colors relative">
           <Bell className="w-5 h-5 text-dark-400" />

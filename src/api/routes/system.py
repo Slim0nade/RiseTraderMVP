@@ -7,8 +7,14 @@ from datetime import datetime
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import text
+from pydantic import BaseModel
 
 from src.agents.agent_coordinator import AgentCoordinator
+from src.config.network_config import (
+    NetworkLocation,
+    NetworkLocationManager,
+    get_network_manager,
+)
 from ..config import settings
 from ..dependencies import get_agent_coordinator, engine
 from ..models import (
@@ -24,6 +30,23 @@ logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/system", tags=["system"])
 
 _system_start_time = time.time()
+
+
+# Network Location Models
+class NetworkLocationResponse(BaseModel):
+    """Network location response."""
+    location: str
+    mt4_host: str
+    mt4_command_endpoint: str
+    mt4_stream_endpoint: str
+    ollama_base_url: str
+    ollama_timeout: int
+    ollama_max_retries: int
+
+
+class NetworkLocationUpdateRequest(BaseModel):
+    """Network location update request."""
+    location: str  # "local" or "remote"
 
 
 @router.get("/health", response_model=HealthCheckResponse)
@@ -169,3 +192,88 @@ async def restart_system(
         agents_restarted=0,
         config_reloaded=False,
     )
+
+
+@router.get("/network-location", response_model=NetworkLocationResponse)
+async def get_network_location():
+    """
+    Get current network location configuration.
+
+    Returns current network settings for MT4 and Ollama.
+    No restart required - changes take effect immediately!
+    """
+    try:
+        manager = get_network_manager()
+        mt4_config = manager.get_mt4_config()
+        ollama_config = manager.get_ollama_config()
+
+        return NetworkLocationResponse(
+            location=manager.location.value,
+            mt4_host=mt4_config.host,
+            mt4_command_endpoint=mt4_config.command_endpoint,
+            mt4_stream_endpoint=mt4_config.stream_endpoint,
+            ollama_base_url=ollama_config.base_url,
+            ollama_timeout=ollama_config.timeout,
+            ollama_max_retries=ollama_config.max_retries,
+        )
+    except Exception as e:
+        logger.error("get_network_location_failed", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/network-location", response_model=NetworkLocationResponse)
+async def set_network_location(request: NetworkLocationUpdateRequest):
+    """
+    Switch network location (local/remote).
+
+    Updates MT4 and Ollama endpoints dynamically - NO RESTART NEEDED!
+
+    Args:
+        request: Network location ("local" or "remote")
+
+    Returns:
+        Updated network configuration
+    """
+    try:
+        # Validate location
+        if request.location not in ["local", "remote"]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid location: {request.location}. Must be 'local' or 'remote'"
+            )
+
+        location = NetworkLocation(request.location)
+        manager = get_network_manager()
+
+        # Switch location
+        old_location = manager.location.value
+        manager.set_location(location)
+
+        # Get new config
+        mt4_config = manager.get_mt4_config()
+        ollama_config = manager.get_ollama_config()
+
+        logger.info(
+            "network_location_switched_via_ui",
+            old_location=old_location,
+            new_location=location.value,
+            mt4_host=mt4_config.host,
+            ollama_url=ollama_config.base_url,
+        )
+
+        return NetworkLocationResponse(
+            location=manager.location.value,
+            mt4_host=mt4_config.host,
+            mt4_command_endpoint=mt4_config.command_endpoint,
+            mt4_stream_endpoint=mt4_config.stream_endpoint,
+            ollama_base_url=ollama_config.base_url,
+            ollama_timeout=ollama_config.timeout,
+            ollama_max_retries=ollama_config.max_retries,
+        )
+
+    except ValueError as e:
+        logger.error("invalid_network_location", location=request.location, error=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("set_network_location_failed", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
