@@ -213,7 +213,9 @@ class PositionSizingAgent(BaseAgent):
                 # Use Anthropic Claude
                 import anthropic
 
-                api_key = os.getenv("ANTHROPIC_API_KEY", "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")
+                api_key = os.getenv("ANTHROPIC_API_KEY")
+                if not api_key:
+                    raise ValueError("ANTHROPIC_API_KEY environment variable is required")
                 client = anthropic.Anthropic(api_key=api_key)
 
                 logger.info(
@@ -256,7 +258,9 @@ class PositionSizingAgent(BaseAgent):
                 # Use OpenAI (default)
                 from openai import OpenAI
 
-                api_key = os.getenv("OPENAI_API_KEY", "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")
+                api_key = os.getenv("OPENAI_API_KEY")
+                if not api_key:
+                    raise ValueError("OPENAI_API_KEY environment variable is required")
                 client = OpenAI(api_key=api_key)
 
                 # Allow model selection via environment variable
