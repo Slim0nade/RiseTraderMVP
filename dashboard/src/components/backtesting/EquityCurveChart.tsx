@@ -24,6 +24,20 @@ export const EquityCurveChart: React.FC<EquityCurveChartProps> = ({
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
+    // FIXED: Deduplicate data by timestamp (keep last value for each timestamp)
+    const deduplicatedData = data.reduce((acc: EquityCurvePoint[], point) => {
+      const existingIndex = acc.findIndex(p => p.time === point.time);
+      if (existingIndex >= 0) {
+        acc[existingIndex] = point; // Replace with newer value
+      } else {
+        acc.push(point);
+      }
+      return acc;
+    }, []);
+
+    // Sort by time to ensure ascending order
+    const sortedData = [...deduplicatedData].sort((a, b) => a.time - b.time);
+
     // Create chart
     const chart = createChart(chartContainerRef.current, {
       layout: {
@@ -58,6 +72,11 @@ export const EquityCurveChart: React.FC<EquityCurveChartProps> = ({
 
     seriesRef.current = areaSeries;
 
+    // Set data (use sorted, deduplicated data)
+    if (sortedData.length > 0) {
+      areaSeries.setData(sortedData as any);
+    }
+
     // Add baseline at initial capital
     const baselineSeries = chart.addLineSeries({
       color: '#6b7280',
@@ -66,13 +85,20 @@ export const EquityCurveChart: React.FC<EquityCurveChartProps> = ({
       priceLineVisible: false,
     });
 
-    if (data.length > 0) {
-      const minTime = data[0].time;
-      const maxTime = data[data.length - 1].time;
-      baselineSeries.setData([
-        { time: minTime as any, value: initialCapital },
-        { time: maxTime as any, value: initialCapital },
-      ]);
+    if (sortedData.length > 0) {
+      const minTime = sortedData[0].time;
+      const maxTime = sortedData[sortedData.length - 1].time;
+
+      // Only add baseline if we have more than one unique timestamp
+      if (minTime !== maxTime) {
+        baselineSeries.setData([
+          { time: minTime as any, value: initialCapital },
+          { time: maxTime as any, value: initialCapital },
+        ]);
+      } else if (sortedData.length === 1) {
+        // Single point - no baseline needed
+        baselineSeries.setData([]);
+      }
     }
 
     // Handle resize
@@ -96,8 +122,24 @@ export const EquityCurveChart: React.FC<EquityCurveChartProps> = ({
 
   useEffect(() => {
     if (seriesRef.current && data.length > 0) {
+      // Deduplicate timestamps by keeping the last value for each unique timestamp
+      // TradingView Lightweight Charts requires strictly ascending timestamps
+      const deduplicatedData = data.reduce((acc, point) => {
+        const existingIndex = acc.findIndex((p) => p.time === point.time);
+        if (existingIndex >= 0) {
+          // Replace with newer value at same timestamp
+          acc[existingIndex] = point;
+        } else {
+          acc.push(point);
+        }
+        return acc;
+      }, [] as EquityCurvePoint[]);
+
+      // Sort by time ascending (just in case)
+      const sortedData = deduplicatedData.sort((a, b) => a.time - b.time);
+
       seriesRef.current.setData(
-        data.map((point) => ({
+        sortedData.map((point) => ({
           time: point.time as any,
           value: point.value,
         }))

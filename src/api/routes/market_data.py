@@ -31,6 +31,12 @@ logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/market-data", tags=["market-data"])
 
 
+# ============================================================================
+# IMPORTANT: Static routes must be defined BEFORE dynamic routes like /{symbol}
+# to avoid FastAPI matching 'symbols' as a symbol name
+# ============================================================================
+
+
 def get_market_data_service(
     db: AsyncSession = Depends(get_db),
     redis_client: Optional[MT4RedisClient] = Depends(get_redis_client),
@@ -47,6 +53,77 @@ def get_market_data_service(
     """
     repository = MarketDataRepository(db)
     return MarketDataService(repository, redis_client)
+
+
+@router.get("/symbols", response_model=SymbolListResponse, responses={
+    200: {"description": "List of available symbols with metadata"},
+})
+async def get_symbols(
+    timeframe: Optional[str] = Query(None, description="Optional timeframe filter"),
+    service: MarketDataService = Depends(get_market_data_service),
+) -> SymbolListResponse:
+    """
+    Get list of available symbols with metadata (T051).
+
+    Features:
+    - Aggregated metadata (data points count, latest price, time range)
+    - Optional timeframe filtering
+    - Redis caching with 1-hour TTL
+
+    Args:
+        timeframe: Optional timeframe filter
+        service: MarketDataService dependency
+
+    Returns:
+        SymbolListResponse with symbol metadata
+
+    Example:
+        GET /api/market-data/symbols
+        GET /api/market-data/symbols?timeframe=M5
+    """
+    try:
+        # Validate timeframe if provided
+        if timeframe:
+            valid_timeframes = ["M1", "M5", "M15", "M30", "H1", "H4", "D1", "W1", "MN1"]
+            if timeframe not in valid_timeframes:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid timeframe '{timeframe}'. Valid options: {', '.join(valid_timeframes)}",
+                )
+
+        # Get symbols with metadata
+        symbols_data = await service.get_symbols(timeframe=timeframe)
+
+        # Convert to SymbolInfoResponse objects
+        symbol_infos = []
+        for symbol_dict in symbols_data:
+            symbol_info = SymbolInfoResponse(**symbol_dict)
+            symbol_infos.append(symbol_info)
+
+        logger.info(
+            "get_symbols_success",
+            count=len(symbol_infos),
+            timeframe=timeframe,
+        )
+
+        return SymbolListResponse(
+            symbols=symbol_infos,
+            total=len(symbol_infos),
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            "get_symbols_failed",
+            timeframe=timeframe,
+            error=str(e),
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve symbols: {str(e)}",
+        )
 
 
 @router.get("/{symbol}", response_model=MarketDataListResponse, responses={
@@ -123,7 +200,7 @@ async def get_market_data(
         )
 
         return MarketDataListResponse(
-            data=[MarketDataResponse.from_orm(tick) for tick in data],
+            data=[MarketDataResponse.model_validate(tick) for tick in data],
             total=total,
             page=1,  # Keyset pagination doesn't use page numbers
             page_size=limit,
@@ -236,7 +313,7 @@ async def get_market_data_range(
         )
 
         return MarketDataListResponse(
-            data=[MarketDataResponse.from_orm(tick) for tick in data],
+            data=[MarketDataResponse.model_validate(tick) for tick in data],
             total=total,
             page=1,
             page_size=limit,
@@ -261,77 +338,6 @@ async def get_market_data_range(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve market data range: {str(e)}",
-        )
-
-
-@router.get("/symbols", response_model=SymbolListResponse, responses={
-    200: {"description": "List of available symbols with metadata"},
-})
-async def get_symbols(
-    timeframe: Optional[str] = Query(None, description="Optional timeframe filter"),
-    service: MarketDataService = Depends(get_market_data_service),
-) -> SymbolListResponse:
-    """
-    Get list of available symbols with metadata (T051).
-
-    Features:
-    - Aggregated metadata (data points count, latest price, time range)
-    - Optional timeframe filtering
-    - Redis caching with 1-hour TTL
-
-    Args:
-        timeframe: Optional timeframe filter
-        service: MarketDataService dependency
-
-    Returns:
-        SymbolListResponse with symbol metadata
-
-    Example:
-        GET /api/market-data/symbols
-        GET /api/market-data/symbols?timeframe=M5
-    """
-    try:
-        # Validate timeframe if provided
-        if timeframe:
-            valid_timeframes = ["M1", "M5", "M15", "M30", "H1", "H4", "D1", "W1", "MN1"]
-            if timeframe not in valid_timeframes:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Invalid timeframe '{timeframe}'. Valid options: {', '.join(valid_timeframes)}",
-                )
-
-        # Get symbols with metadata
-        symbols_data = await service.get_symbols(timeframe=timeframe)
-
-        # Convert to SymbolInfoResponse objects
-        symbol_infos = []
-        for symbol_dict in symbols_data:
-            symbol_info = SymbolInfoResponse(**symbol_dict)
-            symbol_infos.append(symbol_info)
-
-        logger.info(
-            "get_symbols_success",
-            count=len(symbol_infos),
-            timeframe=timeframe,
-        )
-
-        return SymbolListResponse(
-            symbols=symbol_infos,
-            total=len(symbol_infos),
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(
-            "get_symbols_failed",
-            timeframe=timeframe,
-            error=str(e),
-            exc_info=True,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to retrieve symbols: {str(e)}",
         )
 
 

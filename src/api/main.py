@@ -26,7 +26,7 @@ from .middleware import (
     register_exception_handlers,
     setup_logging,
 )
-from .routes import agents, trading, market_data, forecasts, performance, strategies, system, ml_forecasting, agent_pipelines, backtesting
+from .routes import agents, trading, market_data, forecasts, performance, strategies, system, ml_forecasting, agent_pipelines, backtesting, vectorized_backtesting
 from src.services.mt4_sync_service import get_mt4_sync_service
 
 # Configure structured logging
@@ -124,6 +124,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.include_router(agents.router, prefix="/api")
 app.include_router(agent_pipelines.router, prefix="/api")  # New intelligent agent pipelines
 app.include_router(backtesting.router, prefix="/api")  # Backtesting endpoints
+app.include_router(vectorized_backtesting.router, prefix="/api")  # Fast vectorized backtesting
 app.include_router(trading.router, prefix="/api")
 app.include_router(market_data.router, prefix="/api")
 app.include_router(forecasts.router, prefix="/api")

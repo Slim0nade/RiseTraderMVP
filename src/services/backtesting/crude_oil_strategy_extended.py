@@ -50,8 +50,8 @@ class CrudeOilParamsExtended:
     
     # Momentum
     momentum_period: int = 10
-    momentum_buy_threshold: float = 99.5
-    momentum_sell_threshold: float = 100.5
+    momentum_buy_threshold: float = 95.0  # FIXED: Was 99.5 (too restrictive)
+    momentum_sell_threshold: float = 105.0  # FIXED: Was 100.5 (too restrictive)
     
     # Exit Conditions
     ma_close_period: int = 20
@@ -782,20 +782,25 @@ class CrudeOilStrategyExtended:
     def _close_position(self, tick: MarketTick, reason: str, is_loss: bool) -> CrudeOilSignalExtended:
         """Close position and update tracking."""
         direction = self.state.position_type
-        
+
+        # Determine correct close action based on position type
+        close_action = 'close_long' if direction == 'buy' else 'close_short'
+
         if is_loss:
             self.state.consecutive_losses += 1
         else:
             self.state.consecutive_losses = 0
-        
+
         # Reset state
         self.state.has_position = False
         self.state.position_type = None
         self.state.entry_price = None
         self.state.entry_time = None
-        
+        self.state.stop_loss = None
+        self.state.take_profit = None
+
         return CrudeOilSignalExtended(
-            action='close',
+            action=close_action,
             quantity=self.state.remaining_quantity,
             confidence=0.8,
             reason=f"CLOSE {direction.upper()}: {reason}",

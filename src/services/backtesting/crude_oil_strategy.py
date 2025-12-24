@@ -485,21 +485,24 @@ class CrudeOilStrategy:
     def _close_position(self, tick: MarketTick, reason: str) -> CrudeOilSignal:
         """Close current position."""
         position_type = self.state.position_type
-        
+
+        # Determine correct close action based on position type
+        close_action = 'close_long' if position_type == 'buy' else 'close_short'
+
         # Track consecutive losses
         entry_price = float(self.state.entry_price)
         exit_price = float(tick.close)
-        
+
         if position_type == 'buy':
             profit = exit_price - entry_price
         else:
             profit = entry_price - exit_price
-            
+
         if profit < 0:
             self.state.consecutive_losses += 1
         else:
             self.state.consecutive_losses = 0
-        
+
         # Reset state
         self.state.has_position = False
         self.state.position_type = None
@@ -507,9 +510,9 @@ class CrudeOilStrategy:
         self.state.entry_time = None
         self.state.stop_loss = None
         self.state.take_profit = None
-        
+
         return CrudeOilSignal(
-            action='close',
+            action=close_action,
             quantity=self.params.quantity,
             confidence=0.8,
             reason=f"CLOSE {position_type.upper()}: {reason}"

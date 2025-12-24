@@ -15,7 +15,6 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
-from src.api.config import settings
 from src.config.network_config import get_network_manager
 from src.trading.execution.mt4_client import MT4Client
 from src.trading.execution.mt4_encryption import MT4EncryptionManager
@@ -25,6 +24,8 @@ from src.trading.execution.mt4_models import (
 )
 from src.database.models.account import AccountInfo
 from src.database.models.positions import OpenPosition
+from src.database.models.market_data import MarketData
+from src.database.repositories.market_data_repository import MarketDataRepository
 
 logger = structlog.get_logger(__name__)
 
@@ -45,6 +46,7 @@ class MT4SyncService:
         sync_interval_seconds: int = 60,
         enable_position_sync: bool = True,
         enable_account_sync: bool = True,
+        enable_market_data_stream: bool = True,
     ):
         """
         Initialize MT4 sync service.
@@ -53,22 +55,26 @@ class MT4SyncService:
             sync_interval_seconds: Seconds between sync cycles
             enable_position_sync: Enable position synchronization
             enable_account_sync: Enable account info synchronization
+            enable_market_data_stream: Enable real-time market data streaming
         """
         self.sync_interval = sync_interval_seconds
         self.enable_position_sync = enable_position_sync
         self.enable_account_sync = enable_account_sync
+        self.enable_market_data_stream = enable_market_data_stream
 
         self.mt4_client: Optional[MT4Client] = None
         self.engine = None
         self.async_session = None
         self.running = False
         self._sync_task: Optional[asyncio.Task] = None
+        self._stream_task: Optional[asyncio.Task] = None
 
         logger.info(
             "mt4_sync_service_initialized",
             interval=sync_interval_seconds,
             positions_enabled=enable_position_sync,
             account_enabled=enable_account_sync,
+            market_data_stream_enabled=enable_market_data_stream,
         )
 
     async def start(self):
@@ -78,6 +84,9 @@ class MT4SyncService:
             return
 
         logger.info("mt4_sync_service_starting")
+
+        # Import settings here to avoid circular import
+        from src.api.config import settings
 
         # Create database engine
         self.engine = create_async_engine(
@@ -120,6 +129,11 @@ class MT4SyncService:
             self.running = True
             self._sync_task = asyncio.create_task(self._sync_loop())
 
+            # Start market data stream listener
+            if self.enable_market_data_stream:
+                self._stream_task = asyncio.create_task(self._stream_loop())
+                logger.info("mt4_market_data_stream_started")
+
             logger.info("mt4_sync_service_started")
 
         except Exception as e:
@@ -140,6 +154,14 @@ class MT4SyncService:
             self._sync_task.cancel()
             try:
                 await self._sync_task
+            except asyncio.CancelledError:
+                pass
+
+        # Cancel stream task
+        if self._stream_task and not self._stream_task.done():
+            self._stream_task.cancel()
+            try:
+                await self._stream_task
             except asyncio.CancelledError:
                 pass
 
@@ -307,7 +329,7 @@ class MT4SyncService:
                     "commission": pos_data.get("commission", 0.0),
                     "last_profit": pnl,
                     "last_update": datetime.utcnow(),
-                    "last_strategy": "MT4_LIVE",
+                    "last_strategy": "MT4_LIVE",  # Keep this - it's a string, not an enum
                     "simulation": False,
                     "created_at": datetime.utcnow(),
                     "updated_at": datetime.utcnow(),
@@ -355,6 +377,113 @@ class MT4SyncService:
             await session.rollback()
             return False
 
+    async def _stream_loop(self):
+        """Listen to MT4 real-time stream and save market data."""
+        logger.info("mt4_stream_loop_started")
+
+        try:
+            # Subscribe to MT4 PUB socket for real-time events
+            await self.mt4_client.subscribe_to_events()
+            logger.info("subscribed_to_mt4_events")
+
+        except Exception as e:
+            logger.error("failed_to_subscribe_to_mt4_events", error=str(e), exc_info=True)
+            return
+
+        while self.running:
+            try:
+                # Receive event from MT4 stream (with timeout to allow checking self.running)
+                message = await self.mt4_client.receive_event(timeout_ms=1000)
+
+                if message:
+                    # Process message
+                    await self._process_stream_message(message)
+
+            except asyncio.CancelledError:
+                logger.info("mt4_stream_loop_cancelled")
+                break
+
+            except Exception as e:
+                logger.error(
+                    "mt4_stream_loop_error",
+                    error=str(e),
+                    exc_info=True,
+                )
+                # Brief pause before retry
+                await asyncio.sleep(2)
+
+    async def _process_stream_message(self, message: dict):
+        """Process a single stream message and save market data if present."""
+        try:
+            # Check if this is a real_time_update with price_data
+            msg_type = message.get("type")
+            if msg_type != "real_time_update":
+                return
+
+            price_data = message.get("price_data")
+            if not price_data:
+                return
+
+            symbol = message.get("symbol", "CrudeOIL")
+            timeframe = message.get("timeframe", 1)  # 1 = M1
+
+            # Convert timeframe number to string
+            timeframe_map = {
+                1: "M1",
+                5: "M5",
+                15: "M15",
+                30: "M30",
+                60: "H1",
+                240: "H4",
+                1440: "D1",
+            }
+            timeframe_str = timeframe_map.get(timeframe, "M1")
+
+            # Extract OHLC data
+            candle_time = datetime.fromtimestamp(price_data.get("time", 0))
+            open_price = str(price_data.get("open", 0.0))
+            high_price = str(price_data.get("high", 0.0))
+            low_price = str(price_data.get("low", 0.0))
+            close_price = str(price_data.get("close", 0.0))
+            volume = price_data.get("volume", 0)
+
+            # Create market data record
+            market_data_dict = {
+                "time": candle_time,
+                "symbol": symbol,
+                "timeframe": timeframe_str,
+                "source": "MT4",  # MT4 is the valid enum value
+                "open": open_price,
+                "high": high_price,
+                "low": low_price,
+                "last": close_price,
+                "change": "0.0",  # Can be calculated if needed
+                "change_percent": "0.0",  # Can be calculated if needed
+                "volume": volume,
+            }
+
+            # Save to database using a new session
+            async with self.async_session() as session:
+                market_data_repo = MarketDataRepository(session)
+                await market_data_repo.upsert(market_data_dict)
+                await session.commit()
+
+                logger.debug(
+                    "market_data_saved",
+                    symbol=symbol,
+                    timeframe=timeframe_str,
+                    time=candle_time.isoformat(),
+                    close=close_price,
+                )
+
+        except Exception as e:
+            logger.error(
+                "process_stream_message_failed",
+                error=str(e),
+                message=message,
+                exc_info=True,
+            )
+
 
 # Global service instance
 _mt4_sync_service: Optional[MT4SyncService] = None
@@ -365,6 +494,9 @@ def get_mt4_sync_service() -> MT4SyncService:
     global _mt4_sync_service
 
     if _mt4_sync_service is None:
+        # Import settings here to avoid circular import
+        from src.api.config import settings
+
         _mt4_sync_service = MT4SyncService(
             sync_interval_seconds=settings.mt4_sync_interval_seconds,
         )

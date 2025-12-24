@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field
 
 from src.agents.providers.ollama_client import create_ollama_client
 from src.agents.schemas.trade_decision import TradeDirection, TradeIntent
+from src.config.network_config import NetworkLocationManager
 from src.database.models.simulated_trade import AgentDecisionLog
 from src.services.backtesting.portfolio_state import PortfolioState
 
@@ -98,9 +99,9 @@ class AgentIntegrator:
         backtest_run_id: UUID,
         backtest_repo,  # Add repository for real-time logging
         model: str = "qwen3:14b",
-        ollama_base_url: str = "http://192.168.0.123:11434/v1",
+        ollama_base_url: Optional[str] = None,
         temperature: float = 0.3,
-        max_tokens: int = 1000,
+        max_tokens: int = 2000,  # Increased from 1000 to prevent truncation
         decision_threshold: float = 0.6,  # Min conviction to trade
     ):
         """
@@ -110,7 +111,7 @@ class AgentIntegrator:
             backtest_run_id: UUID of current backtest run
             backtest_repo: BacktestRepository for saving decisions
             model: Ollama model to use for decisions
-            ollama_base_url: Ollama server URL
+            ollama_base_url: Ollama server URL (auto-detects if None)
             temperature: LLM sampling temperature
             max_tokens: Max tokens for LLM response
             decision_threshold: Minimum conviction required to execute trade
@@ -118,7 +119,7 @@ class AgentIntegrator:
         self.backtest_run_id = backtest_run_id
         self.backtest_repo = backtest_repo
         self.model = model
-        self.ollama_base_url = ollama_base_url
+        self.ollama_base_url = ollama_base_url  # Will be auto-detected in initialize()
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.decision_threshold = decision_threshold
@@ -134,13 +135,25 @@ class AgentIntegrator:
             "agent_integrator_initialized",
             backtest_run_id=str(backtest_run_id),
             model=model,
-            ollama_base_url=ollama_base_url,
+            ollama_base_url=ollama_base_url or "auto-detect",
             decision_threshold=decision_threshold,
         )
 
     async def initialize(self):
         """Initialize LLM client connection."""
         try:
+            # Get Ollama URL from NetworkLocationManager if not explicitly provided
+            if self.ollama_base_url is None:
+                network_manager = NetworkLocationManager()
+                ollama_config = network_manager.get_ollama_config()
+                self.ollama_base_url = ollama_config.base_url
+                logger.debug(
+                    "using_network_location_manager_for_ollama",
+                    ollama_url=self.ollama_base_url,
+                    location=network_manager.location.value,
+                )
+
+            # Create client with network-aware URL
             self.llm_client = create_ollama_client(
                 model=self.model,
                 base_url=self.ollama_base_url,
@@ -271,19 +284,22 @@ Respond in JSON format with:
 {{
     "direction": "LONG" | "SHORT" | "NO_TRADE",
     "conviction": 0.0 to 1.0,
-    "rationale": "detailed explanation (minimum 100 characters)",
-    "key_factors": ["factor1", "factor2", "factor3"],
-    "risk_assessment": "risk summary (minimum 50 characters)",
+    "rationale": "detailed explanation (MINIMUM 100 characters - be thorough and specific)",
+    "key_factors": ["factor1", "factor2", "factor3", "factor4"],
+    "risk_assessment": "risk summary (MINIMUM 50 characters - explain specific risks)",
     "expected_holding_period": "optional: intraday, 1-3 days, etc",
     "timestamp": "{context.timestamp.isoformat()}"
 }}
 
-Important:
+CRITICAL Requirements:
+- MUST provide at least 3 key_factors (preferably 4-5)
+- MUST write rationale with at least 100 characters
+- MUST write risk_assessment with at least 50 characters
 - Only recommend LONG if conviction >= {self.decision_threshold}
 - Only recommend SHORT if conviction >= {self.decision_threshold} AND shorting is allowed
 - Otherwise recommend NO_TRADE
 - Be conservative with risk
-- Provide specific, actionable rationale
+- Provide specific, actionable rationale with market reasoning
 """
 
         return prompt
@@ -382,13 +398,15 @@ Important:
             action = "buy"
             # Simple position sizing: use conviction to scale position
             max_qty_value = min(market_context.cash_balance, market_context.max_position_size)
-            quantity = Decimal(str(max_qty_value * trade_intent.conviction)) / market_context.current_price
+            # Fix: Convert conviction to Decimal before multiplication
+            quantity = (max_qty_value * Decimal(str(trade_intent.conviction))) / market_context.current_price
 
         elif trade_intent.direction == TradeDirection.SHORT and trade_intent.conviction >= self.decision_threshold:
             if market_context.allow_short:
                 action = "sell"
                 max_qty_value = market_context.max_position_size
-                quantity = Decimal(str(max_qty_value * trade_intent.conviction)) / market_context.current_price
+                # Fix: Convert conviction to Decimal before multiplication
+                quantity = (max_qty_value * Decimal(str(trade_intent.conviction))) / market_context.current_price
             else:
                 logger.warning(
                     "short_trade_rejected",

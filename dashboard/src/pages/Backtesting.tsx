@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Play, RefreshCw, TrendingUp, BarChart3, AlertCircle, Plus, Loader2 } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Play, RefreshCw, TrendingUp, BarChart3, AlertCircle, Plus, Loader2, XCircle } from 'lucide-react';
 import { backtestApi } from '@/api/endpoints';
 import { useBacktestStore } from '@/store/backtestStore';
 import { AgentDecisionList } from '@/components/backtesting/AgentDecisionList';
@@ -18,6 +18,17 @@ export const Backtesting: React.FC = () => {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [runningConfigs, setRunningConfigs] = useState<Set<string>>(new Set());
+  const queryClient = useQueryClient();
+
+  // Cancel backtest mutation
+  const cancelMutation = useMutation({
+    mutationFn: (runId: string) => backtestApi.cancelRun(runId),
+    onSuccess: () => {
+      // Refetch run data to show updated status
+      queryClient.invalidateQueries({ queryKey: ['backtest-run', selectedRunId] });
+      queryClient.invalidateQueries({ queryKey: ['all-backtest-runs'] });
+    },
+  });
 
   // Fetch configurations
   const { data: configsResponse, isLoading: configsLoading } = useQuery({
@@ -255,10 +266,10 @@ export const Backtesting: React.FC = () => {
                 {configsResponse?.items.map((config: any) => {
                   const latestRun = getLatestRunForConfig(config.id);
                   return (
-                    <button
+                    <div
                       key={config.id}
                       onClick={() => handleSelectRun(config.id)}
-                      className={`w-full text-left p-4 rounded-lg border transition-all ${
+                      className={`w-full text-left p-4 rounded-lg border transition-all cursor-pointer ${
                         selectedRunId === config.id
                           ? 'bg-primary-500/10 border-primary-500/50'
                           : 'bg-dark-800 border-dark-700 hover:border-dark-600'
@@ -302,7 +313,7 @@ export const Backtesting: React.FC = () => {
                         </p>
                         <p>Capital: ${config.initial_capital.toLocaleString()}</p>
                       </div>
-                    </button>
+                    </div>
                   );
                 })}
               </div>
@@ -338,13 +349,23 @@ export const Backtesting: React.FC = () => {
                 Candles processed: {runData.candles_processed} | Decisions:{' '}
                 {runData.agent_decisions_count}
               </p>
-              <button
-                onClick={() => refetchRun()}
-                className="text-primary-500 hover:text-primary-400 text-sm flex items-center gap-2 mx-auto"
-              >
-                <RefreshCw className="w-4 h-4" />
-                Refresh Status
-              </button>
+              <div className="flex items-center justify-center gap-3">
+                <button
+                  onClick={() => refetchRun()}
+                  className="text-primary-500 hover:text-primary-400 text-sm flex items-center gap-2"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Refresh Status
+                </button>
+                <button
+                  onClick={() => cancelMutation.mutate(selectedRunId!)}
+                  disabled={cancelMutation.isPending}
+                  className="text-danger-500 hover:text-danger-400 text-sm flex items-center gap-2 disabled:opacity-50"
+                >
+                  <XCircle className="w-4 h-4" />
+                  {cancelMutation.isPending ? 'Cancelling...' : 'Cancel Run'}
+                </button>
+              </div>
             </div>
           ) : runData?.status === 'failed' ? (
             <div className="bg-dark-900 rounded-lg border border-danger-500/50 p-12 text-center">

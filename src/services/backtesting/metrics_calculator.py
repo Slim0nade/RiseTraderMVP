@@ -90,23 +90,32 @@ class PerformanceMetrics:
             f = float(value)
             return 0.0 if (math.isnan(f) or math.isinf(f)) else f
 
+        # Calculate absolute returns and drawdown
+        total_return_abs = safe_float(self.final_capital - (self.final_capital / (1 + self.total_return_pct / 100)))
+        max_drawdown_abs = safe_float(self.final_capital * (self.max_drawdown_pct / 100))
+
+        # Calculate winning/losing trade counts from metrics
+        winning_trades = int(self.total_trades * safe_float(self.win_rate))
+        losing_trades = self.total_trades - winning_trades
+
         return {
             "total_return_pct": safe_float(self.total_return_pct),
+            "total_return_abs": total_return_abs,
             "sharpe_ratio": safe_float(self.sharpe_ratio),
+            "sortino_ratio": safe_float(self.sortino_ratio),
             "max_drawdown_pct": safe_float(self.max_drawdown_pct),
+            "max_drawdown_abs": max_drawdown_abs,
             "max_drawdown_duration_days": self.max_drawdown_duration_days,
             "win_rate": safe_float(self.win_rate),
             "total_trades": self.total_trades,
-            "avg_trade_duration_hours": safe_float(self.avg_trade_duration_hours),
-            "profit_factor": safe_float(self.profit_factor),
-            "final_capital": safe_float(self.final_capital),
+            "winning_trades": winning_trades,
+            "losing_trades": losing_trades,
             "avg_win": safe_float(self.avg_win),
             "avg_loss": safe_float(self.avg_loss),
-            "largest_win": safe_float(self.largest_win),
-            "largest_loss": safe_float(self.largest_loss),
-            "consecutive_wins_max": self.consecutive_wins_max,
-            "consecutive_losses_max": self.consecutive_losses_max,
-            "sortino_ratio": safe_float(self.sortino_ratio),
+            "profit_factor": safe_float(self.profit_factor),
+            "avg_trade_duration_hours": safe_float(self.avg_trade_duration_hours),
+            "max_consecutive_wins": self.consecutive_wins_max,
+            "max_consecutive_losses": self.consecutive_losses_max,
             "calmar_ratio": safe_float(self.calmar_ratio),
         }
 

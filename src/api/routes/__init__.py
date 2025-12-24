@@ -3,12 +3,13 @@ API Routes
 
 All route modules for the RiseTrader API.
 """
-from . import agents, forecasts, market_data, performance, strategies, system, trading, ml_forecasting, agent_pipelines, backtesting
+from . import agents, forecasts, market_data, performance, strategies, system, trading, ml_forecasting, agent_pipelines, backtesting, vectorized_backtesting
 
 __all__ = [
     "agents",
     "agent_pipelines",
     "backtesting",
+    "vectorized_backtesting",
     "trading",
     "market_data",
     "forecasts",

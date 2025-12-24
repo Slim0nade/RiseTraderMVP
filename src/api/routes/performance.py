@@ -13,7 +13,7 @@ from ..dependencies import get_db
 from ..models import (
     PerformanceByStrategyResponse,
     PerformanceChartResponse,
-    PerformanceMetricsResponse,
+    TradingPerformanceMetricsResponse,
     PerformanceSummaryResponse,
 )
 
@@ -78,13 +78,13 @@ async def get_performance_summary(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/metrics", response_model=PerformanceMetricsResponse)
+@router.get("/metrics", response_model=TradingPerformanceMetricsResponse)
 async def get_performance_metrics(
     db: AsyncSession = Depends(get_db),
-) -> PerformanceMetricsResponse:
+) -> TradingPerformanceMetricsResponse:
     """Get detailed performance metrics (placeholder)."""
     logger.warning("get_performance_metrics_not_fully_implemented")
-    return PerformanceMetricsResponse(
+    return TradingPerformanceMetricsResponse(
         total_trades=0,
         open_positions=0,
         closed_positions=0,
@@ -99,7 +99,7 @@ async def get_performance_metrics(
         largest_loss=Decimal(0),
         average_trade=Decimal(0),
         max_drawdown=None,
-        max_drawdown_percent=None,
+        max_drawdown_pct=None,
         current_drawdown=None,
         sharpe_ratio=None,
         sortino_ratio=None,
@@ -112,7 +112,7 @@ async def get_performance_metrics(
         current_balance=Decimal(50000),
         peak_balance=Decimal(50000),
         total_return=Decimal(0),
-        total_return_percent=0.0,
+        total_return_pct=0.0,
         period_start=datetime.utcnow() - timedelta(days=30),
         period_end=datetime.utcnow(),
         trading_days=30,

@@ -76,7 +76,7 @@ class PerformanceMetricsResponse(BaseModel):
 
     # Risk metrics
     max_drawdown: Optional[Decimal] = None
-    max_drawdown_percent: Optional[float] = None
+    max_drawdown_pct: Optional[float] = None
     current_drawdown: Optional[Decimal] = None
     sharpe_ratio: Optional[float] = None
     sortino_ratio: Optional[float] = None
@@ -93,7 +93,7 @@ class PerformanceMetricsResponse(BaseModel):
     current_balance: Decimal
     peak_balance: Decimal
     total_return: Decimal
-    total_return_percent: float
+    total_return_pct: float
 
     # Time period
     period_start: datetime
@@ -117,7 +117,7 @@ class PerformanceMetricsResponse(BaseModel):
                 "largest_loss": 450.0,
                 "average_trade": 50.0,
                 "max_drawdown": 2500.0,
-                "max_drawdown_percent": 8.5,
+                "max_drawdown_pct": 8.5,
                 "sharpe_ratio": 1.75,
                 "consecutive_wins": 3,
                 "consecutive_losses": 0,
@@ -127,7 +127,7 @@ class PerformanceMetricsResponse(BaseModel):
                 "current_balance": 57500.0,
                 "peak_balance": 58200.0,
                 "total_return": 7500.0,
-                "total_return_percent": 15.0,
+                "total_return_pct": 15.0,
                 "period_start": "2024-01-01T00:00:00Z",
                 "period_end": "2024-01-15T23:59:59Z",
                 "trading_days": 15,

@@ -35,7 +35,7 @@ from .market_data_models import (
 from .performance_models import (
     PerformanceByStrategyResponse,
     PerformanceChartResponse,
-    PerformanceMetricsResponse,
+    PerformanceMetricsResponse as TradingPerformanceMetricsResponse,
     PerformanceSummaryResponse,
     MonthlyPerformanceResponse,
 )
@@ -85,7 +85,7 @@ from .backtesting_models import (
     OptimizationResultResponse,
     ParameterGridResponse,
     ParameterGridResultsResponse,
-    PerformanceMetricsResponse,
+    PerformanceMetricsResponse as BacktestPerformanceMetricsResponse,
     RunBacktestRequest,
     RunStatus,
     SimulatedTradeResponse,
@@ -125,7 +125,7 @@ __all__ = [
     # Performance models
     "PerformanceByStrategyResponse",
     "PerformanceChartResponse",
-    "PerformanceMetricsResponse",
+    "TradingPerformanceMetricsResponse",
     "PerformanceSummaryResponse",
     "MonthlyPerformanceResponse",
     # Strategy models
@@ -171,7 +171,7 @@ __all__ = [
     "OptimizationResultResponse",
     "ParameterGridResponse",
     "ParameterGridResultsResponse",
-    "PerformanceMetricsResponse",
+    "BacktestPerformanceMetricsResponse",
     "RunBacktestRequest",
     "RunStatus",
     "SimulatedTradeResponse",

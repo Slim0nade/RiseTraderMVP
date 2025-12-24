@@ -6,9 +6,8 @@ Handles business logic for forecast retrieval with Redis caching.
 import json
 from datetime import datetime, timezone
 from typing import List, Optional, Tuple
-from decimal import Decimal
 
-from sqlalchemy import desc, select, and_
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from redis.asyncio import Redis
 
@@ -28,13 +27,7 @@ class ForecastService:
     """
 
     def __init__(self, session: AsyncSession, redis: Optional[Redis] = None):
-        """
-        Initialize forecast service.
-
-        Args:
-            session: Database session
-            redis: Optional Redis client for caching
-        """
+        """Initialize forecast service."""
         self.repository = ForecastsRepository(session)
         self.redis = redis
         self.cache_ttl = 3600  # 1 hour
@@ -44,18 +37,7 @@ class ForecastService:
         symbol: Optional[str] = None,
         horizon: Optional[str] = None
     ) -> List[Forecast]:
-        """
-        Get latest forecasts with optional filters.
-
-        Checks cache first, falls back to database if cache miss.
-
-        Args:
-            symbol: Optional symbol filter
-            horizon: Optional horizon filter (1h, 4h, 24h, etc.)
-
-        Returns:
-            List of Forecast instances
-        """
+        """Get latest forecasts with optional filters."""
         # Generate cache key
         cache_key = self._generate_cache_key("forecasts:latest", symbol=symbol, horizon=horizon)
 
@@ -66,7 +48,6 @@ class ForecastService:
                 if cached_data:
                     logger.info("forecast_cache_hit", cache_key=cache_key)
                     data = json.loads(cached_data)
-                    # Convert back to Forecast objects
                     return self._deserialize_forecasts(data.get("forecasts", []))
             except Exception as e:
                 logger.warning("forecast_cache_error", error=str(e), cache_key=cache_key)
@@ -79,10 +60,9 @@ class ForecastService:
         if symbol:
             query = query.where(Forecast.symbol == symbol)
         if horizon:
-            query = query.where(Forecast.horizon == horizon)
+            query = query.where(Forecast.forecast_horizon == horizon)
 
-        # Get latest forecast per symbol/horizon combination
-        query = query.limit(100)  # Reasonable limit
+        query = query.limit(100)
 
         result = await self.repository.session.execute(query)
         forecasts = list(result.scalars().all())
@@ -94,11 +74,7 @@ class ForecastService:
                     "forecasts": self._serialize_forecasts(forecasts),
                     "cached_at": datetime.now(timezone.utc).isoformat()
                 }
-                await self.redis.set(
-                    cache_key,
-                    json.dumps(cache_data),
-                    ex=self.cache_ttl
-                )
+                await self.redis.set(cache_key, json.dumps(cache_data), ex=self.cache_ttl)
                 logger.info("forecast_cached", cache_key=cache_key, count=len(forecasts))
             except Exception as e:
                 logger.warning("forecast_cache_write_error", error=str(e))
@@ -111,23 +87,8 @@ class ForecastService:
         cursor: Optional[str] = None,
         limit: int = 50
     ) -> Tuple[List[Forecast], Optional[str]]:
-        """
-        Get forecasts for a specific symbol with keyset pagination.
-
-        Args:
-            symbol: Trading symbol
-            cursor: Pagination cursor (ISO timestamp)
-            limit: Number of forecasts to return
-
-        Returns:
-            Tuple of (forecasts list, next_cursor)
-        """
-        # Generate cache key
-        cache_key = self._generate_cache_key(
-            f"forecasts:symbol:{symbol}",
-            cursor=cursor,
-            limit=limit
-        )
+        """Get forecasts for a specific symbol with keyset pagination."""
+        cache_key = self._generate_cache_key(f"forecasts:symbol:{symbol}", cursor=cursor, limit=limit)
 
         # Try cache first
         if self.redis:
@@ -136,10 +97,7 @@ class ForecastService:
                 if cached_data:
                     logger.info("forecast_symbol_cache_hit", cache_key=cache_key)
                     data = json.loads(cached_data)
-                    return (
-                        self._deserialize_forecasts(data.get("forecasts", [])),
-                        data.get("next_cursor")
-                    )
+                    return (self._deserialize_forecasts(data.get("forecasts", [])), data.get("next_cursor"))
             except Exception as e:
                 logger.warning("forecast_cache_error", error=str(e))
 
@@ -148,11 +106,10 @@ class ForecastService:
             select(Forecast)
             .where(Forecast.symbol == symbol)
             .order_by(desc(Forecast.created_at))
-            .limit(limit + 1)  # Fetch one extra to determine if there's a next page
+            .limit(limit + 1)
         )
 
         if cursor:
-            # Parse cursor as timestamp
             try:
                 cursor_time = datetime.fromisoformat(cursor.replace('Z', '+00:00'))
                 query = query.where(Forecast.created_at < cursor_time)
@@ -162,13 +119,9 @@ class ForecastService:
         result = await self.repository.session.execute(query)
         all_forecasts = list(result.scalars().all())
 
-        # Determine next cursor
         has_more = len(all_forecasts) > limit
         forecasts = all_forecasts[:limit]
-        next_cursor = None
-
-        if has_more and forecasts:
-            next_cursor = forecasts[-1].created_at.isoformat()
+        next_cursor = forecasts[-1].created_at.isoformat() if has_more and forecasts else None
 
         # Cache results
         if self.redis and forecasts:
@@ -178,35 +131,18 @@ class ForecastService:
                     "next_cursor": next_cursor,
                     "cached_at": datetime.now(timezone.utc).isoformat()
                 }
-                await self.redis.set(
-                    cache_key,
-                    json.dumps(cache_data),
-                    ex=self.cache_ttl
-                )
+                await self.redis.set(cache_key, json.dumps(cache_data), ex=self.cache_ttl)
             except Exception as e:
                 logger.warning("forecast_cache_write_error", error=str(e))
 
         return forecasts, next_cursor
 
     async def invalidate_forecast_cache(self, symbol: Optional[str] = None):
-        """
-        Invalidate forecast cache.
-
-        Args:
-            symbol: Optional symbol to invalidate specific cache entries
-        """
+        """Invalidate forecast cache."""
         if not self.redis:
             return
-
         try:
-            if symbol:
-                # Invalidate symbol-specific caches
-                pattern = f"forecasts:*{symbol}*"
-            else:
-                # Invalidate all forecast caches
-                pattern = "forecasts:*"
-
-            # Note: In production, use SCAN instead of KEYS for large datasets
+            pattern = f"forecasts:*{symbol}*" if symbol else "forecasts:*"
             keys = await self.redis.keys(pattern)
             if keys:
                 await self.redis.delete(*keys)
@@ -228,32 +164,32 @@ class ForecastService:
             {
                 "id": f.id,
                 "symbol": f.symbol,
-                "timeframe": f.timeframe,
-                "horizon": f.horizon,
-                "predicted_price": str(f.predicted_price),
-                "confidence": str(f.confidence),
-                "model_name": f.model_name,
-                "created_at": f.created_at.isoformat(),
-                "forecast_time": f.forecast_time.isoformat(),
+                "forecast_horizon": f.forecast_horizon,
+                "model_type": f.model_type,
+                "model_version": f.model_version,
+                "predicted_value": float(f.predicted_value) if f.predicted_value else None,
+                "lower_bound": float(f.lower_bound) if f.lower_bound else None,
+                "upper_bound": float(f.upper_bound) if f.upper_bound else None,
+                "confidence_score": float(f.confidence_score) if f.confidence_score else None,
+                "created_at": f.created_at.isoformat() if f.created_at else None,
             }
             for f in forecasts
         ]
 
-    def _deserialize_forecasts(self, data: List[dict]) -> List[Forecast]:
-        """Deserialize forecasts from cache (for cache hit scenario)."""
-        # Note: This returns dict-like objects, not full ORM instances
-        # For cache hits, we return simple objects that can be serialized by Pydantic
+    def _deserialize_forecasts(self, data: List[dict]) -> List:
+        """Deserialize forecasts from cache."""
         return [
             type('Forecast', (), {
                 'id': f['id'],
                 'symbol': f['symbol'],
-                'timeframe': f['timeframe'],
-                'horizon': f['horizon'],
-                'predicted_price': Decimal(f['predicted_price']),
-                'confidence': Decimal(f['confidence']),
-                'model_name': f['model_name'],
-                'created_at': datetime.fromisoformat(f['created_at']),
-                'forecast_time': datetime.fromisoformat(f['forecast_time']),
+                'forecast_horizon': f.get('forecast_horizon'),
+                'model_type': f.get('model_type'),
+                'model_version': f.get('model_version'),
+                'predicted_value': f.get('predicted_value'),
+                'lower_bound': f.get('lower_bound'),
+                'upper_bound': f.get('upper_bound'),
+                'confidence_score': f.get('confidence_score'),
+                'created_at': datetime.fromisoformat(f['created_at']) if f.get('created_at') else None,
             })()
             for f in data
         ]

@@ -166,6 +166,7 @@ class BacktestService:
         random_seed: Optional[int] = None,
         decision_engine: Optional[callable] = None,
         progress_callback: Optional[callable] = None,
+        existing_run_id: Optional[UUID] = None,
     ) -> BacktestRun:
         """
         Execute a backtest run.
@@ -176,6 +177,7 @@ class BacktestService:
             random_seed: Random seed for deterministic replay
             decision_engine: Decision function for synthetic mode
             progress_callback: Optional callback(processed, total, metrics)
+            existing_run_id: Optional existing run ID to use (avoids creating duplicate)
 
         Returns:
             Completed BacktestRun with results
@@ -195,14 +197,30 @@ class BacktestService:
                 f"Cannot proceed with backtest: {validation['data_validation']['recommendation']}"
             )
 
-        # Create backtest run
-        run = await self.backtest_repo.create_run({
-            "id": uuid4(),
-            "config_id": config.id,
-            "status": RunStatus.RUNNING,
-            "start_time": datetime.now(),
-            "random_seed": random_seed,
-        })
+        # Use existing run or create new one
+        if existing_run_id:
+            run = await self.backtest_repo.get_run(existing_run_id)
+            if not run:
+                raise ValueError(f"Existing run {existing_run_id} not found")
+            logger.info(
+                "using_existing_backtest_run",
+                run_id=str(existing_run_id),
+                config_id=str(config_id),
+            )
+        else:
+            # Create new backtest run (legacy behavior)
+            run = await self.backtest_repo.create_run({
+                "id": uuid4(),
+                "config_id": config.id,
+                "status": RunStatus.RUNNING,
+                "start_time": datetime.now(),
+                "random_seed": random_seed,
+            })
+            logger.info(
+                "created_new_backtest_run",
+                run_id=str(run.id),
+                config_id=str(config_id),
+            )
 
         try:
             # Initialize components for this run
@@ -301,6 +319,18 @@ class BacktestService:
             decision_engine: Decision function(candle) -> Optional[action]
             progress_callback: Progress callback
         """
+        # Initialize Redis progress publisher (optional - gracefully degrade if unavailable)
+        progress_publisher = None
+        try:
+            from src.services.backtest_progress_service import BacktestProgressPublisher
+            from src.utils.redis_client import get_redis_client
+            redis_client = await get_redis_client()
+            if redis_client:
+                progress_publisher = BacktestProgressPublisher(redis_client)
+                logger.info("progress_publisher_initialized", run_id=str(run.id))
+        except Exception as e:
+            logger.warning("progress_publisher_unavailable", error=str(e))
+        
         # If no decision_engine provided, try to create from config_params
         if decision_engine is None and config.config_params:
             synthetic_strategy = config.config_params.get("synthetic_strategy")
@@ -355,7 +385,9 @@ class BacktestService:
                 )
         
         candles_processed = 0
+        trades_count = 0
         snapshot_interval = 100  # Snapshots every 100 candles
+        progress_interval = 1000  # Publish progress every 1000 candles
 
         # Replay historical data
         async for tick, processed, total in self.data_replay.replay_with_progress(
@@ -396,6 +428,7 @@ class BacktestService:
                             )
 
                             if result.success:
+                                trades_count += 1
                                 # Save trade to database
                                 trade_dict = simulator.to_simulated_trade_dict(
                                     result=result,
@@ -419,12 +452,43 @@ class BacktestService:
             if candles_processed % snapshot_interval == 0:
                 snapshot = portfolio.get_snapshot(tick.timestamp, run.id)
                 await self.backtest_repo.create_snapshot(snapshot)
+            
+            # Publish progress to Redis (for SSE streaming)
+            if progress_publisher and candles_processed % progress_interval == 0:
+                await progress_publisher.publish_progress(
+                    run_id=run.id,
+                    candles_processed=candles_processed,
+                    total_candles=total,
+                    status="running",
+                    trades_count=trades_count,
+                    current_capital=float(portfolio.get_total_value()),
+                )
+            
+            # Update database with progress (less frequently to reduce DB load)
+            if candles_processed % 5000 == 0:
+                await self.backtest_repo.update_run(
+                    run_id=run.id,
+                    update_data={
+                        "candles_processed": candles_processed,
+                    }
+                )
+                # Commit to make progress visible to polling clients
+                await self.session.commit()
 
         # Update run with candles processed
         await self.backtest_repo.update_run(
             run_id=run.id,
             update_data={"candles_processed": candles_processed}
         )
+        
+        # Publish completion event
+        if progress_publisher:
+            await progress_publisher.publish_complete(
+                run_id=run.id,
+                total_candles=candles_processed,
+                trades_count=trades_count,
+                final_capital=float(portfolio.get_total_value()),
+            )
 
     async def _run_full_pipeline_mode(
         self,

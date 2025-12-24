@@ -174,26 +174,26 @@ class PerformanceMetricsResponse(BaseModel):
     """Response model for backtest performance metrics."""
 
     total_return_pct: float = Field(..., description="Total return percentage")
-    total_return_abs: float = Field(..., description="Total return (absolute)")
+    total_return_abs: float = Field(default=0.0, description="Total return (absolute)")
     sharpe_ratio: float = Field(..., description="Sharpe ratio")
     sortino_ratio: float = Field(..., description="Sortino ratio")
     max_drawdown_pct: float = Field(..., description="Maximum drawdown percentage")
-    max_drawdown_abs: float = Field(..., description="Maximum drawdown (absolute)")
+    max_drawdown_abs: float = Field(default=0.0, description="Maximum drawdown (absolute)")
     max_drawdown_duration_days: Optional[float] = Field(
         None, description="Max drawdown duration (days)"
     )
     win_rate: float = Field(..., description="Win rate (0.0-1.0)")
     total_trades: int = Field(..., description="Total number of trades")
-    winning_trades: int = Field(..., description="Winning trades count")
-    losing_trades: int = Field(..., description="Losing trades count")
+    winning_trades: int = Field(default=0, description="Winning trades count")
+    losing_trades: int = Field(default=0, description="Losing trades count")
     avg_win: Optional[float] = Field(None, description="Average winning trade")
     avg_loss: Optional[float] = Field(None, description="Average losing trade")
     profit_factor: Optional[float] = Field(None, description="Profit factor")
     avg_trade_duration_hours: Optional[float] = Field(
         None, description="Average trade duration (hours)"
     )
-    max_consecutive_wins: int = Field(..., description="Max consecutive wins")
-    max_consecutive_losses: int = Field(..., description="Max consecutive losses")
+    max_consecutive_wins: int = Field(default=0, description="Max consecutive wins")
+    max_consecutive_losses: int = Field(default=0, description="Max consecutive losses")
     calmar_ratio: Optional[float] = Field(None, description="Calmar ratio")
 
 
@@ -252,14 +252,15 @@ class SimulatedTradeResponse(BaseModel):
     exit_price: Optional[Decimal] = Field(None, description="Exit price")
     gross_pnl: Optional[Decimal] = Field(None, description="Gross P&L")
     net_pnl: Optional[Decimal] = Field(None, description="Net P&L (after fees)")
-    commission: Decimal = Field(..., description="Commission paid")
-    slippage: Decimal = Field(..., description="Slippage")
+    commission: Decimal = Field(..., alias="fees_paid", description="Commission paid")
+    slippage: Decimal = Field(..., alias="slippage_applied", description="Slippage")
     decision_context: Optional[Dict[str, Any]] = Field(
         None, description="Decision context (JSON)"
     )
 
     class Config:
         from_attributes = True
+        populate_by_name = True
 
 
 class TradeListResponse(BaseModel):

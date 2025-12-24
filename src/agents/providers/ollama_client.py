@@ -9,6 +9,7 @@ Models:
 - deepseek-r1:14b: Deep-think tier for reasoning, strategy optimization (slower, ~10s latency)
 """
 
+import os
 from typing import Optional
 import structlog
 from autogen_core.models import ModelInfo
@@ -17,9 +18,35 @@ from autogen_ext.models.openai import OpenAIChatCompletionClient
 logger = structlog.get_logger(__name__)
 
 
+def _get_default_ollama_url() -> str:
+    """
+    Get default Ollama URL based on environment.
+
+    Uses host.docker.internal when running in Docker, otherwise local network IP.
+    Can be overridden with OLLAMA_BASE_URL environment variable.
+    """
+    # Check if explicit URL is set
+    env_url = os.getenv("OLLAMA_BASE_URL")
+    if env_url:
+        # Ensure it has /v1 suffix
+        return env_url if env_url.endswith("/v1") else f"{env_url}/v1"
+
+    # Check if running in Docker (common indicators)
+    in_docker = (
+        os.path.exists("/.dockerenv") or
+        os.path.exists("/app") or
+        os.getenv("RUNNING_IN_DOCKER") == "true"
+    )
+
+    if in_docker:
+        return "http://host.docker.internal:11434/v1"
+    else:
+        return "http://192.168.0.123:11434/v1"
+
+
 def create_ollama_client(
     model: str = "qwen3:14b",
-    base_url: str = "http://192.168.0.123:11434/v1",
+    base_url: Optional[str] = None,
     temperature: float = 0.1,
     max_tokens: int = 500,
     api_key: Optional[str] = None,
@@ -32,7 +59,7 @@ def create_ollama_client(
 
     Args:
         model: Model name (e.g., "qwen3:14b", "deepseek-r1:14b")
-        base_url: Ollama server URL with /v1 endpoint
+        base_url: Ollama server URL with /v1 endpoint (auto-detects if None)
         temperature: Sampling temperature (0.0-2.0)
         max_tokens: Maximum tokens to generate
         api_key: Optional API key (Ollama doesn't require it, but client needs something)
@@ -44,6 +71,14 @@ def create_ollama_client(
         >>> client = create_ollama_client(model="qwen3:14b", temperature=0.1)
         >>> agent = AssistantAgent(name="analyst", model_client=client)
     """
+
+    # Auto-detect base URL if not provided
+    if base_url is None:
+        base_url = _get_default_ollama_url()
+    else:
+        # Ensure /v1 suffix for OpenAI-compatible API
+        if not base_url.endswith("/v1"):
+            base_url = f"{base_url}/v1"
 
     # Extract model family for ModelInfo (e.g., "qwen3" from "qwen3:14b")
     model_family = model.split(":")[0]
@@ -91,7 +126,7 @@ def create_ollama_client(
 
 
 def create_quick_think_client(
-    base_url: str = "http://192.168.0.123:11434/v1",
+    base_url: Optional[str] = None,
 ) -> OpenAIChatCompletionClient:
     """
     Create a quick-think Ollama client (Qwen3-14B).
@@ -102,7 +137,7 @@ def create_quick_think_client(
     - Used for classification, pattern recognition, simple analysis
 
     Args:
-        base_url: Ollama server URL
+        base_url: Ollama server URL (auto-detects if None)
 
     Returns:
         Quick-think model client
@@ -116,7 +151,7 @@ def create_quick_think_client(
 
 
 def create_deep_think_client(
-    base_url: str = "http://192.168.0.123:11434/v1",
+    base_url: Optional[str] = None,
 ) -> OpenAIChatCompletionClient:
     """
     Create a deep-think Ollama client (DeepSeek-R1-14B).
@@ -127,7 +162,7 @@ def create_deep_think_client(
     - Used for strategy optimization, complex risk analysis, debate
 
     Args:
-        base_url: Ollama server URL
+        base_url: Ollama server URL (auto-detects if None)
 
     Returns:
         Deep-think model client

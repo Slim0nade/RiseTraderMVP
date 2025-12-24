@@ -642,3 +642,57 @@ async def create_redis_client() -> MT4RedisClient:
     client = MT4RedisClient()
     await client.connect()
     return client
+
+
+# Global Redis client singleton
+_redis_client: Optional[Redis] = None
+_redis_client_lock = asyncio.Lock()
+
+
+async def get_redis_client() -> Optional[Redis]:
+    """
+    Get or create a shared Redis client for pub/sub operations.
+    
+    Returns a simple redis.asyncio.Redis client (not MT4RedisClient)
+    for use by the backtest progress service.
+    
+    Returns:
+        Redis client instance, or None if connection fails
+    """
+    global _redis_client
+    
+    async with _redis_client_lock:
+        if _redis_client is not None:
+            # Check if still connected
+            try:
+                await _redis_client.ping()
+                return _redis_client
+            except Exception:
+                _redis_client = None
+        
+        # Create new connection
+        try:
+            redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+            _redis_client = aioredis.from_url(
+                redis_url,
+                decode_responses=True,
+                socket_timeout=5,
+                socket_connect_timeout=5,
+            )
+            await _redis_client.ping()
+            logger.info("redis_client_connected", url=redis_url.split("@")[-1])
+            return _redis_client
+        except Exception as e:
+            logger.warning("redis_client_connection_failed", error=str(e))
+            return None
+
+
+async def close_redis_client() -> None:
+    """Close the shared Redis client."""
+    global _redis_client
+    
+    async with _redis_client_lock:
+        if _redis_client:
+            await _redis_client.close()
+            _redis_client = None
+            logger.info("redis_client_closed")

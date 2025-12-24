@@ -71,7 +71,9 @@ export const useWebSocket = () => {
   }, []);
 
   useEffect(() => {
-    connect();
+    // WebSocket disabled - backend endpoint /ws not implemented yet
+    // Using polling via React Query instead
+    // connect();
 
     return () => {
       if (reconnectTimeout.current) {

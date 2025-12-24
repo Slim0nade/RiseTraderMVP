@@ -28,8 +28,9 @@ class MarketDataResponse(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "from_attributes": True,  # Pydantic v2: enables from_orm() / model_validate()
+        "json_schema_extra": {
             "example": {
                 "id": 1,
                 "symbol": "CrudeOIL",
@@ -42,6 +43,7 @@ class MarketDataResponse(BaseModel):
                 "volume": 1500,
             }
         }
+    }
 
 
 class MarketDataListResponse(BaseModel):

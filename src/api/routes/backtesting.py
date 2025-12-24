@@ -33,7 +33,7 @@ from ..models import (
     OptimizationResultResponse,
     ParameterGridResponse,
     ParameterGridResultsResponse,
-    PerformanceMetricsResponse,
+    BacktestPerformanceMetricsResponse,
     RunBacktestRequest,
     SimulatedTradeResponse,
     StatisticalTestResponse,
@@ -452,12 +452,13 @@ async def run_backtest(
                             "quantity": signal.quantity if signal.action else None,
                         }
 
-                    # Run the backtest (service will use existing run or create new one)
+                    # Run the backtest using the existing run record (fixes duplicate run bug)
                     await task_service.run_backtest(
                         config_id=config_id,
                         timeframe=timeframe,
                         random_seed=random_seed,
                         decision_engine=decision_engine,
+                        existing_run_id=run_id,  # Pass the pre-created run ID
                     )
                     
                     logger.info(
@@ -697,10 +698,10 @@ async def get_run_metrics(
                 detail=f"Run {run_id} not found",
             )
 
-        # Convert metrics dict to PerformanceMetricsResponse if available
+        # Convert metrics dict to BacktestPerformanceMetricsResponse if available
         metrics_response = None
         if run.metrics:
-            metrics_response = PerformanceMetricsResponse(**run.metrics)
+            metrics_response = BacktestPerformanceMetricsResponse(**run.metrics)
 
         logger.info(
             "get_run_metrics_success",
@@ -1753,4 +1754,176 @@ async def health_check(db: AsyncSession = Depends(get_db)):
                 "status": "unhealthy",
                 "message": f"Health check failed: {str(e)}"
             }
+        )
+
+
+# ============================================================================
+# REAL-TIME PROGRESS STREAMING (SSE)
+# ============================================================================
+
+
+@router.get(
+    "/runs/{run_id}/stream",
+    responses={
+        200: {"description": "SSE stream of backtest progress updates"},
+        404: {"model": ErrorResponse, "description": "Run not found"},
+        503: {"description": "Redis not available for streaming"},
+    },
+)
+async def stream_backtest_progress(
+    run_id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Stream real-time backtest progress via Server-Sent Events (SSE).
+    
+    Provides live updates during backtest execution:
+    - Progress percentage
+    - Candles processed
+    - Trades executed
+    - Current capital
+    - Completion/error events
+    
+    Event Types:
+        - progress: Periodic progress update
+        - complete: Backtest finished successfully
+        - error: Backtest failed
+        - heartbeat: Keep-alive ping (every 30s)
+    
+    Args:
+        run_id: Backtest run UUID
+    
+    Returns:
+        StreamingResponse with text/event-stream content type
+    
+    Example:
+        GET /api/backtesting/runs/{run_id}/stream
+        
+        Response (SSE format):
+        event: progress
+        data: {"progress_pct": 45.2, "candles_processed": 50000, ...}
+        
+        event: complete  
+        data: {"final_capital": 11234.56, "trades_count": 42, ...}
+    """
+    from fastapi.responses import StreamingResponse
+    from src.services.backtest_progress_service import (
+        BacktestProgressSubscriber,
+        format_sse_event,
+    )
+    from src.utils.redis_client import get_redis_client
+    
+    try:
+        # Verify run exists
+        service = get_backtest_service(db)
+        run = await service.backtest_repo.get_run(run_id)
+        
+        if not run:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Run {run_id} not found",
+            )
+        
+        # If already completed/failed, return final status immediately
+        if run.status.value in ("completed", "failed"):
+            async def completed_generator():
+                final_event = {
+                    "type": "complete" if run.status.value == "completed" else "error",
+                    "run_id": str(run_id),
+                    "status": run.status.value,
+                    "candles_processed": run.candles_processed,
+                    "total_trades": run.total_trades,
+                    "final_capital": float(run.final_capital) if run.final_capital else None,
+                    "error_message": run.error_message,
+                }
+                yield format_sse_event(final_event["type"], final_event)
+            
+            return StreamingResponse(
+                completed_generator(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",
+                },
+            )
+        
+        # Get Redis client for pub/sub
+        redis_client = await get_redis_client()
+        if not redis_client:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Redis not available for streaming. Use polling instead: GET /runs/{run_id}/status",
+            )
+        
+        logger.info(
+            "sse_stream_started",
+            run_id=str(run_id),
+            current_status=run.status.value,
+        )
+        
+        async def event_generator():
+            """Generate SSE events from Redis pub/sub."""
+            subscriber = BacktestProgressSubscriber(redis_client)
+            
+            try:
+                # Send initial status
+                initial_event = {
+                    "type": "connected",
+                    "run_id": str(run_id),
+                    "status": run.status.value,
+                    "candles_processed": run.candles_processed,
+                    "message": "Connected to progress stream",
+                }
+                yield format_sse_event("connected", initial_event)
+                
+                # Stream updates from Redis
+                async for event in subscriber.subscribe(run_id):
+                    event_type = event.get("type", "progress")
+                    yield format_sse_event(event_type, event)
+                    
+                    # Stop on completion or error
+                    if event_type in ("complete", "error"):
+                        break
+                        
+            except asyncio.CancelledError:
+                logger.info("sse_stream_cancelled", run_id=str(run_id))
+                raise
+            except Exception as e:
+                logger.error(
+                    "sse_stream_error",
+                    run_id=str(run_id),
+                    error=str(e),
+                    exc_info=True,
+                )
+                error_event = {
+                    "type": "error",
+                    "error_message": str(e),
+                }
+                yield format_sse_event("error", error_event)
+            finally:
+                logger.info("sse_stream_closed", run_id=str(run_id))
+        
+        return StreamingResponse(
+            event_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            "stream_setup_failed",
+            run_id=str(run_id),
+            error=str(e),
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to setup progress stream: {str(e)}",
         )

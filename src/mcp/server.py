@@ -119,10 +119,25 @@ class RiseTraderMCP:
                 ),
                 Tool(
                     name="get_open_positions",
-                    description="Get all open trading positions",
+                    description="Get open trading positions with optional filtering",
                     inputSchema={
                         "type": "object",
-                        "properties": {}
+                        "properties": {
+                            "symbol": {
+                                "type": "string",
+                                "description": "Filter by symbol (optional)"
+                            },
+                            "live_only": {
+                                "type": "boolean",
+                                "description": "Only show live (non-simulated) positions (default: true)",
+                                "default": True
+                            },
+                            "limit": {
+                                "type": "integer",
+                                "description": "Maximum positions to return (default: 20)",
+                                "default": 20
+                            }
+                        }
                     }
                 ),
                 Tool(
@@ -171,7 +186,7 @@ class RiseTraderMCP:
                 # Backtesting
                 Tool(
                     name="create_backtest",
-                    description="Create and run a new backtest",
+                    description="Create and run a new backtest. Returns IMMEDIATELY with run_id - backtest runs in background (1-10+ min). Use get_backtest_results to poll for completion.",
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -224,6 +239,20 @@ class RiseTraderMCP:
                     }
                 ),
                 Tool(
+                    name="get_backtest_status",
+                    description="Get current status and progress of a running backtest. Use this to poll for completion after create_backtest.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "backtest_id": {
+                                "type": "string",
+                                "description": "Backtest run ID"
+                            }
+                        },
+                        "required": ["backtest_id"]
+                    }
+                ),
+                Tool(
                     name="list_backtests",
                     description="List all backtests",
                     inputSchema={
@@ -233,8 +262,88 @@ class RiseTraderMCP:
                                 "type": "integer",
                                 "description": "Maximum number of backtests to return (default 20)",
                                 "default": 20
+                            },
+                            "status": {
+                                "type": "string",
+                                "enum": ["running", "completed", "failed", "pending"],
+                                "description": "Filter by status (optional)"
                             }
                         }
+                    }
+                ),
+                Tool(
+                    name="cancel_backtest",
+                    description="Cancel a running backtest",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "backtest_id": {
+                                "type": "string",
+                                "description": "Backtest run ID to cancel"
+                            }
+                        },
+                        "required": ["backtest_id"]
+                    }
+                ),
+                Tool(
+                    name="cancel_all_backtests",
+                    description="Cancel all running backtests",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {}
+                    }
+                ),
+                Tool(
+                    name="cleanup_ghost_backtests",
+                    description="Mark ghost backtests (stuck at 0 candles for >1 hour) as failed",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {}
+                    }
+                ),
+                Tool(
+                    name="run_backtest_and_wait",
+                    description="Create a backtest and wait for completion (polls internally). Best for short backtests (<3 months). For longer backtests, use create_backtest + get_backtest_status to poll manually.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "description": "Backtest name"
+                            },
+                            "symbol": {
+                                "type": "string",
+                                "description": "Trading symbol"
+                            },
+                            "start_date": {
+                                "type": "string",
+                                "description": "Start date (YYYY-MM-DD)"
+                            },
+                            "end_date": {
+                                "type": "string",
+                                "description": "End date (YYYY-MM-DD)"
+                            },
+                            "strategy": {
+                                "type": "string",
+                                "description": "Strategy name (e.g., 'crude_oil_v3', 'ma_crossover')"
+                            },
+                            "timeframe": {
+                                "type": "string",
+                                "enum": ["M1", "M5", "M15", "H1", "H4", "D1"],
+                                "description": "Candle timeframe"
+                            },
+                            "initial_capital": {
+                                "type": "number",
+                                "description": "Starting capital (default 10000)",
+                                "default": 10000
+                            },
+                            "timeout_seconds": {
+                                "type": "integer",
+                                "description": "Maximum time to wait in seconds (default 120, max 300)",
+                                "default": 120
+                            }
+                        },
+                        "required": ["name", "symbol", "start_date", "end_date", "strategy", "timeframe"]
                     }
                 ),
 
@@ -286,7 +395,7 @@ class RiseTraderMCP:
                 elif name == "close_all_positions":
                     result = await self._close_all_positions(**arguments)
                 elif name == "get_open_positions":
-                    result = await self._get_open_positions()
+                    result = await self._get_open_positions(**arguments)
                 elif name == "get_account_info":
                     result = await self._get_account_info()
                 elif name == "get_latest_candles":
@@ -297,8 +406,18 @@ class RiseTraderMCP:
                     result = await self._create_backtest(**arguments)
                 elif name == "get_backtest_results":
                     result = await self._get_backtest_results(**arguments)
+                elif name == "get_backtest_status":
+                    result = await self._get_backtest_status(**arguments)
                 elif name == "list_backtests":
                     result = await self._list_backtests(**arguments)
+                elif name == "cancel_backtest":
+                    result = await self._cancel_backtest(**arguments)
+                elif name == "cancel_all_backtests":
+                    result = await self._cancel_all_backtests()
+                elif name == "cleanup_ghost_backtests":
+                    result = await self._cleanup_ghost_backtests()
+                elif name == "run_backtest_and_wait":
+                    result = await self._run_backtest_and_wait(**arguments)
                 elif name == "get_forecast":
                     result = await self._get_forecast(**arguments)
                 elif name == "list_strategies":
@@ -322,13 +441,17 @@ class RiseTraderMCP:
     # IMPLEMENTATION METHODS (API calls to RiseTrader backend)
     # =========================================================================
 
-    async def _api_call(self, method: str, endpoint: str, **kwargs) -> Dict[str, Any]:
+    async def _api_call(self, method: str, endpoint: str, timeout: int = 30, **kwargs) -> Dict[str, Any]:
         """Make API call to RiseTrader backend."""
         import aiohttp
 
         url = f"{self.api_base_url}{endpoint}"
+        logger.info(f"API call: {method} {url}")
 
-        async with aiohttp.ClientSession() as session:
+        # Use timeout to prevent hanging
+        client_timeout = aiohttp.ClientTimeout(total=timeout)
+        
+        async with aiohttp.ClientSession(timeout=client_timeout) as session:
             async with session.request(method, url, **kwargs) as response:
                 if response.status >= 400:
                     text = await response.text()
@@ -361,8 +484,8 @@ class RiseTraderMCP:
 
     async def _close_all_positions(self, symbol: Optional[str] = None) -> Dict[str, Any]:
         """Close all positions (optionally filtered by symbol)."""
-        # Get all open positions
-        positions = await self._get_open_positions()
+        # Get all open positions (live only)
+        positions = await self._get_open_positions(live_only=True, limit=100)
 
         closed = []
         errors = []
@@ -384,9 +507,36 @@ class RiseTraderMCP:
             "errors": errors
         }
 
-    async def _get_open_positions(self) -> Dict[str, Any]:
-        """Get all open positions."""
-        return await self._api_call("GET", "/api/trading/positions")
+    async def _get_open_positions(
+        self,
+        symbol: Optional[str] = None,
+        live_only: bool = True,
+        limit: int = 20
+    ) -> Dict[str, Any]:
+        """Get open positions with filtering."""
+        # Build query params
+        params = {"page_size": limit}
+        if symbol:
+            params["symbol"] = symbol
+        
+        # Get positions from API
+        result = await self._api_call("GET", "/api/trading/positions", params=params)
+        
+        positions = result.get("positions", [])
+        
+        # Filter out simulated positions if live_only
+        if live_only:
+            positions = [p for p in positions if not p.get("simulation", False)]
+        
+        # Apply limit after filtering
+        positions = positions[:limit]
+        
+        return {
+            "positions": positions,
+            "total": len(positions),
+            "live_only": live_only,
+            "limit": limit
+        }
 
     async def _get_account_info(self) -> Dict[str, Any]:
         """Get account information."""
@@ -400,15 +550,25 @@ class RiseTraderMCP:
     ) -> Dict[str, Any]:
         """Get latest candles."""
         params = {
-            "symbol": symbol,
             "timeframe": timeframe,
             "limit": limit
         }
-        return await self._api_call("GET", "/api/market-data/candles", params=params)
+        return await self._api_call("GET", f"/api/market-data/{symbol}", params=params)
 
     async def _get_symbols(self) -> Dict[str, Any]:
-        """Get available symbols."""
-        return await self._api_call("GET", "/api/market-data/symbols")
+        """Get available symbols (lightweight list only)."""
+        # Return known symbols to avoid heavy API call
+        # The API endpoint /api/market-data/symbols may return too much data
+        return {
+            "symbols": [
+                {"symbol": "CrudeOIL", "description": "WTI Crude Oil"},
+                {"symbol": "XAUUSD", "description": "Gold vs USD"},
+                {"symbol": "EURUSD", "description": "Euro vs USD"},
+                {"symbol": "GBPUSD", "description": "British Pound vs USD"},
+                {"symbol": "USDJPY", "description": "USD vs Japanese Yen"},
+            ],
+            "note": "For full symbol list with metadata, use the dashboard or API directly"
+        }
 
     async def _create_backtest(
         self,
@@ -420,7 +580,13 @@ class RiseTraderMCP:
         timeframe: str,
         initial_capital: float = 10000
     ) -> Dict[str, Any]:
-        """Create and run a backtest."""
+        """
+        Create and run a backtest.
+        
+        This returns IMMEDIATELY after starting the backtest.
+        Backtests are long-running (1-10+ minutes for large date ranges).
+        Use get_backtest_results to check status and get results.
+        """
         # Create config
         config_payload = {
             "name": name,
@@ -436,29 +602,453 @@ class RiseTraderMCP:
 
         config = await self._api_call("POST", "/api/backtesting/configurations", json=config_payload)
 
-        # Run backtest
+        # Run backtest (API returns 202 immediately, backtest runs in background)
         run_payload = {
             "config_id": config["id"],
             "timeframe": timeframe
         }
 
-        run = await self._api_call("POST", "/api/backtesting/runs", json=run_payload)
+        run = await self._api_call("POST", "/api/backtesting/runs", json=run_payload, timeout=15)
+        run_id = run.get("id") or run.get("run_id")
+        
+        # Estimate completion time based on date range
+        # Rough estimate: ~100k candles per year of M5 data, ~10s to process 100k candles
+        from datetime import datetime
+        try:
+            start = datetime.fromisoformat(start_date.replace('Z', '+00:00') if 'Z' in start_date else start_date)
+            end = datetime.fromisoformat(end_date.replace('Z', '+00:00') if 'Z' in end_date else end_date)
+            days = (end - start).days
+            estimated_candles = days * 288 if timeframe == "M5" else days * 24  # M5 = 288/day, H1 = 24/day
+            estimated_seconds = max(5, estimated_candles // 10000)  # ~10k candles per second
+            estimated_time = f"{estimated_seconds}s" if estimated_seconds < 60 else f"{estimated_seconds // 60}m {estimated_seconds % 60}s"
+        except:
+            estimated_time = "1-5 minutes (depending on date range)"
 
         return {
+            "success": True,
             "config_id": config["id"],
-            "run_id": run["run_id"],
+            "run_id": run_id,
             "status": "running",
-            "message": "Backtest started successfully"
+            "message": f"Backtest started successfully. Processing in background.",
+            "estimated_time": estimated_time,
+            "next_steps": [
+                f"Use get_backtest_results with backtest_id='{run_id}' to check status",
+                "Status will be 'running' until complete, then 'completed' or 'failed'",
+                "For real-time progress, use the dashboard SSE stream at /api/backtesting/runs/{run_id}/stream"
+            ]
+        }
+
+    async def _run_backtest_and_wait(
+        self,
+        name: str,
+        symbol: str,
+        start_date: str,
+        end_date: str,
+        strategy: str,
+        timeframe: str,
+        initial_capital: float = 10000,
+        timeout_seconds: int = 120
+    ) -> Dict[str, Any]:
+        """
+        Run a backtest using the FAST vectorized engine.
+        
+        This uses the new vectorized backtest endpoint which processes
+        500K+ candles in <1 second instead of 30-60 seconds.
+        
+        Returns complete results immediately - no polling needed!
+        """
+        import time
+        start_time = time.time()
+        
+        # Use vectorized endpoint for instant results
+        payload = {
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "start_date": start_date,
+            "end_date": end_date,
+            "strategy": strategy,
+            "strategy_params": self._get_default_strategy_params(strategy),
+            "initial_capital": initial_capital,
+        }
+        
+        try:
+            # Call vectorized endpoint (returns instantly)
+            result = await self._api_call(
+                "POST", 
+                "/api/backtesting/vectorized/run",
+                json=payload,
+                timeout=60  # Should complete in <5s
+            )
+            
+            elapsed = time.time() - start_time
+            
+            if result.get("success"):
+                return {
+                    "success": True,
+                    "status": "completed",
+                    "run_id": result.get("run_id"),
+                    "elapsed_seconds": round(elapsed, 2),
+                    "execution_time_ms": result.get("execution_time_ms"),
+                    "candles_processed": result.get("candles_processed"),
+                    "total_trades": result.get("total_trades"),
+                    "initial_capital": result.get("initial_capital"),
+                    "final_capital": result.get("final_capital"),
+                    "total_return_pct": result.get("total_return_pct"),
+                    "metrics": {
+                        "sharpe_ratio": result.get("sharpe_ratio"),
+                        "sortino_ratio": result.get("sortino_ratio"),
+                        "max_drawdown_pct": result.get("max_drawdown_pct"),
+                        "max_drawdown_duration_days": result.get("max_drawdown_duration_days"),
+                        "win_rate": result.get("win_rate"),
+                        "profit_factor": result.get("profit_factor"),
+                        "winning_trades": result.get("winning_trades"),
+                        "losing_trades": result.get("losing_trades"),
+                        "avg_trade_pnl": result.get("avg_trade_pnl"),
+                    },
+                    "trades": result.get("trades", [])[:10],  # First 10 trades
+                    "message": f"Backtest completed in {result.get('execution_time_ms', 0):.0f}ms (vectorized engine)"
+                }
+            else:
+                return {
+                    "success": False,
+                    "status": "failed",
+                    "error": result.get("detail", "Unknown error"),
+                    "elapsed_seconds": round(elapsed, 2),
+                }
+                
+        except Exception as e:
+            elapsed = time.time() - start_time
+            error_msg = str(e)
+            
+            # If vectorized endpoint not available, fall back to legacy
+            if "404" in error_msg or "Not Found" in error_msg:
+                logger.warning("Vectorized endpoint not available, falling back to legacy")
+                return await self._run_backtest_legacy(
+                    name=name,
+                    symbol=symbol,
+                    start_date=start_date,
+                    end_date=end_date,
+                    strategy=strategy,
+                    timeframe=timeframe,
+                    initial_capital=initial_capital,
+                    timeout_seconds=timeout_seconds
+                )
+            
+            return {
+                "success": False,
+                "status": "error",
+                "error": error_msg,
+                "elapsed_seconds": round(elapsed, 2),
+            }
+    
+    def _get_default_strategy_params(self, strategy: str) -> Dict[str, Any]:
+        """Get default parameters for a strategy."""
+        defaults = {
+            "ma_crossover": {"fast_period": 10, "slow_period": 30},
+            "rsi": {"rsi_period": 14, "rsi_oversold": 30, "rsi_overbought": 70},
+            "crude_oil_v3": {
+                "ema_fast": 8,
+                "ema_slow": 29,
+                "rsi_period": 10,
+                "rsi_overbought": 68,
+                "rsi_oversold": 32,
+                "cci_period": 20,
+                "momentum_period": 10,
+            },
+            "mean_reversion": {"lookback": 20, "std_threshold": 2.0},
+        }
+        return defaults.get(strategy, {})
+    
+    async def _run_backtest_legacy(
+        self,
+        name: str,
+        symbol: str,
+        start_date: str,
+        end_date: str,
+        strategy: str,
+        timeframe: str,
+        initial_capital: float = 10000,
+        timeout_seconds: int = 120
+    ) -> Dict[str, Any]:
+        """
+        Legacy backtest using row-by-row processing (slower fallback).
+        Polls until completion or timeout.
+        """
+        import time
+        
+        # Clamp timeout to reasonable bounds
+        timeout_seconds = max(30, min(300, timeout_seconds))
+        poll_interval = 3  # seconds between status checks
+        
+        # Step 1: Create the backtest
+        try:
+            create_result = await self._create_backtest(
+                name=name,
+                symbol=symbol,
+                start_date=start_date,
+                end_date=end_date,
+                strategy=strategy,
+                timeframe=timeframe,
+                initial_capital=initial_capital
+            )
+            
+            if not create_result.get("success"):
+                return {
+                    "success": False,
+                    "error": "Failed to create backtest",
+                    "details": create_result
+                }
+            
+            run_id = create_result.get("run_id")
+            if not run_id:
+                return {
+                    "success": False,
+                    "error": "No run_id returned from create",
+                    "details": create_result
+                }
+                
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Failed to create backtest: {str(e)}"
+            }
+        
+        # Step 2: Poll for completion
+        start_time = time.time()
+        last_status = None
+        last_candles = 0
+        poll_count = 0
+        
+        while (time.time() - start_time) < timeout_seconds:
+            poll_count += 1
+            
+            try:
+                status = await self._get_backtest_status(backtest_id=run_id)
+                current_status = status.get("status", "unknown")
+                candles = status.get("candles_processed", 0)
+                
+                # Log progress for debugging
+                if candles != last_candles:
+                    logger.info(f"Backtest {run_id}: {candles:,} candles processed, status={current_status}")
+                    last_candles = candles
+                
+                # Check for completion
+                if current_status == "completed":
+                    # Get full results
+                    try:
+                        results = await self._api_call("GET", f"/api/backtesting/runs/{run_id}/metrics")
+                    except:
+                        results = status
+                    
+                    elapsed = time.time() - start_time
+                    return {
+                        "success": True,
+                        "status": "completed",
+                        "run_id": run_id,
+                        "elapsed_seconds": round(elapsed, 1),
+                        "poll_count": poll_count,
+                        "candles_processed": status.get("candles_processed", 0),
+                        "total_trades": status.get("total_trades", 0),
+                        "final_capital": status.get("final_capital"),
+                        "metrics": status.get("metrics") or results.get("metrics"),
+                        "message": f"Backtest completed in {elapsed:.1f}s"
+                    }
+                
+                elif current_status == "failed":
+                    elapsed = time.time() - start_time
+                    return {
+                        "success": False,
+                        "status": "failed",
+                        "run_id": run_id,
+                        "elapsed_seconds": round(elapsed, 1),
+                        "error": status.get("error") or status.get("error_message") or "Backtest failed",
+                        "candles_processed": status.get("candles_processed", 0)
+                    }
+                
+                last_status = current_status
+                
+            except Exception as e:
+                logger.warning(f"Poll error (continuing): {e}")
+            
+            # Wait before next poll
+            await asyncio.sleep(poll_interval)
+        
+        # Timeout reached
+        elapsed = time.time() - start_time
+        return {
+            "success": False,
+            "status": "timeout",
+            "run_id": run_id,
+            "elapsed_seconds": round(elapsed, 1),
+            "poll_count": poll_count,
+            "last_status": last_status,
+            "candles_processed": last_candles,
+            "message": f"Backtest still running after {timeout_seconds}s timeout. Use get_backtest_status(backtest_id='{run_id}') to check progress.",
+            "next_steps": [
+                f"Poll status: get_backtest_status(backtest_id='{run_id}')",
+                f"Get results when done: get_backtest_results(backtest_id='{run_id}')",
+                f"Cancel if needed: cancel_backtest(backtest_id='{run_id}')"
+            ]
         }
 
     async def _get_backtest_results(self, backtest_id: str) -> Dict[str, Any]:
-        """Get backtest results."""
+        """Get backtest results (status + metrics if completed)."""
         return await self._api_call("GET", f"/api/backtesting/runs/{backtest_id}/status")
+    
+    async def _get_backtest_status(self, backtest_id: str) -> Dict[str, Any]:
+        """
+        Get detailed backtest status for polling.
+        
+        Returns current status, progress, and helpful next steps.
+        """
+        try:
+            status = await self._api_call("GET", f"/api/backtesting/runs/{backtest_id}/status")
+            
+            # Calculate progress percentage if we have the data
+            candles_processed = status.get("candles_processed", 0)
+            progress_pct = status.get("progress_pct")
+            
+            result = {
+                "run_id": backtest_id,
+                "status": status.get("status"),
+                "candles_processed": candles_processed,
+                "progress_pct": progress_pct,
+                "total_trades": status.get("total_trades", 0),
+                "start_time": status.get("start_time"),
+                "end_time": status.get("end_time"),
+            }
+            
+            # Add status-specific info
+            current_status = status.get("status", "unknown")
+            if current_status == "running":
+                result["message"] = f"Backtest in progress. {candles_processed:,} candles processed."
+                result["next_step"] = "Poll again in a few seconds to check progress"
+            elif current_status == "completed":
+                result["message"] = "Backtest completed successfully!"
+                result["next_step"] = f"Use get_backtest_results with backtest_id='{backtest_id}' to get full metrics"
+                result["final_capital"] = status.get("final_capital")
+                result["metrics"] = status.get("metrics")
+            elif current_status == "failed":
+                result["message"] = "Backtest failed"
+                result["error"] = status.get("error_message")
+            else:
+                result["message"] = f"Status: {current_status}"
+            
+            return result
+            
+        except Exception as e:
+            return {
+                "run_id": backtest_id,
+                "status": "error",
+                "message": f"Failed to get status: {str(e)}"
+            }
 
-    async def _list_backtests(self, limit: int = 20) -> Dict[str, Any]:
-        """List backtests."""
+    async def _list_backtests(
+        self, 
+        limit: int = 20,
+        status: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """List backtests with optional status filter."""
         params = {"limit": limit}
+        if status:
+            params["status"] = status
         return await self._api_call("GET", "/api/backtesting/runs", params=params)
+
+    async def _cancel_backtest(self, backtest_id: str) -> Dict[str, Any]:
+        """Cancel a running backtest."""
+        try:
+            result = await self._api_call("DELETE", f"/api/backtesting/runs/{backtest_id}")
+            return {
+                "success": True,
+                "backtest_id": backtest_id,
+                "message": "Backtest cancelled successfully",
+                "result": result
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "backtest_id": backtest_id,
+                "error": str(e)
+            }
+
+    async def _cancel_all_backtests(self) -> Dict[str, Any]:
+        """Cancel all running backtests."""
+        # Get running backtests
+        running = await self._list_backtests(limit=50, status="running")
+        
+        cancelled = []
+        errors = []
+        
+        for run in running.get("items", []):
+            run_id = run.get("id")
+            if run_id:
+                result = await self._cancel_backtest(run_id)
+                if result.get("success"):
+                    cancelled.append(run_id)
+                else:
+                    errors.append({"id": run_id, "error": result.get("error")})
+        
+        return {
+            "cancelled_count": len(cancelled),
+            "error_count": len(errors),
+            "cancelled": cancelled,
+            "errors": errors
+        }
+
+    async def _cleanup_ghost_backtests(self) -> Dict[str, Any]:
+        """
+        Clean up ghost backtests that are stuck at 0 candles.
+        These are created by the duplicate run bug.
+        """
+        from datetime import datetime, timedelta, timezone
+        
+        # Get all running backtests
+        running = await self._list_backtests(limit=100, status="running")
+        
+        cleaned = []
+        errors = []
+        now = datetime.now(timezone.utc)
+        
+        for run in running.get("items", []):
+            run_id = run.get("id")
+            candles = run.get("candles_processed", 0)
+            start_time_str = run.get("start_time")
+            
+            # Parse start time
+            if start_time_str:
+                try:
+                    # Handle various datetime formats
+                    if start_time_str.endswith('Z'):
+                        start_time = datetime.fromisoformat(start_time_str.replace('Z', '+00:00'))
+                    else:
+                        start_time = datetime.fromisoformat(start_time_str)
+                    
+                    if start_time.tzinfo is None:
+                        start_time = start_time.replace(tzinfo=timezone.utc)
+                    
+                    age = now - start_time
+                    
+                    # If running for > 1 hour with 0 candles, it's a ghost
+                    if candles == 0 and age > timedelta(hours=1):
+                        result = await self._cancel_backtest(run_id)
+                        if result.get("success"):
+                            cleaned.append({
+                                "id": run_id,
+                                "age_hours": age.total_seconds() / 3600
+                            })
+                        else:
+                            errors.append({"id": run_id, "error": result.get("error")})
+                            
+                except Exception as e:
+                    errors.append({"id": run_id, "error": f"Date parse error: {e}"})
+        
+        return {
+            "cleaned_count": len(cleaned),
+            "error_count": len(errors),
+            "cleaned": cleaned,
+            "errors": errors,
+            "message": f"Cleaned {len(cleaned)} ghost backtests"
+        }
 
     async def _get_forecast(
         self,
@@ -469,7 +1059,18 @@ class RiseTraderMCP:
         params = {"symbol": symbol}
         if horizon:
             params["horizon"] = horizon
-        return await self._api_call("GET", "/api/forecasts/latest", params=params)
+        try:
+            return await self._api_call("GET", "/api/forecasts/latest", params=params)
+        except Exception as e:
+            error_msg = str(e)
+            if "does not exist" in error_msg or "UndefinedColumn" in error_msg:
+                return {
+                    "error": "Forecast service unavailable",
+                    "message": "No ML forecasts are currently available. The forecasting pipeline may not be running.",
+                    "symbol": symbol,
+                    "horizon": horizon
+                }
+            raise
 
     async def _list_strategies(self) -> Dict[str, Any]:
         """List available strategies."""

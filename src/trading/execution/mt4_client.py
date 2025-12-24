@@ -215,7 +215,8 @@ class MT4Client:
         pub_port: int,
         magic_number: int,
         encryption_manager: MT4EncryptionManager,
-        timeout_ms: int = 5000
+        timeout_ms: int = 5000,
+        enable_circuit_breaker: bool = False  # DISABLED by default for development
     ):
         """
         Initialize MT4 client for a specific EA.
@@ -227,6 +228,7 @@ class MT4Client:
             magic_number: MT4 magic number for this EA
             encryption_manager: CurveZMQ encryption manager
             timeout_ms: Command timeout in milliseconds
+            enable_circuit_breaker: Enable circuit breaker (default: False for development)
         """
         self.host = host
         self.rep_port = rep_port
@@ -234,6 +236,7 @@ class MT4Client:
         self.magic_number = magic_number
         self.encryption_manager = encryption_manager
         self.timeout_ms = timeout_ms
+        self.enable_circuit_breaker = enable_circuit_breaker
 
         # ZMQ context and sockets
         self._context: Optional[zmq.asyncio.Context] = None
@@ -242,12 +245,12 @@ class MT4Client:
         self._connected = False
         self._listening = False
 
-        # Circuit breaker for resilience (T091)
+        # Circuit breaker for resilience (T091) - only if enabled
         self.circuit_breaker = CircuitBreaker(
             failure_threshold=5,
             timeout=30,
             success_threshold=2
-        )
+        ) if enable_circuit_breaker else None
 
         # Reconnection state (T092, T094)
         self.reconnect_attempt = 0
@@ -376,8 +379,8 @@ class MT4Client:
         correlation_id = command.correlation_id
         request_data = command.model_dump(mode='json')
 
-        # Check circuit breaker first (T091 - fail fast if open)
-        if not self.circuit_breaker.can_proceed():
+        # Check circuit breaker first (T091 - fail fast if open) - only if enabled
+        if self.circuit_breaker and not self.circuit_breaker.can_proceed():
             # Log blocked request (T110)
             MT4RequestLogger.log_circuit_breaker_blocked(
                 command_type=command_type,
@@ -424,8 +427,9 @@ class MT4Client:
                 )
                 record_zmq_error(command_type=command_type, error_type="timeout")
 
-                # Record failure in circuit breaker (T091)
-                self.circuit_breaker.record_failure()
+                # Record failure in circuit breaker (T091) - only if enabled
+                if self.circuit_breaker:
+                    self.circuit_breaker.record_failure()
 
                 raise TimeoutError(f"MT4 command timeout after {timeout}ms")
 
@@ -450,8 +454,9 @@ class MT4Client:
                 error_message=response.get("error_message") or response.get("message")
             )
 
-            # Record success in circuit breaker (T091)
-            self.circuit_breaker.record_success()
+            # Record success in circuit breaker (T091) - only if enabled
+            if self.circuit_breaker:
+                self.circuit_breaker.record_success()
 
             # Reset reconnect attempt counter on success (T092)
             self.reconnect_attempt = 0
@@ -470,8 +475,9 @@ class MT4Client:
             )
             record_zmq_error(command_type=command_type, error_type="zmq_error")
 
-            # Record failure in circuit breaker (T091)
-            self.circuit_breaker.record_failure()
+            # Record failure in circuit breaker (T091) - only if enabled
+            if self.circuit_breaker:
+                self.circuit_breaker.record_failure()
 
             raise ConnectionError(f"ZMQ error: {e}")
 
@@ -487,8 +493,9 @@ class MT4Client:
             )
             record_zmq_error(command_type=command_type, error_type="json_error")
 
-            # Record failure in circuit breaker (T091)
-            self.circuit_breaker.record_failure()
+            # Record failure in circuit breaker (T091) - only if enabled
+            if self.circuit_breaker:
+                self.circuit_breaker.record_failure()
 
             raise
 

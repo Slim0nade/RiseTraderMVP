@@ -22,7 +22,8 @@ interface EquityCurveChartProps {
 }
 
 export const EquityCurveChart: React.FC<EquityCurveChartProps> = ({ data, height = 400 }) => {
-  if (data.length === 0) {
+  // Validate data is an array
+  if (!Array.isArray(data) || data.length === 0) {
     return (
       <div
         className="bg-dark-900 rounded-lg border border-dark-700 flex items-center justify-center"
@@ -33,11 +34,22 @@ export const EquityCurveChart: React.FC<EquityCurveChartProps> = ({ data, height
     );
   }
 
+  // FIXED: Deduplicate data by timestamp (keep last value for each timestamp)
+  const deduplicatedData = data.reduce((acc: EquityCurveData[], point) => {
+    const existingIndex = acc.findIndex(p => p.timestamp === point.timestamp);
+    if (existingIndex >= 0) {
+      acc[existingIndex] = point; // Replace with newer value
+    } else {
+      acc.push(point);
+    }
+    return acc;
+  }, []);
+
   return (
     <div className="bg-dark-900 rounded-lg border border-dark-700 p-4">
       <h3 className="text-lg font-semibold text-dark-50 mb-4">Equity Curve</h3>
       <ResponsiveContainer width="100%" height={height}>
-        <AreaChart data={data}>
+        <AreaChart data={deduplicatedData}>
           <defs>
             <linearGradient id="equityGradient" x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3} />

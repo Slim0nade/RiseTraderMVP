@@ -17,6 +17,18 @@ interface PriceChartProps {
 }
 
 export const PriceChart: React.FC<PriceChartProps> = ({ data, height = 400 }) => {
+  // Validate data is an array
+  if (!Array.isArray(data) || data.length === 0) {
+    return (
+      <div
+        className="bg-dark-900 rounded-lg border border-dark-700 flex items-center justify-center"
+        style={{ height }}
+      >
+        <p className="text-dark-500">No data available</p>
+      </div>
+    );
+  }
+
   const chartData = useMemo(() => {
     return data.map((item) => ({
       timestamp: new Date(item.timestamp).getTime(),
@@ -25,7 +37,7 @@ export const PriceChart: React.FC<PriceChartProps> = ({ data, height = 400 }) =>
     }));
   }, [data]);
 
-  if (data.length === 0) {
+  if (chartData.length === 0) {
     return (
       <div
         className="bg-dark-900 rounded-lg border border-dark-700 flex items-center justify-center"
