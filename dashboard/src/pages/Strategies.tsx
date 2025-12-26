@@ -38,7 +38,9 @@ export const Strategies: React.FC = () => {
     toggleMutation.mutate({ id: strategy.id, active: !strategy.is_active });
   };
 
-  const activeCount = strategies?.filter((s) => s.is_active).length || 0;
+  // Ensure strategies is an array before filtering
+  const strategiesArray = Array.isArray(strategies) ? strategies : [];
+  const activeCount = strategiesArray.filter((s) => s.is_active).length;
 
   return (
     <div className="space-y-6">
@@ -57,7 +59,7 @@ export const Strategies: React.FC = () => {
             </div>
             <div>
               <p className="text-sm text-dark-500">Total Strategies</p>
-              <p className="text-3xl font-bold text-dark-50">{strategies?.length || 0}</p>
+              <p className="text-3xl font-bold text-dark-50">{strategiesArray.length}</p>
             </div>
           </div>
         </div>
@@ -82,10 +84,10 @@ export const Strategies: React.FC = () => {
             <div>
               <p className="text-sm text-dark-500">Avg Win Rate</p>
               <p className="text-3xl font-bold text-dark-50">
-                {strategies && strategies.length > 0
+                {strategiesArray.length > 0
                   ? (
-                      strategies.reduce((sum, s) => sum + (s.performance?.win_rate || 0), 0) /
-                      strategies.length
+                      strategiesArray.reduce((sum, s) => sum + (s.performance?.win_rate || 0), 0) /
+                      strategiesArray.length
                     ).toFixed(1)
                   : '0'}
                 %
@@ -102,13 +104,13 @@ export const Strategies: React.FC = () => {
           <div className="bg-dark-900 rounded-lg border border-dark-700 p-8 text-center">
             <p className="text-dark-400">Loading strategies...</p>
           </div>
-        ) : strategies && strategies.length === 0 ? (
+        ) : strategiesArray.length === 0 ? (
           <div className="bg-dark-900 rounded-lg border border-dark-700 p-8 text-center text-dark-500">
             No strategies configured
           </div>
         ) : (
           <div className="space-y-4">
-            {strategies?.map((strategy) => (
+            {strategiesArray.map((strategy) => (
               <div
                 key={strategy.id}
                 className="bg-dark-900 rounded-lg border border-dark-700 p-6 hover:border-dark-600 transition-colors"

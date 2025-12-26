@@ -83,42 +83,42 @@ export const Performance: React.FC = () => {
               <p className="text-sm text-dark-500 mb-1">Daily P&L</p>
               <p
                 className={`text-2xl font-bold ${
-                  metrics.daily_pnl >= 0 ? 'text-success-500' : 'text-danger-500'
+                  (metrics.daily_pnl ?? 0) >= 0 ? 'text-success-500' : 'text-danger-500'
                 }`}
               >
-                ${metrics.daily_pnl.toFixed(2)}
+                ${metrics.daily_pnl?.toFixed(2) ?? '0.00'}
               </p>
             </div>
             <div>
               <p className="text-sm text-dark-500 mb-1">Weekly P&L</p>
               <p
                 className={`text-2xl font-bold ${
-                  metrics.weekly_pnl >= 0 ? 'text-success-500' : 'text-danger-500'
+                  (metrics.weekly_pnl ?? 0) >= 0 ? 'text-success-500' : 'text-danger-500'
                 }`}
               >
-                ${metrics.weekly_pnl.toFixed(2)}
+                ${metrics.weekly_pnl?.toFixed(2) ?? '0.00'}
               </p>
             </div>
             <div>
               <p className="text-sm text-dark-500 mb-1">Monthly P&L</p>
               <p
                 className={`text-2xl font-bold ${
-                  metrics.monthly_pnl >= 0 ? 'text-success-500' : 'text-danger-500'
+                  (metrics.monthly_pnl ?? 0) >= 0 ? 'text-success-500' : 'text-danger-500'
                 }`}
               >
-                ${metrics.monthly_pnl.toFixed(2)}
+                ${metrics.monthly_pnl?.toFixed(2) ?? '0.00'}
               </p>
             </div>
             <div>
               <p className="text-sm text-dark-500 mb-1">Best Trade</p>
               <p className="text-2xl font-bold text-success-500">
-                ${metrics.best_trade.toFixed(2)}
+                ${metrics.best_trade?.toFixed(2) ?? '0.00'}
               </p>
             </div>
             <div>
               <p className="text-sm text-dark-500 mb-1">Worst Trade</p>
               <p className="text-2xl font-bold text-danger-500">
-                ${metrics.worst_trade.toFixed(2)}
+                ${metrics.worst_trade?.toFixed(2) ?? '0.00'}
               </p>
             </div>
             <div>
@@ -154,14 +154,14 @@ export const Performance: React.FC = () => {
             <div className="p-4 bg-dark-800 rounded-lg">
               <p className="text-sm text-dark-500 mb-2">Max Drawdown</p>
               <p className="text-3xl font-bold text-danger-500 mb-1">
-                ${metrics.max_drawdown.toFixed(2)}
+                ${metrics.max_drawdown?.toFixed(2) ?? '0.00'}
               </p>
-              <p className="text-sm text-danger-400">{metrics.max_drawdown_pct.toFixed(2)}%</p>
+              <p className="text-sm text-danger-400">{metrics.max_drawdown_pct?.toFixed(2) ?? '0.00'}%</p>
             </div>
             <div className="p-4 bg-dark-800 rounded-lg">
               <p className="text-sm text-dark-500 mb-2">Sharpe Ratio</p>
               <p className="text-3xl font-bold text-primary-500">
-                {metrics.sharpe_ratio.toFixed(2)}
+                {metrics.sharpe_ratio?.toFixed(2) ?? 'N/A'}
               </p>
               <p className="text-sm text-dark-400">Risk-adjusted returns</p>
             </div>

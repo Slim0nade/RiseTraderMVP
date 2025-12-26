@@ -330,6 +330,30 @@ class BacktestRepository(BaseRepository[BacktestConfiguration]):
         await self.session.refresh(trade)
         return trade
 
+    async def update_trade(
+        self, trade_id: UUID, update_data: Dict[str, Any]
+    ) -> Optional[SimulatedTrade]:
+        """
+        Update a simulated trade record (typically with exit details).
+
+        Args:
+            trade_id: Trade UUID
+            update_data: Fields to update (exit_timestamp, exit_price, gross_pnl, net_pnl, etc.)
+
+        Returns:
+            Updated SimulatedTrade or None if not found
+        """
+        trade = await self.session.get(SimulatedTrade, trade_id)
+        if not trade:
+            return None
+
+        for key, value in update_data.items():
+            setattr(trade, key, value)
+
+        await self.session.flush()
+        await self.session.refresh(trade)
+        return trade
+
     async def get_trades(
         self,
         run_id: UUID,

@@ -447,11 +447,29 @@ class SyntheticEngine:
         
         # Delegate to the full strategy implementation
         signal = self._crude_oil_strategy.process_tick(tick)
-        
+
+        # DEBUG logging for signal generation (log every 500th tick to avoid spam)
+        from structlog import get_logger
+        logger = get_logger()
+        if not hasattr(self, '_tick_count'):
+            self._tick_count = 0
+        self._tick_count += 1
+
+        if self._tick_count % 500 == 0 or signal.action:
+            logger.info(
+                "crude_oil_signal_sample",
+                tick_num=self._tick_count,
+                action=signal.action,
+                quantity=float(signal.quantity) if signal.quantity else 0,
+                confidence=signal.confidence,
+                reason=signal.reason[:50] if signal.reason else None,
+                timestamp=str(tick.timestamp)
+            )
+
         # Sync position state
         self.has_position = self._crude_oil_strategy.has_position
         self.entry_price = self._crude_oil_strategy.entry_price
-        
+
         # Convert CrudeOilSignal to SyntheticSignal
         return SyntheticSignal(
             action=signal.action,

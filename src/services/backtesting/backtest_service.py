@@ -332,14 +332,29 @@ class BacktestService:
             logger.warning("progress_publisher_unavailable", error=str(e))
         
         # If no decision_engine provided, try to create from config_params
+        logger.info(
+            "checking_decision_engine_setup",
+            run_id=str(run.id),
+            decision_engine_provided=decision_engine is not None,
+            has_config_params=config.config_params is not None,
+            config_params=config.config_params
+        )
+
         if decision_engine is None and config.config_params:
             synthetic_strategy = config.config_params.get("synthetic_strategy")
             synthetic_params = config.config_params.get("synthetic_params", {})
-            
+
             # Also check for strategy params at root level of config_params
             if not synthetic_strategy:
                 synthetic_strategy = config.config_params.get("strategy")
-            
+
+            logger.info(
+                "extracted_strategy_params",
+                run_id=str(run.id),
+                synthetic_strategy=synthetic_strategy,
+                synthetic_params=synthetic_params
+            )
+
             if synthetic_strategy:
                 logger.info(
                     "creating_synthetic_engine_from_config",
@@ -404,7 +419,23 @@ class BacktestService:
 
             # Get trading decision (if decision engine provided)
             if decision_engine:
+                # DEBUG: Log every 500th candle
+                if candles_processed % 500 == 0:
+                    logger.info(
+                        "calling_decision_engine",
+                        candle_num=candles_processed,
+                        timestamp=tick.timestamp
+                    )
+
                 decision = decision_engine(tick)
+
+                # DEBUG: Log when we get a decision
+                if decision:
+                    logger.info(
+                        "decision_engine_returned_decision",
+                        candle_num=candles_processed,
+                        decision=decision
+                    )
 
                 if decision:
                     action = decision.get("action")
@@ -436,7 +467,7 @@ class BacktestService:
                                 )
                                 await self.backtest_repo.create_trade(trade_dict)
 
-                    elif action in ["close", "exit"] and portfolio.has_position(tick.symbol):
+                    elif action in ["close", "exit", "close_long", "close_short"] and portfolio.has_position(tick.symbol):
                         # Close existing position
                         exit_result, gross_pnl, net_pnl = simulator.execute_exit(
                             portfolio=portfolio,
@@ -446,7 +477,18 @@ class BacktestService:
                         )
 
                         # Update trade record with exit details
-                        # (Would need to fetch trade by ID and update)
+                        await self.backtest_repo.update_trade(
+                            trade_id=exit_result.trade_id,
+                            update_data={
+                                "exit_timestamp": tick.timestamp,
+                                "exit_price": tick.close,
+                                "gross_pnl": gross_pnl,
+                                "net_pnl": net_pnl,
+                                "holding_duration_seconds": int(
+                                    (tick.timestamp - exit_result.timestamp).total_seconds()
+                                ) if exit_result.timestamp else None,
+                            }
+                        )
 
             # Periodic portfolio snapshot
             if candles_processed % snapshot_interval == 0:
@@ -522,6 +564,20 @@ class BacktestService:
         ollama_url = agent_config.get("ollama_base_url", "http://192.168.0.123:11434/v1")
         decision_threshold = agent_config.get("decision_threshold", 0.6)
 
+        # Check Ollama availability BEFORE starting backtest
+        import httpx
+        try:
+            logger.info("checking_ollama_availability", ollama_url=ollama_url)
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(f"{ollama_url.replace('/v1', '')}/api/tags")
+                if response.status_code != 200:
+                    raise ValueError(f"Ollama not available at {ollama_url} (status: {response.status_code})")
+                logger.info("ollama_available", ollama_url=ollama_url)
+        except Exception as e:
+            error_msg = f"Ollama server not accessible at {ollama_url}: {str(e)}"
+            logger.error("ollama_unavailable", error=error_msg, ollama_url=ollama_url)
+            raise ValueError(error_msg)
+
         integrator = AgentIntegrator(
             backtest_run_id=run.id,
             backtest_repo=self.backtest_repo,  # Pass repository for real-time logging
@@ -531,8 +587,12 @@ class BacktestService:
         )
 
         try:
-            # Initialize LLM connection
-            await integrator.initialize()
+            # Initialize LLM connection (with timeout protection)
+            import asyncio
+            try:
+                await asyncio.wait_for(integrator.initialize(), timeout=120.0)
+            except asyncio.TimeoutError:
+                raise ValueError("Timeout initializing agent integrator after 120 seconds")
 
             candles_processed = 0
             snapshot_interval = 100  # More frequent snapshots in full mode
@@ -606,6 +666,20 @@ class BacktestService:
                                 symbol=tick.symbol,
                                 exit_price=tick.close,
                                 timestamp=tick.timestamp
+                            )
+
+                            # Update trade record with exit details
+                            await self.backtest_repo.update_trade(
+                                trade_id=exit_result.trade_id,
+                                update_data={
+                                    "exit_timestamp": tick.timestamp,
+                                    "exit_price": tick.close,
+                                    "gross_pnl": gross_pnl,
+                                    "net_pnl": net_pnl,
+                                    "holding_duration_seconds": int(
+                                        (tick.timestamp - exit_result.timestamp).total_seconds()
+                                    ) if exit_result.timestamp else None,
+                                }
                             )
 
                 # Periodic portfolio snapshot

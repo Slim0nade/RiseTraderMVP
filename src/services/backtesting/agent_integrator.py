@@ -23,6 +23,8 @@ from autogen_core.models import SystemMessage, UserMessage
 from pydantic import BaseModel, Field
 
 from src.agents.providers.ollama_client import create_ollama_client
+from src.agents.providers.openai_client import create_openai_client, create_gpt4o_client, create_gpt4o_mini_client
+from src.agents.providers.anthropic_client import create_anthropic_client, create_claude_sonnet_client
 from src.agents.schemas.trade_decision import TradeDirection, TradeIntent
 from src.config.network_config import NetworkLocationManager
 from src.database.models.simulated_trade import AgentDecisionLog
@@ -140,32 +142,61 @@ class AgentIntegrator:
         )
 
     async def initialize(self):
-        """Initialize LLM client connection."""
+        """Initialize LLM client connection based on model type."""
         try:
-            # Get Ollama URL from NetworkLocationManager if not explicitly provided
-            if self.ollama_base_url is None:
-                network_manager = NetworkLocationManager()
-                ollama_config = network_manager.get_ollama_config()
-                self.ollama_base_url = ollama_config.base_url
-                logger.debug(
-                    "using_network_location_manager_for_ollama",
-                    ollama_url=self.ollama_base_url,
-                    location=network_manager.location.value,
+            # Detect model provider based on model name
+            model_lower = self.model.lower()
+
+            # OpenAI models (GPT)
+            if model_lower.startswith('gpt-'):
+                if 'gpt-4o-mini' in model_lower:
+                    self.llm_client = create_gpt4o_mini_client()
+                elif 'gpt-4o' in model_lower:
+                    self.llm_client = create_gpt4o_client()
+                else:
+                    self.llm_client = create_openai_client(
+                        model=self.model,
+                        temperature=self.temperature,
+                        max_tokens=self.max_tokens,
+                    )
+                logger.info(
+                    "agent_integrator_llm_connected",
+                    provider="openai",
+                    model=self.model,
                 )
 
-            # Create client with network-aware URL
-            self.llm_client = create_ollama_client(
-                model=self.model,
-                base_url=self.ollama_base_url,
-                temperature=self.temperature,
-                max_tokens=self.max_tokens,
-            )
+            # Anthropic models (Claude)
+            elif 'claude' in model_lower:
+                if 'sonnet' in model_lower:
+                    self.llm_client = create_claude_sonnet_client()
+                else:
+                    self.llm_client = create_anthropic_client(
+                        model=self.model,
+                        temperature=self.temperature,
+                        max_tokens=self.max_tokens,
+                    )
+                logger.info(
+                    "agent_integrator_llm_connected",
+                    provider="anthropic",
+                    model=self.model,
+                )
 
-            logger.info(
-                "agent_integrator_llm_connected",
-                model=self.model,
-                base_url=self.ollama_base_url,
-            )
+            # Mistral proprietary API models
+            elif model_lower.startswith('mistral-') and not ':' in model_lower:
+                # Proprietary Mistral models (via API, not Ollama)
+                # For now, route through OpenAI-compatible endpoint if available
+                # TODO: Add dedicated Mistral API client if needed
+                logger.warning(
+                    "mistral_proprietary_api_not_yet_supported",
+                    model=self.model,
+                    fallback="Will attempt Ollama",
+                )
+                # Fall through to Ollama
+                self._initialize_ollama_client()
+
+            # Ollama models (local/open-source)
+            else:
+                self._initialize_ollama_client()
 
         except Exception as e:
             logger.error(
@@ -175,6 +206,34 @@ class AgentIntegrator:
                 exc_info=True,
             )
             raise
+
+    def _initialize_ollama_client(self):
+        """Initialize Ollama client for local/open-source models."""
+        # Get Ollama URL from NetworkLocationManager if not explicitly provided
+        if self.ollama_base_url is None:
+            network_manager = NetworkLocationManager()
+            ollama_config = network_manager.get_ollama_config()
+            self.ollama_base_url = ollama_config.base_url
+            logger.debug(
+                "using_network_location_manager_for_ollama",
+                ollama_url=self.ollama_base_url,
+                location=network_manager.location.value,
+            )
+
+        # Create client with network-aware URL
+        self.llm_client = create_ollama_client(
+            model=self.model,
+            base_url=self.ollama_base_url,
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
+        )
+
+        logger.info(
+            "agent_integrator_llm_connected",
+            provider="ollama",
+            model=self.model,
+            base_url=self.ollama_base_url,
+        )
 
     async def get_trading_decision(
         self,

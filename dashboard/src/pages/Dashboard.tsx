@@ -175,12 +175,12 @@ export const Dashboard: React.FC = () => {
             </div>
             <div>
               <p className="text-sm text-dark-500 mb-1">Sharpe Ratio</p>
-              <p className="text-2xl font-bold text-dark-50">{metrics.sharpe_ratio.toFixed(2)}</p>
+              <p className="text-2xl font-bold text-dark-50">{metrics.sharpe_ratio?.toFixed(2) ?? 'N/A'}</p>
             </div>
             <div>
               <p className="text-sm text-dark-500 mb-1">Max Drawdown</p>
               <p className="text-2xl font-bold text-danger-500">
-                {metrics.max_drawdown_pct.toFixed(2)}%
+                {metrics.max_drawdown_pct?.toFixed(2) ?? 'N/A'}%
               </p>
             </div>
             <div>

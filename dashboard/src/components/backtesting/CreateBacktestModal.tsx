@@ -32,14 +32,23 @@ const SYMBOLS = [
 ];
 
 const MODELS = [
-  { value: 'mistral:7b-instruct', label: 'Mistral 7B Instruct (Recommended)' },
-  { value: 'qwen2.5:14b', label: 'Qwen 2.5 14B (Fast, Efficient)' },
-  { value: 'deepseek-r1:14b', label: 'DeepSeek R1 14B (Better Reasoning)' },
-  { value: 'llama3.1:70b', label: 'Llama 3.1 70B (Most Capable)' },
-  { value: 'phi3:mini', label: 'Phi-3 Mini (Ultra Fast)' },
-  { value: 'phi4-mini', label: 'Phi-4 Mini (Latest Small Model)' },
-  { value: 'mistral-small3.1', label: 'Mistral Small 3.1 (Balanced)' },
-  { value: 'qwen3:14b', label: 'Qwen3 14B (Alternative)' },
+  // Open-Source Models (Free - Local/Ollama)
+  { value: 'mistral:7b-instruct', label: 'Mistral 7B Instruct (Recommended - Free)' },
+  { value: 'qwen2.5:14b', label: 'Qwen 2.5 14B (Fast, Efficient - Free)' },
+  { value: 'deepseek-r1:14b', label: 'DeepSeek R1 14B (Better Reasoning - Free)' },
+  { value: 'llama3.1:70b', label: 'Llama 3.1 70B (Most Capable - Free)' },
+  { value: 'phi3:mini', label: 'Phi-3 Mini (Ultra Fast - Free)' },
+  { value: 'phi4-mini', label: 'Phi-4 Mini (Latest Small Model - Free)' },
+  { value: 'mistral-small3.1', label: 'Mistral Small 3.1 (Balanced - Free)' },
+  { value: 'qwen3:14b', label: 'Qwen3 14B (Alternative - Free)' },
+
+  // Proprietary Models (Paid - Best Quality)
+  { value: 'gpt-4o', label: 'GPT-4o (Best Overall - OpenAI - Paid)' },
+  { value: 'gpt-4o-mini', label: 'GPT-4o Mini (Fast & Affordable - OpenAI - Paid)' },
+  { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet (Best Reasoning - Anthropic - Paid)' },
+  { value: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku (Fast - Anthropic - Paid)' },
+  { value: 'mistral-large-latest', label: 'Mistral Large (Proprietary - High Quality - Paid)' },
+  { value: 'mistral-small-latest', label: 'Mistral Small (Proprietary - Efficient - Paid)' },
 ];
 
 const TIMEFRAMES = [

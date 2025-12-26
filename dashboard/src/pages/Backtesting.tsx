@@ -373,9 +373,26 @@ export const Backtesting: React.FC = () => {
               <h3 className="text-lg font-medium text-dark-300 mb-2">
                 Backtest Failed
               </h3>
-              <p className="text-danger-400 text-sm">
+              <p className="text-danger-400 text-sm mb-6">
                 {runData.error_message || 'Unknown error occurred'}
               </p>
+              <button
+                onClick={(e) => runData.config_id && handleStartRun(runData.config_id, e)}
+                disabled={!runData.config_id || runningConfigs.has(runData.config_id)}
+                className="inline-flex items-center gap-2 px-6 py-3 bg-primary-500 hover:bg-primary-600 disabled:bg-dark-700 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+              >
+                {runningConfigs.has(runData.config_id) ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <span>Retrying...</span>
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-5 h-5" />
+                    <span>Retry Backtest</span>
+                  </>
+                )}
+              </button>
             </div>
           ) : !runData ? (
             <div className="bg-dark-900 rounded-lg border border-dark-700 p-12 text-center">

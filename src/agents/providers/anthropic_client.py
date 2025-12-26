@@ -61,9 +61,20 @@ def create_anthropic_client(
     # you'd need the anthropic-specific client from autogen_ext.models.anthropic
 
     try:
-        # Using OpenAI-compatible interface via LiteLLM or similar
-        # Base URL should point to your LiteLLM proxy endpoint
-        base_url = os.getenv("LITELLM_BASE_URL", "http://localhost:4000")
+        # Import ModelInfo for custom model definitions
+        from autogen_core.models import ModelInfo
+
+        # Create model_info for Anthropic/Claude models
+        model_info = ModelInfo(
+            vision=False,
+            function_calling=True,
+            json_output=True,
+            family="anthropic"
+        )
+
+        # Use Anthropic's API directly (OpenAI-compatible base URL)
+        # Anthropic API is OpenAI-compatible at https://api.anthropic.com/v1
+        base_url = "https://api.anthropic.com/v1"
 
         client = OpenAIChatCompletionClient(
             model=model,
@@ -71,6 +82,7 @@ def create_anthropic_client(
             api_key=effective_api_key,
             temperature=temperature,
             max_tokens=max_tokens,
+            model_info=model_info,
         )
 
         logger.info(

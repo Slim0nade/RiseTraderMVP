@@ -54,11 +54,23 @@ def create_openai_client(
         )
 
     try:
+        # Import ModelInfo for custom model definitions
+        from autogen_core.models import ModelInfo
+
+        # Create model_info for the model
+        model_info = ModelInfo(
+            vision=False,
+            function_calling=True,
+            json_output=True,
+            family="openai"
+        )
+
         client = OpenAIChatCompletionClient(
             model=model,
             api_key=effective_api_key,
             temperature=temperature,
             max_tokens=max_tokens,
+            model_info=model_info,
         )
 
         logger.info(
