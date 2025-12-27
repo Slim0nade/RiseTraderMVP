@@ -706,3 +706,21 @@ class BacktestRepository(BaseRepository[BacktestConfiguration]):
         self.session.add(decision_log)
         await self.session.flush()
         return decision_log
+
+    # Alias for backwards compatibility
+    async def get_agent_decision_logs(
+        self,
+        run_id: UUID,
+        limit: int = 10000,
+    ) -> List[AgentDecisionLog]:
+        """
+        Alias for get_agent_decisions for backwards compatibility.
+        
+        Args:
+            run_id: Backtest run UUID
+            limit: Maximum number of logs
+            
+        Returns:
+            List of AgentDecisionLog instances
+        """
+        return await self.get_agent_decisions(run_id=run_id, limit=limit)

@@ -401,8 +401,11 @@ class BacktestService:
         
         candles_processed = 0
         trades_count = 0
-        snapshot_interval = 100  # Snapshots every 100 candles
+        snapshot_interval = 10  # Snapshots every 10 candles for accurate equity curve
         progress_interval = 1000  # Publish progress every 1000 candles
+        
+        # Create INITIAL snapshot before any trading
+        first_tick_processed = False
 
         # Replay historical data
         async for tick, processed, total in self.data_replay.replay_with_progress(
@@ -416,6 +419,17 @@ class BacktestService:
 
             # Update portfolio with current market price
             portfolio.update_market_price(tick.symbol, tick.close)
+            
+            # Create INITIAL snapshot on first tick (before any trading)
+            if not first_tick_processed:
+                first_tick_processed = True
+                initial_snapshot = portfolio.get_snapshot(tick.timestamp, run.id)
+                await self.backtest_repo.create_snapshot(initial_snapshot)
+                logger.info(
+                    "initial_snapshot_created",
+                    run_id=str(run.id),
+                    total_value=float(initial_snapshot["total_value"]),
+                )
 
             # Get trading decision (if decision engine provided)
             if decision_engine:
@@ -466,6 +480,15 @@ class BacktestService:
                                     backtest_run_id=run.id
                                 )
                                 await self.backtest_repo.create_trade(trade_dict)
+                                logger.info(
+                                    "trade_opened",
+                                    run_id=str(run.id),
+                                    trade_id=str(result.trade_id),
+                                    action=action,
+                                    price=float(tick.close),
+                                    quantity=float(quantity),
+                                    portfolio_value=float(portfolio.get_total_value()),
+                                )
 
                     elif action in ["close", "exit", "close_long", "close_short"] and portfolio.has_position(tick.symbol):
                         # Close existing position
@@ -489,6 +512,16 @@ class BacktestService:
                                 ) if exit_result.timestamp else None,
                             }
                         )
+                        logger.info(
+                            "trade_closed",
+                            run_id=str(run.id),
+                            trade_id=str(exit_result.trade_id),
+                            action=action,
+                            exit_price=float(tick.close),
+                            gross_pnl=float(gross_pnl),
+                            net_pnl=float(net_pnl),
+                            portfolio_value=float(portfolio.get_total_value()),
+                        )
 
             # Periodic portfolio snapshot
             if candles_processed % snapshot_interval == 0:
@@ -506,16 +539,31 @@ class BacktestService:
                     current_capital=float(portfolio.get_total_value()),
                 )
             
-            # Update database with progress (less frequently to reduce DB load)
-            if candles_processed % 5000 == 0:
+            # Update database with progress (every 100 candles for good UI responsiveness)
+            if candles_processed % 100 == 0:
+                # Count agent decisions so far
+                agent_decision_count = len(await self.backtest_repo.get_agent_decision_logs(run.id))
+
                 await self.backtest_repo.update_run(
                     run_id=run.id,
                     update_data={
                         "candles_processed": candles_processed,
+                        "agent_decisions_count": agent_decision_count,
                     }
                 )
                 # Commit to make progress visible to polling clients
                 await self.session.commit()
+
+        # Create FINAL snapshot after all trading
+        if first_tick_processed:
+            final_snapshot = portfolio.get_snapshot(tick.timestamp, run.id)
+            await self.backtest_repo.create_snapshot(final_snapshot)
+            logger.info(
+                "final_snapshot_created",
+                run_id=str(run.id),
+                total_value=float(final_snapshot["total_value"]),
+                total_trades=trades_count,
+            )
 
         # Update run with candles processed
         await self.backtest_repo.update_run(
@@ -595,8 +643,11 @@ class BacktestService:
                 raise ValueError("Timeout initializing agent integrator after 120 seconds")
 
             candles_processed = 0
-            snapshot_interval = 100  # More frequent snapshots in full mode
+            snapshot_interval = 10  # More frequent snapshots in full mode
             decision_interval = 10  # Only query agent every N candles (performance)
+            
+            # Track first tick for initial snapshot
+            first_tick_processed = False
 
             # Replay historical data
             async for tick, processed, total in self.data_replay.replay_with_progress(
@@ -610,6 +661,17 @@ class BacktestService:
 
                 # Update portfolio with current market price
                 portfolio.update_market_price(tick.symbol, tick.close)
+                
+                # Create INITIAL snapshot on first tick (before any trading)
+                if not first_tick_processed:
+                    first_tick_processed = True
+                    initial_snapshot = portfolio.get_snapshot(tick.timestamp, run.id)
+                    await self.backtest_repo.create_snapshot(initial_snapshot)
+                    logger.info(
+                        "initial_snapshot_created_full_pipeline",
+                        run_id=str(run.id),
+                        total_value=float(initial_snapshot["total_value"]),
+                    )
 
                 # Query agent for decision (not every candle for performance)
                 if candles_processed % decision_interval == 0:
@@ -686,6 +748,16 @@ class BacktestService:
                 if candles_processed % snapshot_interval == 0:
                     snapshot = portfolio.get_snapshot(tick.timestamp, run.id)
                     await self.backtest_repo.create_snapshot(snapshot)
+
+            # Create FINAL snapshot after all trading
+            if first_tick_processed:
+                final_snapshot = portfolio.get_snapshot(tick.timestamp, run.id)
+                await self.backtest_repo.create_snapshot(final_snapshot)
+                logger.info(
+                    "final_snapshot_created_full_pipeline",
+                    run_id=str(run.id),
+                    total_value=float(final_snapshot["total_value"]),
+                )
 
             # Update run with candles processed and agent decision count
             await self.backtest_repo.update_run(

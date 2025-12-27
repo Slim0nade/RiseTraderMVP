@@ -516,6 +516,10 @@ CRITICAL Requirements:
                 "cash_balance": float(market_context.cash_balance),
                 "indicators": market_context.indicators,
                 "positions": market_context.current_positions,
+                "open_positions_count": len(market_context.current_positions) if market_context.current_positions else 0,
+                "model_used": self.model,
+                "unrealized_pnl": float(market_context.unrealized_pnl),
+                "max_position_size": float(market_context.max_position_size),
             },
             output_decision={
                 "action": decision.action,

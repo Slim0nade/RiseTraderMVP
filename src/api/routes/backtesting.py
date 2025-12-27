@@ -821,6 +821,89 @@ async def get_run_trades(
 
 
 @router.get(
+    "/runs/{run_id}/snapshots",
+    responses={
+        200: {"description": "Portfolio snapshots retrieved"},
+        404: {"model": ErrorResponse, "description": "Run not found"},
+        500: {"model": ErrorResponse, "description": "Internal server error"},
+    },
+)
+async def get_run_snapshots(
+    run_id: UUID,
+    limit: int = Query(1000, ge=1, le=10000, description="Maximum results"),
+    offset: int = Query(0, ge=0, description="Results offset"),
+    service: BacktestService = Depends(get_backtest_service),
+):
+    """
+    Get portfolio snapshots (equity curve data) for a backtest run.
+
+    Returns timestamped snapshots of portfolio state for equity curve visualization.
+
+    Args:
+        run_id: Run UUID
+        limit: Maximum snapshots to return (1-10000)
+        offset: Pagination offset
+
+    Returns:
+        List of portfolio snapshots with timestamps and values
+
+    Example:
+        GET /api/backtesting/runs/{run_id}/snapshots?limit=500
+    """
+    try:
+        # Verify run exists
+        run = await service.backtest_repo.get_run(run_id)
+        if not run:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Run {run_id} not found",
+            )
+
+        # Get snapshots
+        all_snapshots = await service.backtest_repo.get_snapshots(run_id)
+        snapshots = all_snapshots[offset : offset + limit]
+
+        logger.info(
+            "get_run_snapshots_success",
+            run_id=str(run_id),
+            total=len(all_snapshots),
+            returned=len(snapshots),
+        )
+
+        # Convert to response format
+        snapshots_data = [
+            {
+                "timestamp": s.timestamp.isoformat(),
+                "total_value": float(s.total_value),
+                "cash_balance": float(s.cash_balance),
+                "unrealized_pnl": float(s.unrealized_pnl) if s.unrealized_pnl else 0.0,
+                "realized_pnl": float(s.realized_pnl) if s.realized_pnl else 0.0,
+                "positions": s.positions or [],
+            }
+            for s in snapshots
+        ]
+
+        return {
+            "total": len(all_snapshots),
+            "items": snapshots_data,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            "get_run_snapshots_failed",
+            run_id=str(run_id),
+            error=str(e),
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve snapshots: {str(e)}",
+        )
+
+
+@router.get(
     "/runs/{run_id}/decisions",
     responses={
         200: {"description": "Agent decisions retrieved"},

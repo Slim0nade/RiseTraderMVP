@@ -210,6 +210,7 @@ class BacktestRunStatusResponse(BaseModel):
     agent_decisions_count: int = Field(
         default=0, description="Agent decisions logged"
     )
+    final_capital: Optional[Decimal] = Field(None, description="Final capital")
     progress_pct: Optional[float] = Field(None, description="Progress percentage")
     error_message: Optional[str] = Field(None, description="Error message (if failed)")
 

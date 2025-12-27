@@ -93,6 +93,13 @@ export const Backtesting: React.FC = () => {
     enabled: !!selectedRunId && (runData?.agent_decisions_count || 0) > 0,
   });
 
+  // Fetch portfolio snapshots for equity curve
+  const { data: snapshotsData } = useQuery({
+    queryKey: ['backtest-snapshots', selectedRunId],
+    queryFn: () => backtestApi.getRunSnapshots(selectedRunId!, { limit: 5000 }),
+    enabled: !!selectedRunId && runData?.status === 'completed',
+  });
+
   useEffect(() => {
     if (runData) {
       setSelectedRun(runData as BacktestRun);
@@ -173,38 +180,15 @@ export const Backtesting: React.FC = () => {
     window.location.reload(); // Simple refresh - could be improved with query invalidation
   };
 
-  // Create equity curve data from trades
+  // Create equity curve data from portfolio snapshots
   const createEquityCurveData = () => {
-    if (!metricsData?.final_capital || !tradesData?.items) return [];
+    if (!snapshotsData?.items || snapshotsData.items.length === 0) return [];
 
-    const initialCapital = metricsData.config_id ? 10000 : 10000; // Get from config
-    let currentCapital = initialCapital;
-    const equityPoints: { time: number; value: number }[] = [];
-
-    // Add initial point
-    if (runData?.start_time) {
-      equityPoints.push({
-        time: Math.floor(new Date(runData.start_time).getTime() / 1000),
-        value: initialCapital,
-      });
-    }
-
-    // Add points for each closed trade
-    tradesData.items
-      .filter((trade: any) => trade.exit_timestamp)
-      .sort(
-        (a: any, b: any) =>
-          new Date(a.exit_timestamp).getTime() - new Date(b.exit_timestamp).getTime()
-      )
-      .forEach((trade: any) => {
-        currentCapital += trade.pnl || 0;
-        equityPoints.push({
-          time: Math.floor(new Date(trade.exit_timestamp).getTime() / 1000),
-          value: currentCapital,
-        });
-      });
-
-    return equityPoints;
+    // Convert snapshots to chart format
+    return snapshotsData.items.map((snapshot: any) => ({
+      time: Math.floor(new Date(snapshot.timestamp).getTime() / 1000),
+      value: snapshot.total_value,
+    }));
   };
 
   const equityCurveData = createEquityCurveData();
@@ -460,19 +444,28 @@ export const Backtesting: React.FC = () => {
                   <div>
                     <p className="text-xs text-dark-500 mb-1">Total Trades</p>
                     <p className="text-lg font-bold text-dark-50">
-                      {runData.total_trades}
+                      {tradesData ? (
+                        <span>
+                          {tradesData.closed_trades} closed
+                          {tradesData.open_trades > 0 && (
+                            <span className="text-warning-500 ml-1">({tradesData.open_trades} open)</span>
+                          )}
+                        </span>
+                      ) : (
+                        runData.total_trades || 0
+                      )}
                     </p>
                   </div>
                   <div>
                     <p className="text-xs text-dark-500 mb-1">Final Capital</p>
                     <p
                       className={`text-lg font-bold ${
-                        (runData.final_capital || 0) >= 10000
+                        parseFloat(runData.final_capital || '0') >= (selectedConfig?.initial_capital || 10000)
                           ? 'text-success-500'
                           : 'text-danger-500'
                       }`}
                     >
-                      ${runData.final_capital?.toLocaleString('en-US', {
+                      ${parseFloat(runData.final_capital || '0').toLocaleString('en-US', {
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2,
                       })}

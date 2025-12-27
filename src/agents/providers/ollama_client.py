@@ -76,9 +76,10 @@ def create_ollama_client(
     if base_url is None:
         base_url = _get_default_ollama_url()
     else:
-        # Ensure /v1 suffix for OpenAI-compatible API
+        # Ensure /v1 suffix for OpenAI-compatible API (but don't double-append)
         if not base_url.endswith("/v1"):
             base_url = f"{base_url}/v1"
+        # Already has /v1, use as-is
 
     # Extract model family for ModelInfo (e.g., "qwen3" from "qwen3:14b")
     model_family = model.split(":")[0]
