@@ -9,11 +9,42 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `.serena/SESSION_PROGRESS_2025-11-16.md` - Latest session progress & detailed notes
 - `.claude/SETUP_COMPLETE.md` - Subagent system usage guide
 
+ Key Learnings:
+
+  1. ⚠️ Always search entire codebase before changing class names
+  2. ⚠️ Always verify fixes work by checking logs and data
+  3. ⚠️ Always provide context for anything
+  4. ⚠️ Never assume a fix is complete without verification
+
+
 ## Project Overview
 
 **RiseTrader** is an autonomous algorithmic trading platform that combines a FastAPI backend, React TypeScript dashboard, ML-powered forecasting, and a multi-agent coordination system for 24/7 automated trading on MetaTrader 4 (MT4).
 
 **Current Status:** Infrastructure complete (PostgreSQL + Redis ready). Database restored with 13.5M market data records. Ready to begin agent system development - Phase 2.5.
+
+## 🔴 CRITICAL: Service Network Configuration (READ THIS FIRST!)
+
+**Current Mode: REMOTE** (connecting to external VPS server)
+
+### Remote Mode (Current - VPS at 75.154.254.186)
+- **Ollama Server**: `http://75.154.254.186:11434`
+  - Available models: qwen3:14b, deepseek-r1:14b, mistral:7b-instruct, llama3.1:8b
+  - ⚠️ **DO NOT** append `/v1` in configs - code automatically adds it for OpenAI-compatible endpoint
+  - Test: `curl http://75.154.254.186:11434/api/tags`
+
+- **MT4 Server**: `75.154.254.186`
+  - REP Port: 5555 (commands)
+  - PUB Port: 5556 (streaming data)
+  - Test: `telnet 75.154.254.186 5555`
+
+### Local Mode (192.168.0.123 - when on same network)
+- **Ollama Server**: `http://192.168.0.123:11434`
+- **MT4 Server**: `192.168.0.123:5555/5556`
+
+**⚠️ IMPORTANT**: When switching between remote/local, update BOTH service IPs in:
+- `.env` file: `OLLAMA_BASE_URL`, `MT4_HOST`
+- Backtest configs: `ollama_base_url` in `config_params`
 
 ## Key Architecture Components
 
@@ -394,6 +425,8 @@ This autonomous flow requires careful testing and monitoring at each stage.
 - PostgreSQL 15+ with async operations (positions, orders, account state, EA registry) (001-mt4-integration)
 - Python 3.11+ + FastAPI 0.104.1, SQLAlchemy 2.0.23 (async), Pydantic 2.5.2, asyncpg 0.29.0, Redis 5.0.1, PyZMQ 25.1.2, Structlog 23.2.0, Prometheus-client 0.19.0 (002-fastapi-dashboard-api)
 - PostgreSQL 15+ (async with asyncpg driver), Redis 7+ (pub/sub for real-time updates) (002-fastapi-dashboard-api)
+- Python 3.11+ + Existing RiseTrader stack (SQLAlchemy 2.0+ async, asyncpg, pandas/numpy for metrics), Gymnasium (for RL environment interface), scipy (for statistical tests in A/B comparison) (006-backtesting-engine)
+- PostgreSQL 15+ (existing 13.5M candle database from 001-mt4-integration) (006-backtesting-engine)
 
 ## Recent Changes
 - 001-mt4-integration: Added Python 3.11+
