@@ -243,6 +243,12 @@ export const backtestApi = {
       params
     ),
 
+  getRunSnapshots: (runId: string, params?: { limit?: number; offset?: number }) =>
+    apiClient.get<{ total: number; items: { timestamp: string; total_value: number; cash_balance: number; unrealized_pnl: number; realized_pnl: number }[] }>(
+      `/api/backtesting/runs/${runId}/snapshots`,
+      params
+    ),
+
   cancelRun: (runId: string) =>
     apiClient.delete<{ success: boolean; message: string }>(`/api/backtesting/runs/${runId}`),
 

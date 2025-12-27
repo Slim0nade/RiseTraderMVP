@@ -18,6 +18,7 @@ interface BacktestFormData {
   initialCapital: string;
   executionMode: ExecutionMode;
   model: string;
+  syntheticStrategy: string;
   timeframe: string;
   slippagePct: string;
   commissionPct: string;
@@ -60,6 +61,13 @@ const TIMEFRAMES = [
   { value: 'D1', label: 'Daily' },
 ];
 
+const SYNTHETIC_STRATEGIES = [
+  { value: 'crude_oil_v3', label: 'Crude Oil V3 (EMA + RSI + CCI)' },
+  { value: 'crude_oil_v2', label: 'Crude Oil V2 (Legacy)' },
+  { value: 'crude_oil_v1', label: 'Crude Oil V1 (Basic)' },
+  { value: 'ma_crossover', label: 'MA Crossover (Simple)' },
+];
+
 export const CreateBacktestModal: React.FC<CreateBacktestModalProps> = ({
   isOpen,
   onClose,
@@ -68,11 +76,12 @@ export const CreateBacktestModal: React.FC<CreateBacktestModalProps> = ({
   const [formData, setFormData] = useState<BacktestFormData>({
     name: '',
     symbol: 'CrudeOIL',
-    startDate: '2024-01-01',
-    endDate: '2024-02-01',
+    startDate: '2025-01-01',
+    endDate: '2025-12-31',
     initialCapital: '10000',
     executionMode: 'synthetic_fast',
     model: 'mistral:7b-instruct',
+    syntheticStrategy: 'crude_oil_v3',
     timeframe: 'M1', // Changed to M1 - we have data until Nov 2025
     slippagePct: '0.001',
     commissionPct: '0.0002',
@@ -172,7 +181,7 @@ export const CreateBacktestModal: React.FC<CreateBacktestModalProps> = ({
       // Add synthetic strategy if using synthetic mode
       if (formData.executionMode === 'synthetic_fast') {
         configData.config_params = {
-          synthetic_strategy: 'crude_oil_v3',
+          synthetic_strategy: formData.syntheticStrategy,
           synthetic_params: {
             ema_fast: 8,
             ema_slow: 29,
@@ -272,7 +281,7 @@ export const CreateBacktestModal: React.FC<CreateBacktestModalProps> = ({
                   disabled={isSubmitting}
                 >
                   <Sparkles className="w-3 h-3" />
-                  AI Generate
+                  Regenerate
                 </button>
               </div>
               <input
@@ -386,6 +395,33 @@ export const CreateBacktestModal: React.FC<CreateBacktestModalProps> = ({
               </div>
             </div>
           </div>
+
+          {/* Synthetic Strategy Configuration - Only show if synthetic_fast mode */}
+          {formData.executionMode === 'synthetic_fast' && (
+            <div className="space-y-4 bg-success-500/5 border border-success-500/20 rounded-lg p-4">
+              <h3 className="text-sm font-medium text-success-400">Synthetic Strategy Configuration</h3>
+              <div>
+                <label className="block text-sm font-medium text-dark-300 mb-2">
+                  Strategy
+                </label>
+                <select
+                  value={formData.syntheticStrategy}
+                  onChange={(e) => handleChange('syntheticStrategy', e.target.value)}
+                  className="w-full bg-dark-800 border border-dark-600 rounded-lg px-4 py-2.5 text-dark-50 focus:outline-none focus:border-primary-500 transition-colors"
+                  disabled={isSubmitting}
+                >
+                  {SYNTHETIC_STRATEGIES.map((strategy) => (
+                    <option key={strategy.value} value={strategy.value}>
+                      {strategy.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-dark-500 mt-2">
+                  Choose a pre-configured trading strategy for synthetic backtesting.
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Agent Configuration - Only show if full_pipeline mode */}
           {formData.executionMode === 'full_pipeline' && (
