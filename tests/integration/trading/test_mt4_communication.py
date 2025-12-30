@@ -55,7 +55,7 @@ async def mt4_client(zmq_context, encryption_manager):
 def mock_mt4_pub_server(zmq_context):
     """Mock MT4 PUB server for testing."""
     socket = zmq_context.socket(zmq.PUB)
-    socket.bind("tcp://127.0.0.1:5556")
+    socket.bind("tcp://75.154.254.186:5556")
     yield socket
     socket.close()
 
