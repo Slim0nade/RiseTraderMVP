@@ -249,6 +249,15 @@ export const backtestApi = {
       params
     ),
 
+  getLiveStats: (runId: string) =>
+    apiClient.get<{
+      run_id: string;
+      status: string;
+      progress: { candles_processed: number; agent_decisions: number };
+      trade_counts: { total: number; closed: number; open: number; buy: number; sell: number; win: number; loss: number };
+      performance: { win_rate: number; realized_pnl: number; unrealized_pnl: number; total_pnl: number; gross_pnl: number; total_fees: number; current_equity: number };
+    }>(`/api/backtesting/runs/${runId}/live-stats`),
+
   cancelRun: (runId: string) =>
     apiClient.delete<{ success: boolean; message: string }>(`/api/backtesting/runs/${runId}`),
 

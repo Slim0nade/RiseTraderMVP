@@ -59,6 +59,11 @@ class TechnicalIndicatorsCalculator:
             Dictionary of indicator values
         """
         if len(self.price_history) < 20:  # Need minimum data
+            logger.debug(
+                "insufficient_data_for_indicators",
+                bars_available=len(self.price_history),
+                bars_required=20,
+            )
             return {}
 
         try:
@@ -135,6 +140,13 @@ class TechnicalIndicatorsCalculator:
 
             # Clean up NaN values
             indicators = {k: round(v, 4) for k, v in indicators.items() if pd.notna(v)}
+
+            logger.debug(
+                "indicators_calculated",
+                bars_used=len(df),
+                indicators_count=len(indicators),
+                indicator_names=list(indicators.keys()),
+            )
 
             return indicators
 

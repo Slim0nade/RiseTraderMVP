@@ -21,6 +21,11 @@ export const EquityCurveChart: React.FC<EquityCurveChartProps> = ({
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<'Area'> | null>(null);
 
+  // Ensure initialCapital is always a number
+  const initialCapitalNum = typeof initialCapital === 'string'
+    ? parseFloat(initialCapital)
+    : initialCapital;
+
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
@@ -92,8 +97,8 @@ export const EquityCurveChart: React.FC<EquityCurveChartProps> = ({
       // Only add baseline if we have more than one unique timestamp
       if (minTime !== maxTime) {
         baselineSeries.setData([
-          { time: minTime as any, value: initialCapital },
-          { time: maxTime as any, value: initialCapital },
+          { time: minTime as any, value: initialCapitalNum },
+          { time: maxTime as any, value: initialCapitalNum },
         ]);
       } else if (sortedData.length === 1) {
         // Single point - no baseline needed
@@ -118,7 +123,7 @@ export const EquityCurveChart: React.FC<EquityCurveChartProps> = ({
         chartRef.current.remove();
       }
     };
-  }, [height, initialCapital]);
+  }, [height, initialCapitalNum]);
 
   useEffect(() => {
     if (seriesRef.current && data.length > 0) {
@@ -152,9 +157,9 @@ export const EquityCurveChart: React.FC<EquityCurveChartProps> = ({
     }
   }, [data]);
 
-  const currentEquity = data.length > 0 ? data[data.length - 1].value : initialCapital;
-  const returnPct = ((currentEquity - initialCapital) / initialCapital) * 100;
-  const returnAmount = currentEquity - initialCapital;
+  const currentEquity = data.length > 0 ? data[data.length - 1].value : initialCapitalNum;
+  const returnPct = ((currentEquity - initialCapitalNum) / initialCapitalNum) * 100;
+  const returnAmount = currentEquity - initialCapitalNum;
 
   return (
     <div className="bg-dark-900 rounded-lg border border-dark-700 p-6">

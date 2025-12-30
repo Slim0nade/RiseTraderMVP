@@ -451,6 +451,7 @@ class MT4SyncService:
             market_data_dict = {
                 "time": candle_time,
                 "symbol": symbol,
+                "import_symbol": symbol,  # For MT4 live data, use the same symbol
                 "timeframe": timeframe_str,
                 "source": "MT4",  # MT4 is the valid enum value
                 "open": open_price,

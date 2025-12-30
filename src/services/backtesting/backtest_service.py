@@ -22,6 +22,7 @@ from .data_validator import DataValidator
 from .metrics_calculator import MetricsCalculator
 from .portfolio_state import PortfolioState
 from .trade_simulator import TradeSimulator
+from .technical_indicators import TechnicalIndicatorsCalculator
 
 logger = structlog.get_logger(__name__)
 
@@ -645,7 +646,10 @@ class BacktestService:
             candles_processed = 0
             snapshot_interval = 10  # More frequent snapshots in full mode
             decision_interval = 10  # Only query agent every N candles (performance)
-            
+
+            # Initialize technical indicators calculator
+            indicator_calc = TechnicalIndicatorsCalculator(lookback_period=200)
+
             # Track first tick for initial snapshot
             first_tick_processed = False
 
@@ -661,6 +665,9 @@ class BacktestService:
 
                 # Update portfolio with current market price
                 portfolio.update_market_price(tick.symbol, tick.close)
+
+                # Update technical indicators with new tick
+                indicator_calc.update(tick)
                 
                 # Create INITIAL snapshot on first tick (before any trading)
                 if not first_tick_processed:
@@ -675,19 +682,12 @@ class BacktestService:
 
                 # Query agent for decision (not every candle for performance)
                 if candles_processed % decision_interval == 0:
-                    # Build market context
-                    market_context = MarketContext(
+                    # Build FULL market context with portfolio awareness
+                    market_context = self._build_full_market_context(
+                        portfolio=portfolio,
                         symbol=tick.symbol,
-                        timestamp=tick.timestamp,
-                        current_price=tick.close,
-                        open=tick.open,
-                        high=tick.high,
-                        low=tick.low,
-                        close=tick.close,
-                        volume=tick.volume,
-                        cash_balance=portfolio.cash_balance,
-                        current_positions=self._get_position_dict(portfolio, tick.symbol),
-                        unrealized_pnl=portfolio.get_unrealized_pnl(),
+                        tick=tick,
+                        indicators=indicator_calc.calculate_indicators(),
                         max_position_size=config.initial_capital * Decimal("0.5"),  # 50% max
                         allow_short=config.allow_short_selling,
                     )
@@ -698,8 +698,8 @@ class BacktestService:
                     if decision and decision.action != "hold":
                         # Execute trade based on agent decision
                         if decision.action in ["buy", "sell"]:
-                            # Check if we can open position
-                            can_open, _ = portfolio.can_open_position(
+                            # Check if we can open position (now allows multiple)
+                            can_open, reason = portfolio.can_open_position(
                                 tick.symbol, decision.action, tick.close, decision.quantity
                             )
 
@@ -721,8 +721,37 @@ class BacktestService:
                                     )
                                     await self.backtest_repo.create_trade(trade_dict)
 
-                        elif decision.action == "close_long" and portfolio.has_position(tick.symbol):
-                            # Close existing position
+                                    # DEBUG: Log detailed portfolio state after opening position
+                                    symbol_positions = portfolio.get_positions_for_symbol(tick.symbol)
+                                    logger.info(
+                                        "trade_opened_full_pipeline",
+                                        run_id=str(run.id),
+                                        trade_id=str(result.trade_id),
+                                        action=decision.action,
+                                        price=float(tick.close),
+                                        quantity=float(decision.quantity),
+                                        total_positions=portfolio.get_position_count(),
+                                        symbol_positions_count=len(symbol_positions),
+                                        symbol_positions_detail=[
+                                            {
+                                                "id": str(p.position_id),
+                                                "action": p.action,
+                                                "qty": float(p.quantity),
+                                                "entry": float(p.entry_price),
+                                            }
+                                            for p in symbol_positions
+                                        ],
+                                    )
+                            else:
+                                logger.debug(
+                                    "position_open_rejected",
+                                    reason=reason,
+                                    action=decision.action,
+                                    symbol=tick.symbol,
+                                )
+
+                        elif decision.action in ["close_long", "close_short"] and portfolio.has_position(tick.symbol):
+                            # Close oldest position (FIFO)
                             exit_result, gross_pnl, net_pnl = simulator.execute_exit(
                                 portfolio=portfolio,
                                 symbol=tick.symbol,
@@ -743,11 +772,139 @@ class BacktestService:
                                     ) if exit_result.timestamp else None,
                                 }
                             )
+                            logger.info(
+                                "trade_closed_full_pipeline",
+                                run_id=str(run.id),
+                                trade_id=str(exit_result.trade_id),
+                                gross_pnl=float(gross_pnl),
+                                remaining_positions=portfolio.get_position_count(tick.symbol),
+                            )
+
+                        elif decision.action == "close_all" and portfolio.has_position(tick.symbol):
+                            # Close ALL positions for this symbol
+                            close_results = portfolio.close_all_positions_for_symbol(
+                                tick.symbol, tick.close
+                            )
+                            for closed_pos, gross_pnl, capital_return in close_results:
+                                # Deduct fees
+                                notional = tick.close * closed_pos.quantity
+                                fees = notional * simulator.commission_pct + simulator.commission_fixed
+                                portfolio.cash_balance -= fees
+                                net_pnl = gross_pnl - fees
+                                
+                                # Update trade record
+                                await self.backtest_repo.update_trade(
+                                    trade_id=closed_pos.trade_id,
+                                    update_data={
+                                        "exit_timestamp": tick.timestamp,
+                                        "exit_price": tick.close,
+                                        "gross_pnl": gross_pnl,
+                                        "net_pnl": net_pnl,
+                                        "fees_paid": fees,
+                                        "holding_duration_seconds": int(
+                                            (tick.timestamp - closed_pos.entry_timestamp).total_seconds()
+                                        ),
+                                    }
+                                )
+                            logger.info(
+                                "all_positions_closed",
+                                run_id=str(run.id),
+                                symbol=tick.symbol,
+                                positions_closed=len(close_results),
+                                total_pnl=sum(r[1] for r in close_results),
+                            )
 
                 # Periodic portfolio snapshot
                 if candles_processed % snapshot_interval == 0:
                     snapshot = portfolio.get_snapshot(tick.timestamp, run.id)
                     await self.backtest_repo.create_snapshot(snapshot)
+
+                # Update database with progress (every 100 candles for good UI responsiveness)
+                if candles_processed % 100 == 0:
+                    # Get latest trades and snapshots for real-time metrics
+                    trades = await self.backtest_repo.get_trades(run.id)
+                    snapshots = await self.backtest_repo.get_snapshots(run.id)
+
+                    # Calculate trade statistics
+                    closed_trades = [t for t in trades if t.exit_timestamp is not None]
+                    buy_trades = [t for t in trades if t.action == "buy"]
+                    sell_trades = [t for t in trades if t.action == "sell"]
+                    winning_trades = [t for t in closed_trades if t.net_pnl and t.net_pnl > 0]
+                    losing_trades = [t for t in closed_trades if t.net_pnl and t.net_pnl <= 0]
+
+                    # Calculate P&L
+                    total_realized_pnl = sum(t.net_pnl for t in closed_trades if t.net_pnl)
+                    unrealized_pnl = portfolio.get_unrealized_pnl()
+
+                    # Equity curve (last 50 points for chart)
+                    equity_curve = [
+                        {
+                            "timestamp": s.timestamp.isoformat(),
+                            "value": float(s.total_value),
+                            "unrealized_pnl": float(s.unrealized_pnl),
+                            "realized_pnl": float(s.realized_pnl),
+                        }
+                        for s in snapshots[-50:]  # Last 50 points
+                    ]
+
+                    await self.backtest_repo.update_run(
+                        run_id=run.id,
+                        update_data={
+                            "candles_processed": candles_processed,
+                            "agent_decisions_count": integrator.decision_count,
+                        }
+                    )
+                    # Commit to make progress visible to polling clients
+                    await self.session.commit()
+
+                    # Broadcast enhanced progress event to WebSocket clients
+                    try:
+                        from .backtest_events import BacktestEvent, BacktestEventType, get_event_broadcaster
+                        broadcaster = get_event_broadcaster()
+                        progress_event = BacktestEvent(
+                            event_type=BacktestEventType.PROGRESS_UPDATE,
+                            run_id=run.id,
+                            timestamp=datetime.now(),
+                            data={
+                                "candles_processed": candles_processed,
+                                "total_candles": total,
+                                "agent_decisions_count": integrator.decision_count,
+                                "current_equity": float(portfolio.get_total_value()),
+                                "progress_pct": (candles_processed / total * 100) if total > 0 else 0,
+                                # Trade statistics
+                                "total_trades": len(trades),
+                                "closed_trades": len(closed_trades),
+                                "buy_count": len(buy_trades),
+                                "sell_count": len(sell_trades),
+                                "win_count": len(winning_trades),
+                                "loss_count": len(losing_trades),
+                                "win_rate": (len(winning_trades) / len(closed_trades) * 100) if closed_trades else 0,
+                                # P&L metrics
+                                "realized_pnl": float(total_realized_pnl),
+                                "unrealized_pnl": float(unrealized_pnl),
+                                "total_pnl": float(total_realized_pnl + unrealized_pnl),
+                                # Equity curve for charting
+                                "equity_curve": equity_curve,
+                                # Current positions
+                                "open_positions": len(portfolio.positions),
+                            }
+                        )
+                        await broadcaster.broadcast(progress_event)
+                    except Exception as broadcast_error:
+                        logger.warning(
+                            "progress_broadcast_failed",
+                            error=str(broadcast_error),
+                            run_id=str(run.id),
+                        )
+
+                    logger.debug(
+                        "progress_committed",
+                        run_id=str(run.id),
+                        candles_processed=candles_processed,
+                        decisions=integrator.decision_count,
+                        equity=float(portfolio.get_total_value()),
+                        trades=len(trades),
+                    )
 
             # Create FINAL snapshot after all trading
             if first_tick_processed:
@@ -782,17 +939,123 @@ class BacktestService:
             await integrator.shutdown()
 
     def _get_position_dict(self, portfolio: PortfolioState, symbol: str) -> Dict[str, Any]:
-        """Extract position info as dict for market context."""
+        """
+        Extract position info as dict for market context.
+        DEPRECATED: Use _build_full_market_context instead.
+        Kept for backward compatibility.
+        """
         if portfolio.has_position(symbol):
-            position = portfolio.positions.get(symbol)
-            if position:
+            positions = portfolio.get_positions_for_symbol(symbol)
+            if positions:
+                # Return first position for backward compatibility
+                pos = positions[0]
                 return {
-                    "direction": "long" if position.quantity > 0 else "short",
-                    "quantity": abs(float(position.quantity)),
-                    "entry_price": float(position.entry_price),
-                    "unrealized_pnl": float(position.unrealized_pnl),
+                    "direction": "long" if pos.action == "buy" else "short",
+                    "quantity": float(pos.quantity),
+                    "entry_price": float(pos.entry_price),
+                    "unrealized_pnl": float(pos.unrealized_pnl),
                 }
         return {}
+
+    def _build_full_market_context(
+        self,
+        portfolio: PortfolioState,
+        symbol: str,
+        tick: Any,
+        indicators: Dict[str, float],
+        max_position_size: Decimal,
+        allow_short: bool,
+    ) -> "MarketContext":
+        """
+        Build comprehensive market context with full portfolio awareness.
+
+        Args:
+            portfolio: Portfolio state
+            symbol: Current symbol being analyzed
+            tick: Current market tick
+            indicators: Technical indicators
+            max_position_size: Max position size constraint
+            allow_short: Whether shorting is allowed
+
+        Returns:
+            MarketContext with full portfolio state
+        """
+        from .agent_integrator import MarketContext
+
+        # Get full portfolio context
+        portfolio_ctx = portfolio.get_full_portfolio_context()
+
+        # DEBUG: Log portfolio state for diagnostics
+        logger.debug(
+            "building_market_context",
+            symbol=symbol,
+            total_positions=len(portfolio_ctx["positions"]),
+            symbols_with_positions=list(portfolio_ctx["symbols_summary"].keys()),
+            portfolio_symbols_detail={
+                sym: summary["position_count"]
+                for sym, summary in portfolio_ctx["symbols_summary"].items()
+            },
+        )
+
+        # Get current symbol positions
+        current_symbol_positions = [
+            p for p in portfolio_ctx["positions"] if p["symbol"] == symbol
+        ]
+
+        # DEBUG: Log filtered positions for current symbol
+        logger.debug(
+            "symbol_positions_filtered",
+            symbol=symbol,
+            matching_positions=len(current_symbol_positions),
+            position_details=[
+                {
+                    "direction": p["direction"],
+                    "quantity": p["quantity"],
+                    "entry_price": p["entry_price"],
+                }
+                for p in current_symbol_positions
+            ] if current_symbol_positions else "NONE",
+        )
+        
+        # Get net direction for current symbol
+        net_direction, net_qty = portfolio.get_net_position(symbol)
+        
+        return MarketContext(
+            symbol=symbol,
+            timestamp=tick.timestamp,
+            current_price=tick.close,
+            open=tick.open,
+            high=tick.high,
+            low=tick.low,
+            close=tick.close,
+            volume=tick.volume,
+            indicators=indicators,
+            
+            # Full portfolio state
+            cash_balance=Decimal(str(portfolio_ctx["cash_balance"])),
+            buying_power=Decimal(str(portfolio_ctx["buying_power"])),
+            portfolio_positions=portfolio_ctx["positions"],
+            symbols_summary=portfolio_ctx["symbols_summary"],
+            total_position_count=portfolio_ctx["total_position_count"],
+            total_exposure=Decimal(str(portfolio_ctx["total_exposure"])),
+            exposure_pct=Decimal(str(portfolio_ctx["exposure_pct"])),
+            total_unrealized_pnl=Decimal(str(portfolio_ctx["total_unrealized_pnl"])),
+            realized_pnl=Decimal(str(portfolio_ctx["realized_pnl"])),
+            total_portfolio_value=Decimal(str(portfolio_ctx["total_value"])),
+            
+            # Current symbol specifics
+            current_symbol_positions=current_symbol_positions,
+            current_symbol_net_direction=net_direction,
+            current_symbol_net_quantity=net_qty,
+            
+            # Risk constraints
+            max_position_size=max_position_size,
+            allow_short=allow_short,
+            
+            # Backward compatibility
+            current_positions=self._get_position_dict(portfolio, symbol),
+            unrealized_pnl=portfolio.get_unrealized_pnl(),
+        )
 
     async def _calculate_final_metrics(
         self,

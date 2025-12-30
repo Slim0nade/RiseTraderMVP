@@ -9,10 +9,11 @@ import structlog
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status, WebSocket, WebSocketDisconnect
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models.backtest import ExecutionMode as DBExecutionMode
+from src.services.backtesting.backtest_events import get_event_broadcaster
 from src.database.repositories.backtest_repository import BacktestRepository
 from src.database.repositories.market_data_repository import MarketDataRepository
 from src.services.backtesting import BacktestService, ComparisonService, SyntheticEngine
@@ -1083,6 +1084,215 @@ async def cancel_run(
         )
 
 
+@router.get(
+    "/runs/{run_id}/equity-curve",
+    responses={
+        200: {"description": "Equity curve data retrieved"},
+        404: {"model": ErrorResponse, "description": "Run not found"},
+        500: {"model": ErrorResponse, "description": "Internal server error"},
+    },
+)
+async def get_equity_curve(
+    run_id: UUID,
+    limit: int = Query(1000, ge=1, le=10000, description="Maximum points"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get equity curve data for visualization.
+
+    Returns portfolio snapshots showing equity evolution over time.
+
+    Args:
+        run_id: Run UUID
+        limit: Maximum data points to return
+
+    Returns:
+        Equity curve data with timestamps and values
+    """
+    try:
+        from sqlalchemy import select
+        from src.database.models.backtest import BacktestRun, PortfolioSnapshot
+
+        # Verify run exists
+        run_query = select(BacktestRun).where(BacktestRun.id == run_id)
+        result = await db.execute(run_query)
+        run = result.scalar_one_or_none()
+        if not run:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Run {run_id} not found",
+            )
+
+        # Get snapshots ordered by time
+        snapshots_query = (
+            select(PortfolioSnapshot)
+            .where(PortfolioSnapshot.backtest_run_id == run_id)
+            .order_by(PortfolioSnapshot.timestamp)
+            .limit(limit)
+        )
+        result = await db.execute(snapshots_query)
+        snapshots = result.scalars().all()
+
+        equity_data = [
+            {
+                "timestamp": snapshot.timestamp.isoformat(),
+                "total_value": float(snapshot.total_value),
+                "cash_balance": float(snapshot.cash_balance),
+                "unrealized_pnl": float(snapshot.unrealized_pnl),
+                "realized_pnl": float(snapshot.realized_pnl),
+                "positions_count": len(snapshot.positions) if snapshot.positions else 0,
+            }
+            for snapshot in snapshots
+        ]
+
+        logger.info(
+            "equity_curve_retrieved",
+            run_id=str(run_id),
+            points=len(equity_data),
+        )
+
+        return {
+            "run_id": str(run_id),
+            "data_points": len(equity_data),
+            "equity_curve": equity_data,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            "get_equity_curve_failed",
+            run_id=str(run_id),
+            error=str(e),
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve equity curve: {str(e)}",
+        )
+
+
+@router.get(
+    "/runs/{run_id}/live-stats",
+    responses={
+        200: {"description": "Live statistics retrieved"},
+        404: {"model": ErrorResponse, "description": "Run not found"},
+        500: {"model": ErrorResponse, "description": "Internal server error"},
+    },
+)
+async def get_live_stats(
+    run_id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get live trading statistics for a running or completed backtest.
+
+    Returns real-time metrics including:
+    - Buy/Sell counts
+    - Win/Loss statistics
+    - P&L breakdown
+    - Position information
+
+    Args:
+        run_id: Run UUID
+
+    Returns:
+        Live trading statistics
+    """
+    try:
+        from sqlalchemy import select, func
+        from src.database.models.backtest import BacktestRun
+        from src.database.models.simulated_trade import SimulatedTrade, PortfolioSnapshot
+
+        # Get run
+        run_query = select(BacktestRun).where(BacktestRun.id == run_id)
+        result = await db.execute(run_query)
+        run = result.scalar_one_or_none()
+        if not run:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Run {run_id} not found",
+            )
+
+        # Get all trades
+        trades_query = select(SimulatedTrade).where(SimulatedTrade.backtest_run_id == run_id)
+        result = await db.execute(trades_query)
+        trades = result.scalars().all()
+
+        # Calculate statistics
+        closed_trades = [t for t in trades if t.exit_timestamp is not None]
+        buy_trades = [t for t in trades if t.action == "buy"]
+        sell_trades = [t for t in trades if t.action == "sell"]
+        winning_trades = [t for t in closed_trades if t.net_pnl and t.net_pnl > 0]
+        losing_trades = [t for t in closed_trades if t.net_pnl and t.net_pnl <= 0]
+
+        # P&L calculations
+        total_realized_pnl = sum(t.net_pnl for t in closed_trades if t.net_pnl) or 0
+        total_gross_pnl = sum(t.gross_pnl for t in closed_trades if t.gross_pnl) or 0
+        total_fees = sum(t.fees_paid for t in closed_trades if t.fees_paid) or 0
+
+        # Get latest snapshot for unrealized P&L
+        latest_snapshot_query = (
+            select(PortfolioSnapshot)
+            .where(PortfolioSnapshot.backtest_run_id == run_id)
+            .order_by(PortfolioSnapshot.timestamp.desc())
+            .limit(1)
+        )
+        result = await db.execute(latest_snapshot_query)
+        latest_snapshot = result.scalar_one_or_none()
+
+        unrealized_pnl = float(latest_snapshot.unrealized_pnl) if latest_snapshot else 0
+        current_equity = float(latest_snapshot.total_value) if latest_snapshot else float(run.initial_capital) if hasattr(run, 'initial_capital') else 0
+
+        logger.info(
+            "live_stats_retrieved",
+            run_id=str(run_id),
+            total_trades=len(trades),
+            closed_trades=len(closed_trades),
+        )
+
+        return {
+            "run_id": str(run_id),
+            "status": run.status.value if hasattr(run.status, 'value') else str(run.status),
+            "progress": {
+                "candles_processed": run.candles_processed or 0,
+                "agent_decisions": run.agent_decisions_count or 0,
+            },
+            "trade_counts": {
+                "total": len(trades),
+                "closed": len(closed_trades),
+                "open": len(trades) - len(closed_trades),
+                "buy": len(buy_trades),
+                "sell": len(sell_trades),
+                "win": len(winning_trades),
+                "loss": len(losing_trades),
+            },
+            "performance": {
+                "win_rate": (len(winning_trades) / len(closed_trades) * 100) if closed_trades else 0,
+                "realized_pnl": float(total_realized_pnl),
+                "unrealized_pnl": unrealized_pnl,
+                "total_pnl": float(total_realized_pnl) + unrealized_pnl,
+                "gross_pnl": float(total_gross_pnl),
+                "total_fees": float(total_fees),
+                "current_equity": current_equity,
+            },
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            "get_live_stats_failed",
+            run_id=str(run_id),
+            error=str(e),
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve live stats: {str(e)}",
+        )
+
+
 # ============================================================================
 # OPTIMIZATION ENDPOINTS (User Story 2)
 # ============================================================================
@@ -2010,3 +2220,87 @@ async def stream_backtest_progress(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to setup progress stream: {str(e)}",
         )
+
+
+@router.websocket("/runs/{run_id}/live")
+async def websocket_live_backtest(
+    websocket: WebSocket,
+    run_id: UUID,
+    service: BacktestService = Depends(get_backtest_service),
+):
+    """
+    WebSocket endpoint for live backtest visualization.
+
+    Streams real-time events as backtest executes:
+    - Candle processing with OHLCV data
+    - Agent decisions with reasoning
+    - Trade executions with entry/exit points
+    - Position and equity updates
+
+    Designed for MT4-style live chart visualization with agent thoughts.
+
+    Args:
+        websocket: WebSocket connection
+        run_id: Backtest run UUID to stream
+
+    Event Format:
+        {
+            "event_type": "agent_decision" | "trade_executed" | "candle_processed" | ...,
+            "run_id": "uuid",
+            "timestamp": "ISO timestamp",
+            "data": {
+                // Event-specific data
+                "price": 75.86,
+                "agent_thought": "RSI oversold, MACD bullish crossover...",
+                "action": "buy",
+                ...
+            }
+        }
+
+    Example Usage (JavaScript):
+        const ws = new WebSocket('ws://localhost:8003/api/v1/backtesting/runs/{run_id}/live');
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.event_type === 'agent_decision') {
+                // Show agent thought bubble on chart
+            } else if (data.event_type === 'trade_executed') {
+                // Draw buy/sell arrow on chart
+            }
+        };
+    """
+    await websocket.accept()
+
+    broadcaster = get_event_broadcaster()
+    broadcaster.register_connection(run_id, websocket)
+
+    logger.info(
+        "websocket_connection_established",
+        run_id=str(run_id),
+        client_host=websocket.client.host if websocket.client else "unknown",
+    )
+
+    try:
+        # Keep connection alive and listen for client messages (if any)
+        while True:
+            # Wait for client messages (e.g., "ping" for keep-alive)
+            # Events are pushed from backtest_service via broadcaster
+            data = await websocket.receive_text()
+
+            # Echo back for debugging (optional)
+            if data == "ping":
+                await websocket.send_json({"type": "pong"})
+
+    except WebSocketDisconnect:
+        logger.info(
+            "websocket_disconnected",
+            run_id=str(run_id),
+        )
+    except Exception as e:
+        logger.error(
+            "websocket_error",
+            run_id=str(run_id),
+            error=str(e),
+            exc_info=True,
+        )
+    finally:
+        broadcaster.unregister_connection(run_id, websocket)

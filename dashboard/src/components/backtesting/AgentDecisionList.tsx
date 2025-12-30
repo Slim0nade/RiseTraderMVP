@@ -1,5 +1,5 @@
-import React from 'react';
-import { TrendingUp, TrendingDown, Minus, AlertCircle, CheckCircle } from 'lucide-react';
+import React, { useState } from 'react';
+import { TrendingUp, TrendingDown, Minus, AlertCircle, CheckCircle, ChevronDown, ChevronRight } from 'lucide-react';
 import type { AgentDecision } from '@/types';
 import { format } from 'date-fns';
 
@@ -8,10 +8,56 @@ interface AgentDecisionListProps {
   loading?: boolean;
 }
 
+// Group consecutive decisions of the same type
+interface DecisionGroup {
+  type: string;
+  decisions: AgentDecision[];
+  isTransition: boolean; // true if this group starts a new decision type (transition from previous)
+}
+
+const groupDecisions = (decisions: AgentDecision[]): DecisionGroup[] => {
+  if (decisions.length === 0) return [];
+
+  const groups: DecisionGroup[] = [];
+  let currentGroup: AgentDecision[] = [decisions[0]];
+  let currentType = decisions[0].decision_type;
+
+  for (let i = 1; i < decisions.length; i++) {
+    const decision = decisions[i];
+
+    if (decision.decision_type === currentType) {
+      // Same type, add to current group
+      currentGroup.push(decision);
+    } else {
+      // Type changed - save current group and start new one
+      groups.push({
+        type: currentType,
+        decisions: currentGroup,
+        isTransition: groups.length > 0, // All groups except first are transitions
+      });
+
+      currentGroup = [decision];
+      currentType = decision.decision_type;
+    }
+  }
+
+  // Add the last group
+  groups.push({
+    type: currentType,
+    decisions: currentGroup,
+    isTransition: groups.length > 0,
+  });
+
+  return groups;
+};
+
 export const AgentDecisionList: React.FC<AgentDecisionListProps> = ({
   decisions,
   loading = false,
 }) => {
+  const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set());
+  const [hoveredDecision, setHoveredDecision] = useState<string | null>(null);
+
   if (loading) {
     return (
       <div className="bg-dark-900 rounded-lg border border-dark-700 p-8 text-center">
@@ -29,6 +75,16 @@ export const AgentDecisionList: React.FC<AgentDecisionListProps> = ({
       </div>
     );
   }
+
+  const toggleGroup = (index: number) => {
+    const newExpanded = new Set(expandedGroups);
+    if (newExpanded.has(index)) {
+      newExpanded.delete(index);
+    } else {
+      newExpanded.add(index);
+    }
+    setExpandedGroups(newExpanded);
+  };
 
   const getDecisionIcon = (type: string) => {
     switch (type) {
@@ -68,6 +124,8 @@ export const AgentDecisionList: React.FC<AgentDecisionListProps> = ({
     return 'Low';
   };
 
+  const groups = groupDecisions(decisions);
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between mb-4">
@@ -96,128 +154,206 @@ export const AgentDecisionList: React.FC<AgentDecisionListProps> = ({
         </div>
       </div>
 
-      <div className="space-y-2 max-h-[600px] overflow-y-auto pr-2">
-        {decisions.map((decision, index) => (
-          <div
-            key={decision.id}
-            className={`border rounded-lg p-4 transition-all hover:border-primary-500/30 ${getDecisionColor(
-              decision.decision_type
-            )}`}
-          >
-            <div className="flex items-start justify-between mb-2">
-              <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-dark-800 border border-dark-600">
-                  {getDecisionIcon(decision.decision_type)}
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-dark-50">
-                      {decision.decision_type}
+      <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2">
+        {groups.map((group, groupIndex) => {
+          const isExpanded = expandedGroups.has(groupIndex);
+          const avgConviction = group.decisions.reduce((sum, d) => sum + d.conviction_score, 0) / group.decisions.length;
+
+          return (
+            <div
+              key={groupIndex}
+              className={`border rounded-lg overflow-hidden transition-all ${
+                group.isTransition
+                  ? 'ring-2 ring-primary-500/40 shadow-lg shadow-primary-500/20'
+                  : ''
+              } ${getDecisionColor(group.type)}`}
+            >
+              {/* Group Header - Always Visible */}
+              <div
+                className="p-4 cursor-pointer hover:bg-dark-800/30 transition-colors"
+                onClick={() => toggleGroup(groupIndex)}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    {isExpanded ? (
+                      <ChevronDown className="w-5 h-5 text-dark-400" />
+                    ) : (
+                      <ChevronRight className="w-5 h-5 text-dark-400" />
+                    )}
+
+                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-dark-800 border border-dark-600">
+                      {getDecisionIcon(group.type)}
+                    </div>
+
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-dark-50">
+                          {group.type}
+                        </span>
+                        <span className="text-xs text-dark-500">
+                          ×{group.decisions.length}
+                        </span>
+                        {group.isTransition && (
+                          <span className="text-xs px-2 py-0.5 rounded bg-primary-500/20 text-primary-400 border border-primary-500/30">
+                            Decision Change
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-dark-500">
+                        {format(new Date(group.decisions[0].timestamp), 'MMM dd, HH:mm:ss')}
+                        {group.decisions.length > 1 && (
+                          <>
+                            {' → '}
+                            {format(
+                              new Date(group.decisions[group.decisions.length - 1].timestamp),
+                              'HH:mm:ss'
+                            )}
+                          </>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="text-right">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-dark-500">Avg Conviction</span>
+                      <span className={`text-sm font-bold ${getConvictionColor(avgConviction)}`}>
+                        {(avgConviction * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                    <span
+                      className={`text-xs px-2 py-0.5 rounded ${
+                        avgConviction >= 0.7
+                          ? 'bg-success-500/20 text-success-400'
+                          : avgConviction >= 0.5
+                          ? 'bg-warning-500/20 text-warning-400'
+                          : 'bg-dark-700 text-dark-400'
+                      }`}
+                    >
+                      {getConvictionBadge(avgConviction)}
                     </span>
-                    <span className="text-xs text-dark-500">#{index + 1}</span>
                   </div>
-                  <p className="text-xs text-dark-500">
-                    {format(new Date(decision.timestamp), 'MMM dd, HH:mm:ss')}
-                  </p>
                 </div>
               </div>
 
-              <div className="text-right">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-dark-500">Conviction</span>
-                  <span
-                    className={`text-sm font-bold ${getConvictionColor(
-                      decision.conviction_score
-                    )}`}
-                  >
-                    {(decision.conviction_score * 100).toFixed(0)}%
-                  </span>
-                </div>
-                <span
-                  className={`text-xs px-2 py-0.5 rounded ${
-                    decision.conviction_score >= 0.7
-                      ? 'bg-success-500/20 text-success-400'
-                      : decision.conviction_score >= 0.5
-                      ? 'bg-warning-500/20 text-warning-400'
-                      : 'bg-dark-700 text-dark-400'
-                  }`}
-                >
-                  {getConvictionBadge(decision.conviction_score)}
-                </span>
-              </div>
-            </div>
+              {/* Expanded Decision Details */}
+              {isExpanded && (
+                <div className="border-t border-dark-700/50">
+                  {group.decisions.map((decision, decisionIndex) => (
+                    <div
+                      key={decision.id}
+                      className="relative group/decision"
+                      onMouseEnter={() => setHoveredDecision(decision.id)}
+                      onMouseLeave={() => setHoveredDecision(null)}
+                    >
+                      {/* Vertical Timeline Item */}
+                      <div className="flex items-start gap-3 p-3 hover:bg-dark-800/30 transition-colors border-l-2 border-dark-700 ml-4">
+                        <div className="flex-shrink-0 w-2 h-2 rounded-full bg-dark-500 mt-1.5 -ml-[9px]" />
 
-            <div className="mt-3 pt-3 border-t border-dark-700/50 space-y-2">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-dark-500 text-xs">Symbol</p>
-                  <p className="text-dark-200 font-medium">{decision.symbol}</p>
-                </div>
-                {decision.quantity && (
-                  <div>
-                    <p className="text-dark-500 text-xs">Quantity</p>
-                    <p className="text-dark-200 font-medium">{decision.quantity}</p>
-                  </div>
-                )}
-              </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 text-xs text-dark-400">
+                              <span className="font-mono">
+                                {format(new Date(decision.timestamp), 'HH:mm:ss')}
+                              </span>
+                              <span className="text-dark-600">•</span>
+                              <span className={getConvictionColor(decision.conviction_score)}>
+                                {(decision.conviction_score * 100).toFixed(0)}%
+                              </span>
+                            </div>
 
-              {decision.risk_assessment && (
-                <div className="mt-2">
-                  <p className="text-dark-500 text-xs mb-1">Risk Assessment</p>
-                  <p className="text-dark-300 text-sm bg-dark-800/50 rounded p-2">
-                    {decision.risk_assessment}
-                  </p>
-                </div>
-              )}
+                            {decision.conviction_score >= 0.6 ? (
+                              <CheckCircle className="w-3 h-3 text-success-500" />
+                            ) : (
+                              <AlertCircle className="w-3 h-3 text-warning-500" />
+                            )}
+                          </div>
 
-              {decision.reasoning && (
-                <div className="mt-2">
-                  <p className="text-dark-500 text-xs mb-1">Reasoning</p>
-                  <p className="text-dark-300 text-sm bg-dark-800/50 rounded p-2">
-                    {decision.reasoning}
-                  </p>
-                </div>
-              )}
+                          {/* Tooltip on Hover */}
+                          {hoveredDecision === decision.id && (
+                            <div className="absolute left-full ml-4 top-0 z-10 w-80 bg-dark-800 border border-dark-600 rounded-lg shadow-xl p-4 pointer-events-none">
+                              <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    {getDecisionIcon(decision.decision_type)}
+                                    <span className="font-semibold text-dark-50">
+                                      {decision.decision_type}
+                                    </span>
+                                  </div>
+                                  <span className="text-xs text-dark-500">
+                                    {format(new Date(decision.timestamp), 'MMM dd, HH:mm:ss')}
+                                  </span>
+                                </div>
 
-              {(decision.stop_loss || decision.take_profit) && (
-                <div className="grid grid-cols-2 gap-4 text-sm mt-2">
-                  {decision.stop_loss && (
-                    <div>
-                      <p className="text-dark-500 text-xs">Stop Loss</p>
-                      <p className="text-danger-400 font-medium">
-                        ${decision.stop_loss.toFixed(2)}
-                      </p>
+                                <div className="grid grid-cols-2 gap-3 text-sm">
+                                  <div>
+                                    <p className="text-dark-500 text-xs">Symbol</p>
+                                    <p className="text-dark-200">{decision.symbol}</p>
+                                  </div>
+                                  {decision.quantity && (
+                                    <div>
+                                      <p className="text-dark-500 text-xs">Quantity</p>
+                                      <p className="text-dark-200">{decision.quantity}</p>
+                                    </div>
+                                  )}
+                                  <div>
+                                    <p className="text-dark-500 text-xs">Conviction</p>
+                                    <p className={getConvictionColor(decision.conviction_score)}>
+                                      {(decision.conviction_score * 100).toFixed(0)}%
+                                    </p>
+                                  </div>
+                                </div>
+
+                                {decision.reasoning && (
+                                  <div>
+                                    <p className="text-dark-500 text-xs mb-1">Reasoning</p>
+                                    <p className="text-dark-300 text-xs bg-dark-900 rounded p-2 max-h-32 overflow-y-auto">
+                                      {decision.reasoning}
+                                    </p>
+                                  </div>
+                                )}
+
+                                {decision.risk_assessment && (
+                                  <div>
+                                    <p className="text-dark-500 text-xs mb-1">Risk Assessment</p>
+                                    <p className="text-dark-300 text-xs bg-dark-900 rounded p-2">
+                                      {decision.risk_assessment}
+                                    </p>
+                                  </div>
+                                )}
+
+                                {(decision.stop_loss || decision.take_profit) && (
+                                  <div className="grid grid-cols-2 gap-3 text-sm">
+                                    {decision.stop_loss && (
+                                      <div>
+                                        <p className="text-dark-500 text-xs">Stop Loss</p>
+                                        <p className="text-danger-400">
+                                          ${decision.stop_loss.toFixed(2)}
+                                        </p>
+                                      </div>
+                                    )}
+                                    {decision.take_profit && (
+                                      <div>
+                                        <p className="text-dark-500 text-xs">Take Profit</p>
+                                        <p className="text-success-400">
+                                          ${decision.take_profit.toFixed(2)}
+                                        </p>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  )}
-                  {decision.take_profit && (
-                    <div>
-                      <p className="text-dark-500 text-xs">Take Profit</p>
-                      <p className="text-success-400 font-medium">
-                        ${decision.take_profit.toFixed(2)}
-                      </p>
-                    </div>
-                  )}
+                  ))}
                 </div>
               )}
             </div>
-
-            {decision.decision_type !== 'HOLD' && decision.conviction_score < 0.6 && (
-              <div className="mt-2 flex items-center gap-2 text-xs text-warning-500 bg-warning-500/10 border border-warning-500/20 rounded p-2">
-                <AlertCircle className="w-4 h-4" />
-                <span>
-                  Below execution threshold (0.6) - Trade not executed
-                </span>
-              </div>
-            )}
-
-            {decision.decision_type !== 'HOLD' && decision.conviction_score >= 0.6 && (
-              <div className="mt-2 flex items-center gap-2 text-xs text-success-500 bg-success-500/10 border border-success-500/20 rounded p-2">
-                <CheckCircle className="w-4 h-4" />
-                <span>Above execution threshold - Trade executed</span>
-              </div>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

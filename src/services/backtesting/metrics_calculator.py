@@ -112,6 +112,8 @@ class PerformanceMetrics:
             "losing_trades": losing_trades,
             "avg_win": safe_float(self.avg_win),
             "avg_loss": safe_float(self.avg_loss),
+            "largest_win": safe_float(self.largest_win),
+            "largest_loss": safe_float(self.largest_loss),
             "profit_factor": safe_float(self.profit_factor),
             "avg_trade_duration_hours": safe_float(self.avg_trade_duration_hours),
             "max_consecutive_wins": self.consecutive_wins_max,

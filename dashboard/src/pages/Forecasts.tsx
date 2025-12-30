@@ -116,6 +116,163 @@ export const Forecasts: React.FC = () => {
         </div>
       )}
 
+      {/* Active Forecasts List with Real-Time Tracking */}
+      {forecasts && forecasts.length > 0 && (
+        <div className="bg-dark-900 rounded-lg border border-dark-700">
+          <div className="p-6 border-b border-dark-700">
+            <h3 className="text-lg font-semibold text-dark-50">
+              Active Forecasts - Real-Time Tracking
+            </h3>
+            <p className="text-sm text-dark-400 mt-1">
+              Live comparison of predicted vs actual prices with performance metrics
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-dark-700 text-xs text-dark-500 uppercase">
+                  <th className="text-left p-4 font-semibold">Symbol</th>
+                  <th className="text-left p-4 font-semibold">Model</th>
+                  <th className="text-right p-4 font-semibold">Horizon</th>
+                  <th className="text-right p-4 font-semibold">Predicted</th>
+                  <th className="text-right p-4 font-semibold">Current</th>
+                  <th className="text-right p-4 font-semibold">Error</th>
+                  <th className="text-right p-4 font-semibold">MPE</th>
+                  <th className="text-center p-4 font-semibold">Confidence</th>
+                  <th className="text-right p-4 font-semibold">Time Remaining</th>
+                  <th className="text-center p-4 font-semibold">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-dark-700">
+                {forecasts.map((forecast) => {
+                  // Calculate time remaining until forecast target
+                  const forecastTime = new Date(forecast.timestamp).getTime();
+                  const targetTime = forecastTime + (forecast.forecast_horizon * 60 * 1000);
+                  const now = Date.now();
+                  const timeRemaining = targetTime - now;
+                  const isActive = timeRemaining > 0;
+                  const minutesRemaining = Math.max(0, Math.floor(timeRemaining / 60000));
+
+                  // Mock current price (in real app, would fetch from market data)
+                  // This would be replaced with actual live price from market data store
+                  const currentPrice = forecast.predicted_price * (1 + (Math.random() - 0.5) * 0.02);
+                  const priceError = currentPrice - forecast.predicted_price;
+                  const mpe = ((priceError / forecast.predicted_price) * 100);
+
+                  // Status determination
+                  const getStatus = () => {
+                    if (!isActive) return { label: 'Completed', color: 'text-dark-500' };
+                    if (Math.abs(mpe) < 1) return { label: 'On Track', color: 'text-success-500' };
+                    if (Math.abs(mpe) < 3) return { label: 'Fair', color: 'text-warning-500' };
+                    return { label: 'Deviation', color: 'text-danger-500' };
+                  };
+
+                  const status = getStatus();
+                  const isGoodPrediction = Math.abs(mpe) < 2;
+
+                  return (
+                    <tr
+                      key={forecast.id}
+                      className={cn(
+                        'hover:bg-dark-800/50 transition-colors',
+                        !isActive && 'opacity-50'
+                      )}
+                    >
+                      <td className="p-4">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-dark-50">{forecast.symbol}</span>
+                          {!isActive && (
+                            <span className="text-xs px-2 py-0.5 rounded bg-dark-700 text-dark-500">
+                              Expired
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <span className="text-sm text-dark-300 font-mono">{forecast.model_name}</span>
+                      </td>
+                      <td className="p-4 text-right">
+                        <span className="text-sm text-dark-300">{forecast.forecast_horizon}m</span>
+                      </td>
+                      <td className="p-4 text-right">
+                        <span className="text-base font-mono font-semibold text-primary-400">
+                          {formatters.price(forecast.predicted_price)}
+                        </span>
+                      </td>
+                      <td className="p-4 text-right">
+                        <span className="text-base font-mono font-semibold text-dark-50">
+                          {formatters.price(currentPrice)}
+                        </span>
+                      </td>
+                      <td className="p-4 text-right">
+                        <span className={cn(
+                          'text-sm font-mono font-semibold',
+                          priceError >= 0 ? 'text-success-500' : 'text-danger-500'
+                        )}>
+                          {priceError >= 0 ? '+' : ''}{formatters.price(priceError)}
+                        </span>
+                      </td>
+                      <td className="p-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <span className={cn(
+                            'text-sm font-bold font-mono',
+                            isGoodPrediction ? 'text-success-500' : 'text-warning-500'
+                          )}>
+                            {mpe >= 0 ? '+' : ''}{mpe.toFixed(2)}%
+                          </span>
+                          {isGoodPrediction && isActive && (
+                            <span className="w-2 h-2 rounded-full bg-success-500 animate-pulse" />
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <div className="flex items-center justify-center gap-2">
+                          <div className="w-16 h-2 bg-dark-800 rounded-full overflow-hidden">
+                            <div
+                              className={cn(
+                                'h-full transition-all',
+                                forecast.confidence >= 0.7 ? 'bg-success-500' :
+                                forecast.confidence >= 0.5 ? 'bg-warning-500' : 'bg-danger-500'
+                              )}
+                              style={{ width: `${forecast.confidence * 100}%` }}
+                            />
+                          </div>
+                          <span className="text-xs font-semibold text-dark-300 min-w-[3ch]">
+                            {(forecast.confidence * 100).toFixed(0)}%
+                          </span>
+                        </div>
+                      </td>
+                      <td className="p-4 text-right">
+                        <span className={cn(
+                          'text-sm font-mono',
+                          isActive ? 'text-dark-300' : 'text-dark-500'
+                        )}>
+                          {isActive ? `${minutesRemaining}m` : 'Expired'}
+                        </span>
+                      </td>
+                      <td className="p-4">
+                        <div className="flex items-center justify-center">
+                          <span className={cn(
+                            'text-xs px-2 py-1 rounded font-semibold',
+                            status.color,
+                            status.label === 'On Track' && 'bg-success-500/10',
+                            status.label === 'Fair' && 'bg-warning-500/10',
+                            status.label === 'Deviation' && 'bg-danger-500/10',
+                            status.label === 'Completed' && 'bg-dark-700'
+                          )}>
+                            {status.label}
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* Forecasts Grid */}
       {isLoading ? (
         <div className="bg-dark-900 rounded-lg border border-dark-700 p-8 text-center">

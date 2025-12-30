@@ -4,18 +4,21 @@ AgentIntegrator - Bridge between backtesting engine and LLM-powered trading agen
 Implements full_pipeline execution mode where trading decisions are made by
 autonomous agents using Ollama LLMs instead of rule-based strategies.
 
+ENHANCED: Now supports full portfolio awareness and multi-position management.
+
 Architecture:
 - Receives market data from backtest engine
-- Formats data for LLM agent consumption
+- Formats data for LLM agent consumption (including ALL positions)
 - Invokes trading decision agent via MCP
 - Converts agent decisions back to backtest actions
+- Supports scale-in/pyramid trading
 - Logs all agent decisions with context
 """
 
 import asyncio
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID, uuid4
 
 import structlog
@@ -29,12 +32,21 @@ from src.agents.schemas.trade_decision import TradeDirection, TradeIntent
 from src.config.network_config import NetworkLocationManager
 from src.database.models.simulated_trade import AgentDecisionLog
 from src.services.backtesting.portfolio_state import PortfolioState
+from src.services.backtesting.backtest_events import (
+    BacktestEvent,
+    BacktestEventType,
+    get_event_broadcaster,
+)
 
 logger = structlog.get_logger(__name__)
 
 
 class MarketContext(BaseModel):
-    """Market data context provided to agent for decision making."""
+    """
+    Market data context provided to agent for decision making.
+    
+    ENHANCED: Now includes full portfolio state across all symbols.
+    """
 
     symbol: str
     timestamp: datetime
@@ -53,20 +65,46 @@ class MarketContext(BaseModel):
     # Technical indicators (if available)
     indicators: Dict[str, float] = Field(default_factory=dict)
 
-    # Portfolio state
+    # ENHANCED: Full portfolio state
     cash_balance: Decimal
-    current_positions: Dict[str, Any] = Field(default_factory=dict)
-    unrealized_pnl: Decimal = Decimal("0")
+    buying_power: Decimal = Decimal("0")
+    
+    # All positions across all symbols
+    portfolio_positions: List[Dict[str, Any]] = Field(default_factory=list)
+    
+    # Summary by symbol
+    symbols_summary: Dict[str, Any] = Field(default_factory=dict)
+    
+    # Aggregated metrics
+    total_position_count: int = 0
+    total_exposure: Decimal = Decimal("0")
+    exposure_pct: Decimal = Decimal("0")
+    total_unrealized_pnl: Decimal = Decimal("0")
+    realized_pnl: Decimal = Decimal("0")
+    total_portfolio_value: Decimal = Decimal("0")
+    
+    # Current symbol positions (convenience)
+    current_symbol_positions: List[Dict[str, Any]] = Field(default_factory=list)
+    current_symbol_net_direction: str = "flat"
+    current_symbol_net_quantity: Decimal = Decimal("0")
 
     # Risk constraints
     max_position_size: Decimal
     allow_short: bool = False
+    
+    # DEPRECATED: Keep for backward compatibility
+    current_positions: Dict[str, Any] = Field(default_factory=dict)
+    unrealized_pnl: Decimal = Decimal("0")
 
 
 class AgentDecision(BaseModel):
-    """Structured decision from trading agent."""
+    """
+    Structured decision from trading agent.
+    
+    ENHANCED: Now supports scale_in action for adding to existing positions.
+    """
 
-    action: str  # 'buy', 'sell', 'close_long', 'close_short', 'hold'
+    action: str  # 'buy', 'sell', 'scale_in', 'close_long', 'close_short', 'close_all', 'hold'
     quantity: Optional[Decimal] = None
     conviction: float  # 0.0 to 1.0
     rationale: str
@@ -74,6 +112,9 @@ class AgentDecision(BaseModel):
     risk_assessment: str
     processing_time_ms: int
     model_used: str
+    
+    # NEW: Target position for partial closes
+    target_position_id: Optional[str] = None
 
     # Optional fields from TradeIntent
     expected_holding_period: Optional[str] = None
@@ -84,10 +125,13 @@ class AgentIntegrator:
     """
     Integrates LLM-powered trading agents with backtesting engine.
 
+    ENHANCED: Full portfolio awareness for better decision making.
+
     Responsibilities:
-    - Format market data for agent consumption
+    - Format market data for agent consumption (ALL positions visible)
     - Invoke trading decision agent
     - Convert TradeIntent to backtest actions
+    - Support scale-in/pyramid trading
     - Log all agent decisions for analysis
     - Handle agent errors gracefully
 
@@ -183,15 +227,11 @@ class AgentIntegrator:
 
             # Mistral proprietary API models
             elif model_lower.startswith('mistral-') and not ':' in model_lower:
-                # Proprietary Mistral models (via API, not Ollama)
-                # For now, route through OpenAI-compatible endpoint if available
-                # TODO: Add dedicated Mistral API client if needed
                 logger.warning(
                     "mistral_proprietary_api_not_yet_supported",
                     model=self.model,
                     fallback="Will attempt Ollama",
                 )
-                # Fall through to Ollama
                 self._initialize_ollama_client()
 
             # Ollama models (local/open-source)
@@ -209,7 +249,6 @@ class AgentIntegrator:
 
     def _initialize_ollama_client(self):
         """Initialize Ollama client for local/open-source models."""
-        # Get Ollama URL from NetworkLocationManager if not explicitly provided
         if self.ollama_base_url is None:
             network_manager = NetworkLocationManager()
             ollama_config = network_manager.get_ollama_config()
@@ -220,7 +259,6 @@ class AgentIntegrator:
                 location=network_manager.location.value,
             )
 
-        # Create client with network-aware URL
         self.llm_client = create_ollama_client(
             model=self.model,
             base_url=self.ollama_base_url,
@@ -251,6 +289,23 @@ class AgentIntegrator:
         start_time = asyncio.get_event_loop().time()
 
         try:
+            # DEBUG: Log market context before building prompt
+            logger.debug(
+                "agent_decision_context",
+                symbol=market_context.symbol,
+                current_price=float(market_context.current_price),
+                total_positions=market_context.total_position_count,
+                current_symbol_positions_count=len(market_context.current_symbol_positions),
+                current_symbol_positions_detail=[
+                    {
+                        "direction": p["direction"],
+                        "qty": p["quantity"],
+                        "entry": p["entry_price"],
+                    }
+                    for p in market_context.current_symbol_positions
+                ] if market_context.current_symbol_positions else "NONE",
+            )
+
             # Build prompt for LLM
             prompt = self._build_decision_prompt(market_context)
 
@@ -279,6 +334,7 @@ class AgentIntegrator:
                 action=decision.action,
                 conviction=decision.conviction,
                 processing_time_ms=decision.processing_time_ms,
+                total_positions=market_context.total_position_count,
             )
 
             return decision
@@ -304,61 +360,264 @@ class AgentIntegrator:
                 model_used=self.model,
             )
 
+    async def should_exit_position(
+        self,
+        position: 'Position',  # Forward reference
+        current_price: Decimal,
+        indicators: Dict[str, float],
+        timestamp: datetime,
+    ) -> Tuple[str, Optional[Decimal], str]:
+        """
+        Ask agent if a specific position should be exited.
+
+        Args:
+            position: The open position to evaluate
+            current_price: Current market price
+            indicators: Current technical indicators
+            timestamp: Current time
+
+        Returns:
+            Tuple of (action, quantity, rationale)
+            - action: "hold" | "close" | "partial_close"
+            - quantity: Amount to close (None for hold, full qty for close, partial for partial_close)
+            - rationale: Agent's reasoning
+        """
+        start_time = asyncio.get_event_loop().time()
+
+        try:
+            # Build exit evaluation prompt
+            prompt = self._build_exit_prompt(position, current_price, indicators, timestamp)
+
+            # Call LLM
+            response = await self._call_llm(prompt)
+
+            # Parse exit decision
+            action, quantity, rationale = self._parse_exit_response(response, position)
+
+            logger.info(
+                "agent_exit_decision",
+                position_id=str(position.position_id),
+                symbol=position.symbol,
+                action=action,
+                quantity=float(quantity) if quantity else None,
+                entry_price=float(position.entry_price),
+                current_price=float(current_price),
+                unrealized_pnl=float(position.unrealized_pnl),
+                processing_time_ms=int((asyncio.get_event_loop().time() - start_time) * 1000),
+            )
+
+            return action, quantity, rationale
+
+        except Exception as e:
+            logger.error(
+                "agent_exit_decision_failed",
+                position_id=str(position.position_id),
+                error=str(e),
+                exc_info=True,
+            )
+            # Safe default: hold position
+            return "hold", None, f"Error evaluating exit: {str(e)}"
+
+    def _build_exit_prompt(
+        self,
+        position: 'Position',
+        current_price: Decimal,
+        indicators: Dict[str, float],
+        timestamp: datetime,
+    ) -> str:
+        """Build prompt for exit decision evaluation."""
+
+        # Calculate position metrics
+        pnl = position.unrealized_pnl
+        pnl_pct = (pnl / (position.entry_price * position.quantity)) * 100 if position.quantity > 0 else 0
+        holding_hours = (timestamp - position.entry_timestamp).total_seconds() / 3600
+
+        # Position direction
+        direction = "LONG" if position.action == "buy" else "SHORT"
+
+        prompt = f"""You are managing an open {direction} position. Evaluate whether to exit or continue holding.
+
+POSITION DETAILS:
+- Symbol: {position.symbol}
+- Direction: {direction}
+- Entry Price: ${position.entry_price:.2f}
+- Current Price: ${current_price:.2f}
+- Quantity: {position.quantity:.2f}
+- Unrealized P&L: ${pnl:.2f} ({pnl_pct:+.2f}%)
+- Held for: {holding_hours:.1f} hours
+- Position ID: {position.position_id}
+
+TECHNICAL INDICATORS:
+"""
+        for key, value in indicators.items():
+            prompt += f"- {key}: {value:.2f}\n"
+
+        prompt += f"""
+EXIT OPTIONS:
+1. HOLD - Keep position open, conditions still favorable
+2. CLOSE - Exit entire position (take profit or cut loss)
+3. PARTIAL_CLOSE - Close 50% to lock in some gains while keeping exposure
+
+DECISION CRITERIA:
+- Is the original trade thesis still valid?
+- Has momentum shifted against the position?
+- Is P&L at a reasonable profit target or stop loss level?
+- Are technical indicators showing reversal signals?
+
+Respond in JSON format:
+{{
+    "action": "hold" | "close" | "partial_close",
+    "rationale": "Detailed explanation of your decision",
+    "confidence": 0.0 to 1.0,
+    "key_factors": ["factor1", "factor2", "factor3"]
+}}
+"""
+        return prompt
+
+    def _parse_exit_response(
+        self,
+        llm_response: str,
+        position: 'Position',
+    ) -> Tuple[str, Optional[Decimal], str]:
+        """
+        Parse LLM exit decision response.
+
+        Returns:
+            Tuple of (action, quantity, rationale)
+        """
+        import json
+
+        try:
+            # Extract JSON
+            response_text = llm_response.strip()
+            if "```json" in response_text:
+                response_text = response_text.split("```json")[1].split("```")[0].strip()
+            elif "```" in response_text:
+                response_text = response_text.split("```")[1].split("```")[0].strip()
+
+            data = json.loads(response_text)
+
+            action = data.get("action", "hold").lower()
+            rationale = data.get("rationale", "No rationale provided")
+
+            # Determine quantity based on action
+            quantity = None
+            if action == "close":
+                quantity = position.quantity  # Close full position
+            elif action == "partial_close":
+                quantity = position.quantity * Decimal("0.5")  # Close 50%
+            # "hold" keeps quantity as None
+
+            return action, quantity, rationale
+
+        except Exception as e:
+            logger.warning(
+                "exit_response_parsing_failed",
+                llm_response=llm_response[:500],
+                error=str(e),
+            )
+            # Safe default
+            return "hold", None, f"Failed to parse response: {str(e)}"
+
     def _build_decision_prompt(self, context: MarketContext) -> str:
-        """Build prompt for LLM trading decision."""
+        """
+        Build prompt for LLM trading decision.
 
-        # Format position info
-        position_info = "No open positions"
-        if context.current_positions:
-            position_info = f"Current position: {context.current_positions}"
+        ENHANCED: Now includes full portfolio state for informed decisions.
+        """
 
-        # Format recent price action
+        # Format current symbol positions
+        current_symbol_info = "No positions in this symbol"
+        if context.current_symbol_positions:
+            positions_str = []
+            for pos in context.current_symbol_positions:
+                positions_str.append(
+                    f"  - {pos['direction'].upper()} {pos['quantity']:.2f} @ ${pos['entry_price']:.2f} "
+                    f"(P&L: ${pos['unrealized_pnl']:.2f})"
+                )
+            current_symbol_info = f"Positions in {context.symbol}:\n" + "\n".join(positions_str)
+            current_symbol_info += f"\n  Net: {context.current_symbol_net_direction.upper()} {float(context.current_symbol_net_quantity):.2f}"
+
+        # Format all portfolio positions
+        portfolio_info = "No open positions in portfolio"
+        if context.portfolio_positions:
+            by_symbol = {}
+            for pos in context.portfolio_positions:
+                sym = pos['symbol']
+                if sym not in by_symbol:
+                    by_symbol[sym] = []
+                by_symbol[sym].append(pos)
+            
+            portfolio_lines = []
+            for sym, positions in by_symbol.items():
+                total_qty = sum(p['quantity'] for p in positions)
+                total_pnl = sum(p['unrealized_pnl'] for p in positions)
+                direction = "LONG" if positions[0]['direction'] == 'long' else "SHORT"
+                portfolio_lines.append(f"  {sym}: {direction} {total_qty:.2f} units (P&L: ${total_pnl:.2f})")
+            
+            portfolio_info = "Portfolio Positions:\n" + "\n".join(portfolio_lines)
+
+        # Format price action
         price_summary = f"Current: ${context.current_price}, Open: ${context.open}, High: ${context.high}, Low: ${context.low}"
 
-        # Format indicators if available
+        # Format indicators
         indicators_summary = "No indicators available"
         if context.indicators:
             indicators_summary = ", ".join([f"{k}={v:.2f}" for k, v in context.indicators.items()])
 
         prompt = f"""You are an expert trading agent analyzing {context.symbol}.
 
-Current Market Data:
-- Timestamp: {context.timestamp}
-- Price: {price_summary}
-- Volume: {context.volume:,}
-- Technical Indicators: {indicators_summary}
+=== MARKET DATA ===
+Timestamp: {context.timestamp}
+Price: {price_summary}
+Volume: {context.volume:,}
+Technical Indicators: {indicators_summary}
 
-Portfolio State:
-- Cash Balance: ${context.cash_balance:,.2f}
-- {position_info}
-- Unrealized P&L: ${context.unrealized_pnl:,.2f}
+=== PORTFOLIO STATE ===
+Cash Balance: ${context.cash_balance:,.2f}
+Buying Power: ${context.buying_power:,.2f}
+Total Portfolio Value: ${context.total_portfolio_value:,.2f}
+Portfolio Exposure: {float(context.exposure_pct):.1f}%
+Total Unrealized P&L: ${context.total_unrealized_pnl:,.2f}
+Realized P&L: ${context.realized_pnl:,.2f}
+Open Positions: {context.total_position_count}
 
-Risk Constraints:
-- Max Position Size: ${context.max_position_size:,.2f}
-- Short Selling Allowed: {context.allow_short}
+{portfolio_info}
 
-Task: Analyze the current market conditions and make a trading decision.
+=== CURRENT SYMBOL ({context.symbol}) ===
+{current_symbol_info}
 
-Respond in JSON format with:
+=== RISK CONSTRAINTS ===
+Max Position Size: ${context.max_position_size:,.2f}
+Short Selling Allowed: {context.allow_short}
+
+=== TASK ===
+Analyze the market and portfolio state, then make a trading decision.
+
+Available Actions:
+- "LONG": Open a new long position (or add to existing longs)
+- "SHORT": Open a new short position (or add to existing shorts) - only if allowed
+- "CLOSE": Close ALL positions in {context.symbol}
+- "NO_TRADE": Hold current positions, take no action
+
+Respond in JSON format:
 {{
-    "direction": "LONG" | "SHORT" | "NO_TRADE",
+    "direction": "LONG" | "SHORT" | "CLOSE" | "NO_TRADE",
     "conviction": 0.0 to 1.0,
-    "rationale": "detailed explanation (MINIMUM 100 characters - be thorough and specific)",
-    "key_factors": ["factor1", "factor2", "factor3", "factor4"],
-    "risk_assessment": "risk summary (MINIMUM 50 characters - explain specific risks)",
+    "rationale": "detailed explanation (MINIMUM 100 characters)",
+    "key_factors": ["factor1", "factor2", "factor3"],
+    "risk_assessment": "risk summary (MINIMUM 50 characters)",
     "expected_holding_period": "optional: intraday, 1-3 days, etc",
     "timestamp": "{context.timestamp.isoformat()}"
 }}
 
 CRITICAL Requirements:
-- MUST provide at least 3 key_factors (preferably 4-5)
-- MUST write rationale with at least 100 characters
-- MUST write risk_assessment with at least 50 characters
-- Only recommend LONG if conviction >= {self.decision_threshold}
-- Only recommend SHORT if conviction >= {self.decision_threshold} AND shorting is allowed
-- Otherwise recommend NO_TRADE
-- Be conservative with risk
-- Provide specific, actionable rationale with market reasoning
+- Consider EXISTING positions before recommending new trades
+- If already LONG with good conviction, you may add to position (scale in)
+- If exposure is high (>80%), be more conservative
+- Only recommend action if conviction >= {self.decision_threshold}
+- MUST provide at least 3 key_factors
+- Be specific about WHY given current portfolio state
 """
 
         return prompt
@@ -370,7 +629,6 @@ CRITICAL Requirements:
             raise RuntimeError("LLM client not initialized - call initialize() first")
 
         try:
-            # Use AutoGen's message objects
             messages = [
                 SystemMessage(content="You are an expert trading analyst. Always respond in valid JSON format."),
                 UserMessage(content=prompt, source="user")
@@ -378,7 +636,6 @@ CRITICAL Requirements:
 
             response = await self.llm_client.create(messages=messages)
 
-            # Extract content from response
             if hasattr(response, 'choices') and len(response.choices) > 0:
                 return response.choices[0].message.content
             elif hasattr(response, 'content'):
@@ -400,7 +657,6 @@ CRITICAL Requirements:
         import json
 
         try:
-            # Extract JSON from response (handles markdown code blocks)
             response_text = llm_response.strip()
             if "```json" in response_text:
                 response_text = response_text.split("```json")[1].split("```")[0].strip()
@@ -409,29 +665,42 @@ CRITICAL Requirements:
 
             data = json.loads(response_text)
 
-            # Validate and create TradeIntent
-            trade_intent = TradeIntent(
-                direction=TradeDirection(data["direction"]),
-                conviction=float(data["conviction"]),
-                rationale=data["rationale"],
-                key_factors=data["key_factors"],
-                risk_assessment=data["risk_assessment"],
-                expected_holding_period=data.get("expected_holding_period"),
-                timestamp=data.get("timestamp", datetime.utcnow().isoformat()),
-                metadata=data.get("metadata", {}),
-            )
+            # Handle CLOSE as a special direction
+            direction_str = data["direction"]
+            if direction_str == "CLOSE":
+                # Map to NO_TRADE but flag in metadata for special handling
+                trade_intent = TradeIntent(
+                    direction=TradeDirection.NO_TRADE,
+                    conviction=float(data["conviction"]),
+                    rationale=data["rationale"],
+                    key_factors=data["key_factors"],
+                    risk_assessment=data["risk_assessment"],
+                    expected_holding_period=data.get("expected_holding_period"),
+                    timestamp=data.get("timestamp", datetime.utcnow().isoformat()),
+                    metadata={"close_positions": True},
+                )
+            else:
+                trade_intent = TradeIntent(
+                    direction=TradeDirection(direction_str),
+                    conviction=float(data["conviction"]),
+                    rationale=data["rationale"],
+                    key_factors=data["key_factors"],
+                    risk_assessment=data["risk_assessment"],
+                    expected_holding_period=data.get("expected_holding_period"),
+                    timestamp=data.get("timestamp", datetime.utcnow().isoformat()),
+                    metadata=data.get("metadata", {}),
+                )
 
             return trade_intent
 
         except Exception as e:
             logger.error(
                 "trade_intent_parsing_failed",
-                llm_response=llm_response[:500],  # Log first 500 chars
+                llm_response=llm_response[:500],
                 error=str(e),
                 exc_info=True,
             )
 
-            # Return conservative default
             return TradeIntent(
                 direction=TradeDirection.NO_TRADE,
                 conviction=0.0,
@@ -447,41 +716,70 @@ CRITICAL Requirements:
         market_context: MarketContext,
         processing_time_ms: int,
     ) -> AgentDecision:
-        """Convert TradeIntent to AgentDecision with quantity."""
+        """
+        Convert TradeIntent to AgentDecision with quantity.
+        
+        ENHANCED: Now supports scale-in and doesn't block buys when positions exist.
+        """
 
-        # Determine action
         action = "hold"
         quantity = None
 
-        if trade_intent.direction == TradeDirection.LONG and trade_intent.conviction >= self.decision_threshold:
-            action = "buy"
-            # Simple position sizing: use conviction to scale position
-            max_qty_value = min(market_context.cash_balance, market_context.max_position_size)
-            # Fix: Convert conviction to Decimal before multiplication
-            quantity = (max_qty_value * Decimal(str(trade_intent.conviction))) / market_context.current_price
-
-        elif trade_intent.direction == TradeDirection.SHORT and trade_intent.conviction >= self.decision_threshold:
-            if market_context.allow_short:
-                action = "sell"
-                max_qty_value = market_context.max_position_size
-                # Fix: Convert conviction to Decimal before multiplication
-                quantity = (max_qty_value * Decimal(str(trade_intent.conviction))) / market_context.current_price
+        # Check for explicit close request
+        if trade_intent.metadata.get("close_positions"):
+            if market_context.current_symbol_positions:
+                action = "close_all"
+                # Sum all quantities to close
+                total_qty = sum(
+                    Decimal(str(p['quantity'])) 
+                    for p in market_context.current_symbol_positions
+                )
+                quantity = total_qty
             else:
+                action = "hold"  # Nothing to close
+
+        # Handle LONG direction
+        elif trade_intent.direction == TradeDirection.LONG and trade_intent.conviction >= self.decision_threshold:
+            # Check if we have existing SHORT positions - need to close first
+            if market_context.current_symbol_net_direction == "short":
+                action = "close_all"  # Close shorts before going long
+                quantity = market_context.current_symbol_net_quantity
+            else:
+                # Either no position or already long - can open/add
+                action = "buy"
+                # Calculate quantity based on available buying power
+                available = min(market_context.buying_power, market_context.max_position_size)
+                if available > 0:
+                    quantity = (available * Decimal(str(trade_intent.conviction))) / market_context.current_price
+                else:
+                    action = "hold"
+                    logger.warning(
+                        "insufficient_buying_power_for_long",
+                        buying_power=float(market_context.buying_power),
+                        max_position_size=float(market_context.max_position_size),
+                    )
+
+        # Handle SHORT direction
+        elif trade_intent.direction == TradeDirection.SHORT and trade_intent.conviction >= self.decision_threshold:
+            if not market_context.allow_short:
                 logger.warning(
                     "short_trade_rejected",
                     reason="short_selling_disabled",
                     conviction=trade_intent.conviction,
                 )
-
-        # Check if we should close existing position
-        if market_context.current_positions:
-            existing_direction = market_context.current_positions.get("direction")
-            if existing_direction == "long" and trade_intent.direction == TradeDirection.SHORT:
-                action = "close_long"
-                quantity = Decimal(str(market_context.current_positions.get("quantity", 0)))
-            elif existing_direction == "short" and trade_intent.direction == TradeDirection.LONG:
-                action = "close_short"
-                quantity = Decimal(str(market_context.current_positions.get("quantity", 0)))
+                action = "hold"
+            elif market_context.current_symbol_net_direction == "long":
+                # Close longs before going short
+                action = "close_all"
+                quantity = market_context.current_symbol_net_quantity
+            else:
+                # Either no position or already short - can open/add
+                action = "sell"
+                available = min(market_context.buying_power, market_context.max_position_size)
+                if available > 0:
+                    quantity = (available * Decimal(str(trade_intent.conviction))) / market_context.current_price
+                else:
+                    action = "hold"
 
         return AgentDecision(
             action=action,
@@ -514,11 +812,15 @@ CRITICAL Requirements:
                 "symbol": market_context.symbol,
                 "current_price": float(market_context.current_price),
                 "cash_balance": float(market_context.cash_balance),
+                "buying_power": float(market_context.buying_power),
                 "indicators": market_context.indicators,
-                "positions": market_context.current_positions,
-                "open_positions_count": len(market_context.current_positions) if market_context.current_positions else 0,
+                # ENHANCED: Full portfolio context
+                "total_position_count": market_context.total_position_count,
+                "exposure_pct": float(market_context.exposure_pct),
+                "total_unrealized_pnl": float(market_context.total_unrealized_pnl),
+                "current_symbol_positions": market_context.current_symbol_positions,
+                "current_symbol_net_direction": market_context.current_symbol_net_direction,
                 "model_used": self.model,
-                "unrealized_pnl": float(market_context.unrealized_pnl),
                 "max_position_size": float(market_context.max_position_size),
             },
             output_decision={
@@ -530,11 +832,10 @@ CRITICAL Requirements:
                 "key_factors": decision.key_factors,
             },
             processing_time_ms=decision.processing_time_ms,
-            execution_outcome=None,  # Will be updated after execution
+            execution_outcome=None,
             correlation_id=uuid4(),
         )
 
-        # Save to database IMMEDIATELY (real-time logging)
         try:
             await self.backtest_repo.create_agent_decision_log(decision_log)
             logger.debug(
@@ -542,6 +843,37 @@ CRITICAL Requirements:
                 decision_id=str(decision_log.id),
                 backtest_run_id=str(self.backtest_run_id),
             )
+
+            # Broadcast to WebSocket
+            try:
+                broadcaster = get_event_broadcaster()
+                event = BacktestEvent(
+                    event_type=BacktestEventType.AGENT_DECISION,
+                    run_id=self.backtest_run_id,
+                    timestamp=decision_log.timestamp,
+                    data={
+                        "symbol": market_context.symbol,
+                        "price": float(market_context.current_price),
+                        "action": decision.action,
+                        "quantity": float(decision.quantity or 0),
+                        "conviction": float(decision.conviction),
+                        "direction": trade_intent.direction.value,
+                        "agent_thought": decision.rationale[:500],
+                        "key_factors": decision.key_factors[:3] if decision.key_factors else [],
+                        "timestamp": decision_log.timestamp.isoformat(),
+                        "processing_time_ms": decision.processing_time_ms,
+                        "total_positions": market_context.total_position_count,
+                        "exposure_pct": float(market_context.exposure_pct),
+                    },
+                )
+                await broadcaster.broadcast(event)
+            except Exception as broadcast_error:
+                logger.warning(
+                    "agent_decision_broadcast_failed",
+                    error=str(broadcast_error),
+                    decision_id=str(decision_log.id),
+                )
+
         except Exception as e:
             logger.error(
                 "failed_to_save_decision_log",
@@ -549,9 +881,7 @@ CRITICAL Requirements:
                 decision_id=str(decision_log.id),
                 exc_info=True,
             )
-            # Continue even if save fails - don't break the backtest
 
-        # Also keep in memory for backward compatibility
         self.decision_logs.append(decision_log)
 
     def get_decision_logs(self) -> List[AgentDecisionLog]:

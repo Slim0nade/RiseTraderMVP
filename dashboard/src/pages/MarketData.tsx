@@ -176,6 +176,116 @@ export const MarketData: React.FC = () => {
         )}
       </div>
 
+      {/* Real-Time Instruments Price List */}
+      <div className="bg-dark-900 rounded-lg border border-dark-700">
+        <div className="p-6 border-b border-dark-700">
+          <h3 className="text-lg font-semibold text-dark-50">
+            Live Instruments
+          </h3>
+          <p className="text-sm text-dark-400 mt-1">
+            Real-time price updates for all monitored instruments
+          </p>
+        </div>
+        <div className="divide-y divide-dark-700">
+          {SYMBOLS.map((symbol) => {
+            const tick = latestTicks[symbol];
+            if (!tick) {
+              return (
+                <div
+                  key={symbol}
+                  className="p-4 hover:bg-dark-800/50 transition-colors cursor-pointer"
+                  onClick={() => setCurrentSymbol(symbol)}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <h4 className="text-base font-semibold text-dark-50">{symbol}</h4>
+                      <p className="text-xs text-dark-500 mt-1">Waiting for data...</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm text-dark-500">--</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
+            const priceChange = tick.close - tick.open;
+            const priceChangePercent = (priceChange / tick.open) * 100;
+            const isPositive = priceChange >= 0;
+
+            return (
+              <div
+                key={symbol}
+                className={cn(
+                  'p-4 hover:bg-dark-800/50 transition-colors cursor-pointer',
+                  currentSymbol === symbol && 'bg-primary-500/10 border-l-4 border-l-primary-500'
+                )}
+                onClick={() => setCurrentSymbol(symbol)}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3">
+                      <h4 className="text-base font-semibold text-dark-50">{symbol}</h4>
+                      {currentSymbol === symbol && (
+                        <span className="text-xs px-2 py-0.5 rounded bg-primary-500/20 text-primary-400 border border-primary-500/30">
+                          Selected
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-dark-500 mt-1">
+                      Updated {formatters.relativeTime(tick.timestamp)}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-6">
+                    {/* OHLC Data */}
+                    <div className="grid grid-cols-4 gap-4 text-xs">
+                      <div>
+                        <p className="text-dark-500 mb-0.5">Open</p>
+                        <p className="font-mono text-dark-200">{formatters.price(tick.open)}</p>
+                      </div>
+                      <div>
+                        <p className="text-dark-500 mb-0.5">High</p>
+                        <p className="font-mono text-success-500">{formatters.price(tick.high)}</p>
+                      </div>
+                      <div>
+                        <p className="text-dark-500 mb-0.5">Low</p>
+                        <p className="font-mono text-danger-500">{formatters.price(tick.low)}</p>
+                      </div>
+                      <div>
+                        <p className="text-dark-500 mb-0.5">Volume</p>
+                        <p className="font-mono text-dark-200">{formatters.number(tick.volume)}</p>
+                      </div>
+                    </div>
+
+                    {/* Current Price & Change */}
+                    <div className="text-right min-w-[140px]">
+                      <p className="text-2xl font-bold text-dark-50 font-mono">
+                        {formatters.price(tick.close)}
+                      </p>
+                      <div className={cn(
+                        'flex items-center justify-end gap-1 mt-1',
+                        isPositive ? 'text-success-500' : 'text-danger-500'
+                      )}>
+                        <TrendingUp
+                          className={cn('w-4 h-4', !isPositive && 'rotate-180')}
+                        />
+                        <span className="text-sm font-semibold">
+                          {isPositive ? '+' : ''}{priceChangePercent.toFixed(2)}%
+                        </span>
+                        <span className="text-xs text-dark-500">
+                          ({isPositive ? '+' : ''}{formatters.price(priceChange)})
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Market Statistics */}
       {chartData.length > 0 && (
         <div className="bg-dark-900 rounded-lg border border-dark-700 p-6">

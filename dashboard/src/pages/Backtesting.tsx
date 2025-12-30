@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Play, RefreshCw, TrendingUp, BarChart3, AlertCircle, Plus, Loader2, XCircle } from 'lucide-react';
+import { Play, RefreshCw, TrendingUp, BarChart3, AlertCircle, Plus, Loader2, Copy } from 'lucide-react';
 import { backtestApi } from '@/api/endpoints';
 import { useBacktestStore } from '@/store/backtestStore';
 import { AgentDecisionList } from '@/components/backtesting/AgentDecisionList';
@@ -17,6 +17,7 @@ export const Backtesting: React.FC = () => {
     useBacktestStore();
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [configToCopy, setConfigToCopy] = useState<any>(null);
   const [runningConfigs, setRunningConfigs] = useState<Set<string>>(new Set());
   const queryClient = useQueryClient();
 
@@ -78,26 +79,42 @@ export const Backtesting: React.FC = () => {
     enabled: !!selectedRunId && runData?.status === 'completed',
   });
 
-  // Fetch trades
+  // Fetch live stats (for running backtests)
+  const { data: liveStatsData } = useQuery({
+    queryKey: ['backtest-live-stats', selectedRunId],
+    queryFn: () => backtestApi.getLiveStats(selectedRunId!),
+    enabled: !!selectedRunId && (runData?.status === 'running' || runData?.status === 'pending'),
+    refetchInterval: 5000, // Refetch every 5 seconds while running
+  });
+
+  // Fetch trades (enabled for both running and completed)
   const { data: tradesData } = useQuery({
     queryKey: ['backtest-trades', selectedRunId],
     queryFn: () => backtestApi.getRunTrades(selectedRunId!, { limit: 1000 }),
-    enabled: !!selectedRunId && runData?.status === 'completed',
+    enabled: !!selectedRunId,
+    refetchInterval: () => {
+      return runData?.status === 'running' ? 10000 : false; // Refetch every 10s while running
+    },
   });
 
-
-  // Fetch agent decisions
+  // Fetch agent decisions (enabled for both running and completed)
   const { data: decisionsData } = useQuery({
     queryKey: ['backtest-decisions', selectedRunId],
     queryFn: () => backtestApi.getRunDecisions(selectedRunId!, { limit: 1000 }),
     enabled: !!selectedRunId && (runData?.agent_decisions_count || 0) > 0,
+    refetchInterval: () => {
+      return runData?.status === 'running' ? 10000 : false; // Refetch every 10s while running
+    },
   });
 
-  // Fetch portfolio snapshots for equity curve
+  // Fetch portfolio snapshots for equity curve (enabled for both running and completed)
   const { data: snapshotsData } = useQuery({
     queryKey: ['backtest-snapshots', selectedRunId],
     queryFn: () => backtestApi.getRunSnapshots(selectedRunId!, { limit: 5000 }),
-    enabled: !!selectedRunId && runData?.status === 'completed',
+    enabled: !!selectedRunId,
+    refetchInterval: () => {
+      return runData?.status === 'running' ? 10000 : false; // Refetch every 10s while running
+    },
   });
 
   useEffect(() => {
@@ -142,6 +159,17 @@ export const Backtesting: React.FC = () => {
     }
   };
 
+  const handleCopyConfig = (config: any, event: React.MouseEvent) => {
+    event.stopPropagation(); // Prevent triggering handleSelectRun
+
+    // Set the config to copy and open the modal
+    setConfigToCopy({
+      ...config,
+      name: `${config.name} (Copy)`,
+    });
+    setIsCreateModalOpen(true);
+  };
+
   const handleStartRun = async (configId: string, event: React.MouseEvent) => {
     event.stopPropagation(); // Prevent triggering handleSelectRun
 
@@ -184,10 +212,12 @@ export const Backtesting: React.FC = () => {
   const createEquityCurveData = () => {
     if (!snapshotsData?.items || snapshotsData.items.length === 0) return [];
 
-    // Convert snapshots to chart format
+    // Convert snapshots to chart format with proper number conversion
     return snapshotsData.items.map((snapshot: any) => ({
       time: Math.floor(new Date(snapshot.timestamp).getTime() / 1000),
-      value: snapshot.total_value,
+      value: typeof snapshot.total_value === 'string'
+        ? parseFloat(snapshot.total_value)
+        : snapshot.total_value,
     }));
   };
 
@@ -215,15 +245,19 @@ export const Backtesting: React.FC = () => {
       {/* Create Backtest Modal */}
       <CreateBacktestModal
         isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
+        onClose={() => {
+          setIsCreateModalOpen(false);
+          setConfigToCopy(null); // Reset copied config when modal closes
+        }}
         onSuccess={handleBacktestCreated}
+        initialConfig={configToCopy} // Pass the copied config to pre-fill the form
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* Configurations List */}
         <div className="lg:col-span-1">
-          <div className="bg-dark-900 rounded-lg border border-dark-700 p-6">
-            <div className="flex items-center justify-between mb-4">
+          <div className="bg-dark-900 rounded-lg border border-dark-700 p-6 h-[calc(100vh-200px)] flex flex-col">
+            <div className="flex items-center justify-between mb-4 flex-shrink-0">
               <h2 className="text-lg font-semibold text-dark-50">
                 Backtest Configurations
               </h2>
@@ -246,7 +280,7 @@ export const Backtesting: React.FC = () => {
                 </p>
               </div>
             ) : (
-              <div className="space-y-2 max-h-[600px] overflow-y-auto">
+              <div className="space-y-2 overflow-y-auto flex-1">
                 {configsResponse?.items.map((config: any) => {
                   const latestRun = getLatestRunForConfig(config.id);
                   return (
@@ -263,25 +297,36 @@ export const Backtesting: React.FC = () => {
                         <h3 className="font-medium text-dark-50 text-sm">
                           {config.name}
                         </h3>
-                        {latestRun ? (
-                          <RunStatusBadge
-                            status={latestRun.status}
-                            size="sm"
-                          />
-                        ) : runningConfigs.has(config.id) ? (
-                          <div className="flex items-center gap-1 px-2 py-1 bg-primary-500/10 border border-primary-500/50 rounded text-xs text-primary-400">
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                            <span>Starting...</span>
-                          </div>
-                        ) : (
+                        <div className="flex items-center gap-2">
+                          {/* Copy Config Button */}
                           <button
-                            onClick={(e) => handleStartRun(config.id, e)}
-                            className="flex items-center gap-1 px-2 py-1 bg-success-500/10 border border-success-500/50 rounded text-xs text-success-400 hover:bg-success-500/20 transition-colors"
+                            onClick={(e) => handleCopyConfig(config, e)}
+                            className="flex items-center gap-1 px-2 py-1 bg-dark-700 border border-dark-600 rounded text-xs text-dark-400 hover:text-dark-200 hover:border-dark-500 transition-colors"
+                            title="Copy configuration"
                           >
-                            <Play className="w-3 h-3" />
-                            <span>Run</span>
+                            <Copy className="w-3 h-3" />
                           </button>
-                        )}
+
+                          {latestRun ? (
+                            <RunStatusBadge
+                              status={latestRun.status}
+                              size="sm"
+                            />
+                          ) : runningConfigs.has(config.id) ? (
+                            <div className="flex items-center gap-1 px-2 py-1 bg-primary-500/10 border border-primary-500/50 rounded text-xs text-primary-400">
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                              <span>Starting...</span>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={(e) => handleStartRun(config.id, e)}
+                              className="flex items-center gap-1 px-2 py-1 bg-success-500/10 border border-success-500/50 rounded text-xs text-success-400 hover:bg-success-500/20 transition-colors"
+                            >
+                              <Play className="w-3 h-3" />
+                              <span>Run</span>
+                            </button>
+                          )}
+                        </div>
                       </div>
                       <div className="space-y-1 text-xs text-dark-500">
                         <p>Symbol: {config.symbol}</p>
@@ -306,7 +351,7 @@ export const Backtesting: React.FC = () => {
         </div>
 
         {/* Results Panel */}
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-3">
           {!selectedRunId ? (
             <div className="bg-dark-900 rounded-lg border border-dark-700 p-12 text-center">
               <TrendingUp className="w-16 h-16 text-dark-600 mx-auto mb-4" />
@@ -324,32 +369,180 @@ export const Backtesting: React.FC = () => {
               <p className="text-dark-400 text-center mt-4">Loading backtest data...</p>
             </div>
           ) : runData?.status === 'running' || runData?.status === 'pending' ? (
-            <div className="bg-dark-900 rounded-lg border border-dark-700 p-12 text-center">
-              <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary-500 mx-auto mb-4"></div>
-              <h3 className="text-lg font-medium text-dark-300 mb-2">
-                Backtest in Progress
-              </h3>
-              <p className="text-dark-500 text-sm mb-4">
-                Candles processed: {runData.candles_processed} | Decisions:{' '}
-                {runData.agent_decisions_count}
-              </p>
-              <div className="flex items-center justify-center gap-3">
-                <button
-                  onClick={() => refetchRun()}
-                  className="text-primary-500 hover:text-primary-400 text-sm flex items-center gap-2"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                  Refresh Status
-                </button>
-                <button
-                  onClick={() => cancelMutation.mutate(selectedRunId!)}
-                  disabled={cancelMutation.isPending}
-                  className="text-danger-500 hover:text-danger-400 text-sm flex items-center gap-2 disabled:opacity-50"
-                >
-                  <XCircle className="w-4 h-4" />
-                  {cancelMutation.isPending ? 'Cancelling...' : 'Cancel Run'}
-                </button>
+            <div className="space-y-6">
+              {/* Configuration Info */}
+              {selectedConfig && (
+                <div className="bg-dark-900 rounded-lg border border-dark-700 p-6">
+                  <h2 className="text-lg font-semibold text-dark-50 mb-4">Configuration</h2>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div>
+                      <p className="text-xs text-dark-500 mb-1">Symbol</p>
+                      <p className="text-sm font-medium text-dark-50">{selectedConfig.symbol}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-dark-500 mb-1">Time Period</p>
+                      <p className="text-sm font-medium text-dark-50">
+                        {format(new Date(selectedConfig.start_date), 'MMM dd, yyyy')} -{' '}
+                        {format(new Date(selectedConfig.end_date), 'MMM dd, yyyy')}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-dark-500 mb-1">Execution Mode</p>
+                      <p className="text-sm font-medium text-dark-50">
+                        {selectedConfig.execution_mode === 'full_pipeline' ? 'Agent Pipeline' : 'Synthetic'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-dark-500 mb-1">Initial Capital</p>
+                      <p className="text-sm font-medium text-dark-50">
+                        ${selectedConfig.initial_capital?.toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Run Summary - Live */}
+              <div className="bg-dark-900 rounded-lg border border-primary-500/50 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <h2 className="text-lg font-semibold text-dark-50">Run Summary</h2>
+                    <span className="flex items-center gap-2 px-3 py-1 bg-primary-500/10 border border-primary-500/50 rounded text-xs text-primary-400">
+                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-primary-500"></div>
+                      Live
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => refetchRun()}
+                      className="p-2 hover:bg-dark-800 rounded-lg transition-colors"
+                    >
+                      <RefreshCw className="w-4 h-4 text-dark-400" />
+                    </button>
+                    <button
+                      onClick={() => cancelMutation.mutate(selectedRunId!)}
+                      disabled={cancelMutation.isPending}
+                      className="px-3 py-1 bg-danger-500/10 hover:bg-danger-500/20 border border-danger-500/50 rounded text-xs text-danger-400 disabled:opacity-50 transition-colors"
+                    >
+                      {cancelMutation.isPending ? 'Cancelling...' : 'Cancel Run'}
+                    </button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div>
+                    <p className="text-xs text-dark-500 mb-1">Candles Processed</p>
+                    <p className="text-lg font-bold text-dark-50">
+                      {runData.candles_processed?.toLocaleString() || 0}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-dark-500 mb-1">Agent Decisions</p>
+                    <p className="text-lg font-bold text-primary-500">
+                      {runData.agent_decisions_count || 0}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-dark-500 mb-1">Total Trades</p>
+                    <p className="text-lg font-bold text-dark-50">
+                      {liveStatsData ? (
+                        <span>
+                          {liveStatsData.trade_counts.total}{' '}
+                          <span className="text-xs text-dark-500">
+                            ({liveStatsData.trade_counts.buy}B / {liveStatsData.trade_counts.sell}S)
+                          </span>
+                        </span>
+                      ) : (
+                        tradesData?.total || 0
+                      )}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-dark-500 mb-1">Current Equity</p>
+                    <p
+                      className={`text-lg font-bold ${
+                        (liveStatsData?.performance.current_equity || 0) >= (selectedConfig?.initial_capital || 10000)
+                          ? 'text-success-500'
+                          : 'text-danger-500'
+                      }`}
+                    >
+                      ${(liveStatsData?.performance.current_equity || 0).toLocaleString('en-US', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </p>
+                  </div>
+                </div>
               </div>
+
+              {/* Live Performance Metrics */}
+              {liveStatsData && (
+                <div className="bg-dark-900 rounded-lg border border-dark-700 p-6">
+                  <h2 className="text-lg font-semibold text-dark-50 mb-4">Performance Metrics (Live)</h2>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                    <div className="bg-dark-800 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-xs text-dark-500">Win Rate</p>
+                        <TrendingUp className="w-4 h-4 text-success-500" />
+                      </div>
+                      <p className="text-2xl font-bold text-success-500">
+                        {liveStatsData.performance.win_rate.toFixed(1)}%
+                      </p>
+                      <p className="text-xs text-dark-500 mt-1">
+                        {liveStatsData.trade_counts.win} / {liveStatsData.trade_counts.closed} trades
+                      </p>
+                    </div>
+                    <div className="bg-dark-800 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-xs text-dark-500">Realized P&L</p>
+                      </div>
+                      <p className={`text-2xl font-bold ${liveStatsData.performance.realized_pnl >= 0 ? 'text-success-500' : 'text-danger-500'}`}>
+                        ${liveStatsData.performance.realized_pnl.toFixed(2)}
+                      </p>
+                      <p className="text-xs text-dark-500 mt-1">From closed trades</p>
+                    </div>
+                    <div className="bg-dark-800 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-xs text-dark-500">Unrealized P&L</p>
+                      </div>
+                      <p className={`text-2xl font-bold ${liveStatsData.performance.unrealized_pnl >= 0 ? 'text-success-500' : 'text-danger-500'}`}>
+                        ${liveStatsData.performance.unrealized_pnl.toFixed(2)}
+                      </p>
+                      <p className="text-xs text-dark-500 mt-1">
+                        {liveStatsData.trade_counts.open} open positions
+                      </p>
+                    </div>
+                    <div className="bg-dark-800 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-xs text-dark-500">Total P&L</p>
+                      </div>
+                      <p className={`text-2xl font-bold ${liveStatsData.performance.total_pnl >= 0 ? 'text-success-500' : 'text-danger-500'}`}>
+                        ${liveStatsData.performance.total_pnl.toFixed(2)}
+                      </p>
+                      <p className="text-xs text-dark-500 mt-1">
+                        {((liveStatsData.performance.total_pnl / (selectedConfig?.initial_capital || 10000)) * 100).toFixed(2)}% return
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Equity Curve - Live */}
+              {equityCurveData.length > 0 && (
+                <EquityCurveChart data={equityCurveData} initialCapital={selectedConfig?.initial_capital || 10000} />
+              )}
+
+              {/* Agent Decisions - Live */}
+              {runData.agent_decisions_count > 0 && (
+                <div className="bg-dark-900 rounded-lg border border-dark-700 p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-dark-50">
+                      Agent Decisions ({decisionsData?.total || runData.agent_decisions_count})
+                    </h3>
+                    <span className="text-xs text-dark-500">Auto-updating</span>
+                  </div>
+                  <AgentDecisionList decisions={decisions} loading={!decisionsData} />
+                </div>
+              )}
             </div>
           ) : runData?.status === 'failed' ? (
             <div className="bg-dark-900 rounded-lg border border-danger-500/50 p-12 text-center">

@@ -8,6 +8,7 @@ interface CreateBacktestModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: (runId: string) => void;
+  initialConfig?: any; // Configuration to copy from
 }
 
 interface BacktestFormData {
@@ -72,6 +73,7 @@ export const CreateBacktestModal: React.FC<CreateBacktestModalProps> = ({
   isOpen,
   onClose,
   onSuccess,
+  initialConfig,
 }) => {
   const [formData, setFormData] = useState<BacktestFormData>({
     name: '',
@@ -86,6 +88,25 @@ export const CreateBacktestModal: React.FC<CreateBacktestModalProps> = ({
     slippagePct: '0.001',
     commissionPct: '0.0002',
   });
+
+  // Pre-fill form when copying a configuration
+  useEffect(() => {
+    if (initialConfig) {
+      setFormData({
+        name: initialConfig.name || '',
+        symbol: initialConfig.symbol || 'CrudeOIL',
+        startDate: initialConfig.start_date ? new Date(initialConfig.start_date).toISOString().split('T')[0] : '2025-01-01',
+        endDate: initialConfig.end_date ? new Date(initialConfig.end_date).toISOString().split('T')[0] : '2025-12-31',
+        initialCapital: initialConfig.initial_capital?.toString() || '10000',
+        executionMode: initialConfig.execution_mode || 'synthetic_fast',
+        model: initialConfig.config_params?.agent_config?.model || 'mistral:7b-instruct',
+        syntheticStrategy: initialConfig.config_params?.synthetic_strategy || 'crude_oil_v3',
+        timeframe: initialConfig.config_params?.timeframe || 'M1',
+        slippagePct: initialConfig.slippage_pct?.toString() || '0.001',
+        commissionPct: initialConfig.commission_pct?.toString() || '0.0002',
+      });
+    }
+  }, [initialConfig]);
 
   // Auto-generate backtest name based on configuration
   const generateBacktestName = (data: BacktestFormData): string => {
@@ -180,28 +201,59 @@ export const CreateBacktestModal: React.FC<CreateBacktestModalProps> = ({
 
       // Add synthetic strategy if using synthetic mode
       if (formData.executionMode === 'synthetic_fast') {
+        // Define params based on selected strategy
+        let synthetic_params: any = {};
+
+        switch (formData.syntheticStrategy) {
+          case 'ma_crossover':
+            synthetic_params = {
+              fast_period: 10,
+              slow_period: 30,
+              quantity: 1.0,
+            };
+            break;
+          case 'crude_oil_v1':
+            synthetic_params = {
+              fast_period: 5,
+              slow_period: 20,
+              quantity: 1.0,
+            };
+            break;
+          case 'crude_oil_v2':
+            synthetic_params = {
+              ema_fast: 12,
+              ema_slow: 26,
+              rsi_period: 14,
+              quantity: 1.0,
+            };
+            break;
+          case 'crude_oil_v3':
+          default:
+            synthetic_params = {
+              ema_fast: 8,
+              ema_slow: 29,
+              rsi_period: 10,
+              rsi_overbought: 68,
+              rsi_oversold: 32,
+              cci_period: 20,
+              cci_overbought: 100,
+              cci_oversold: -80,
+              atr_period: 10,
+              atr_multiplier: 2.0,
+              risk_reward_ratio: 2.5,
+              momentum_period: 10,
+              use_cci_filter: true,
+              use_strict_filter: false,
+              use_time_filter: true,
+              trading_start_hour: 8,
+              trading_end_hour: 20,
+              quantity: 1.0,
+            };
+        }
+
         configData.config_params = {
           synthetic_strategy: formData.syntheticStrategy,
-          synthetic_params: {
-            ema_fast: 8,
-            ema_slow: 29,
-            rsi_period: 10,
-            rsi_overbought: 68,
-            rsi_oversold: 32,
-            cci_period: 20,
-            cci_overbought: 100,
-            cci_oversold: -80,
-            atr_period: 10,
-            atr_multiplier: 2.0,
-            risk_reward_ratio: 2.5,
-            momentum_period: 10,
-            use_cci_filter: true,
-            use_strict_filter: false,
-            use_time_filter: true,
-            trading_start_hour: 8,
-            trading_end_hour: 20,
-            quantity: 1.0,
-          },
+          synthetic_params,
         };
       }
 
