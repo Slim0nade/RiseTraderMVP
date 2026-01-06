@@ -403,15 +403,9 @@ class VectorizedBacktestEngine:
             use_cci_filter = params.get("use_cci_filter", True)
             use_strict_filter = params.get("use_strict_filter", False)
             
-            # EMA crossover detection (not just "above")
-            ema_bullish_cross = (
-                (df["ema_fast"] > df["ema_slow"]) & 
-                (df["ema_fast"].shift(1) <= df["ema_slow"].shift(1))
-            )
-            ema_bearish_cross = (
-                (df["ema_fast"] < df["ema_slow"]) & 
-                (df["ema_fast"].shift(1) >= df["ema_slow"].shift(1))
-            )
+            # EMA trend direction (matching MQL4: checks if fast > slow, not just crossover)
+            ema_bullish = df["ema_fast"] > df["ema_slow"]
+            ema_bearish = df["ema_fast"] < df["ema_slow"]
             
             # RSI conditions (BELOW oversold for buy, ABOVE overbought for sell)
             rsi_buy = df["rsi"] < rsi_oversold
@@ -422,8 +416,9 @@ class VectorizedBacktestEngine:
             cci_sell = df["cci"] > cci_overbought
             
             # Momentum conditions (per MQL4: > 99.5 for buy, < 100.5 for sell)
-            momentum_buy = df["momentum"] > -0.5  # 99.5/100 - 1 = -0.5%
-            momentum_sell = df["momentum"] < 0.5   # 100.5/100 - 1 = 0.5%
+            # momentum here is pct_change * 100, so 99.5 becomes -0.5%
+            momentum_buy = df["momentum"] > -0.5
+            momentum_sell = df["momentum"] < 0.5
             
             # Combined filter logic matching MQL4
             if use_cci_filter:
@@ -440,12 +435,15 @@ class VectorizedBacktestEngine:
                 filter_buy = rsi_buy
                 filter_sell = rsi_sell
             
-            # BUY: EMA bullish cross + filter + momentum
-            buy_signal = ema_bullish_cross & filter_buy & momentum_buy
+            # BUY: EMA bullish + filter + momentum (matching MQL4 logic)
+            buy_condition = ema_bullish & filter_buy & momentum_buy
+            # Only trigger on first bar of buy condition (avoid multiple entries)
+            buy_signal = buy_condition & ~buy_condition.shift(1).fillna(False)
             
-            # SELL/CLOSE: EMA bearish cross OR filter triggered
-            # For simplicity, close on bearish cross or overbought
-            sell_signal = ema_bearish_cross | (filter_sell & (df["ema_fast"] < df["ema_slow"]))
+            # SELL/CLOSE: EMA turns bearish OR filter says overbought while in downtrend
+            sell_condition = ema_bearish | (filter_sell & ema_bearish)
+            # Only trigger on first bar of sell condition
+            sell_signal = sell_condition & ~sell_condition.shift(1).fillna(False)
             
             df.loc[buy_signal, "signal"] = 1
             df.loc[sell_signal, "signal"] = -1

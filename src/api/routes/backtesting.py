@@ -133,6 +133,7 @@ async def create_configuration(
             commission_fixed=request.commission_fixed,
             max_leverage=request.max_leverage,
             allow_short_selling=request.allow_short_selling,
+            max_candles=request.max_candles,
             config_params=request.config_params,
         )
 

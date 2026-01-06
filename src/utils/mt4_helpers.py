@@ -65,7 +65,7 @@ def setup_mt4_logging(log_level: str = "INFO", json_format: bool = True):
     # Configure standard library logging
     logging.basicConfig(
         format="%(message)s",
-        stream=sys.stdout,
+        stream=sys.stderr,  # CRITICAL: MCP requires stdout for JSON only
         level=getattr(logging, log_level.upper())
     )
 

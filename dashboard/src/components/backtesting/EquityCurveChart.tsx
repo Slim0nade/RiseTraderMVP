@@ -10,12 +10,14 @@ interface EquityCurveChartProps {
   data: EquityCurvePoint[];
   height?: number;
   initialCapital: number;
+  finalCapital?: number; // Optional authoritative final capital from run data
 }
 
 export const EquityCurveChart: React.FC<EquityCurveChartProps> = ({
   data,
   height = 400,
   initialCapital,
+  finalCapital,
 }) => {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -41,7 +43,30 @@ export const EquityCurveChart: React.FC<EquityCurveChartProps> = ({
     }, []);
 
     // Sort by time to ensure ascending order
-    const sortedData = [...deduplicatedData].sort((a, b) => a.time - b.time);
+    let sortedData = [...deduplicatedData].sort((a, b) => a.time - b.time);
+
+    // PERFORMANCE FIX: Downsample if we have too many data points
+    // Charts can't efficiently render more than ~2000 points
+    const MAX_POINTS = 2000;
+    if (sortedData.length > MAX_POINTS) {
+      const step = Math.ceil(sortedData.length / MAX_POINTS);
+      const downsampled: EquityCurvePoint[] = [];
+
+      // Always include first point
+      downsampled.push(sortedData[0]);
+
+      // Sample every Nth point
+      for (let i = step; i < sortedData.length - 1; i += step) {
+        downsampled.push(sortedData[i]);
+      }
+
+      // Always include last point (most recent equity)
+      if (sortedData.length > 1) {
+        downsampled.push(sortedData[sortedData.length - 1]);
+      }
+
+      sortedData = downsampled;
+    }
 
     // Create chart
     const chart = createChart(chartContainerRef.current, {
@@ -141,7 +166,29 @@ export const EquityCurveChart: React.FC<EquityCurveChartProps> = ({
       }, [] as EquityCurvePoint[]);
 
       // Sort by time ascending (just in case)
-      const sortedData = deduplicatedData.sort((a, b) => a.time - b.time);
+      let sortedData = deduplicatedData.sort((a, b) => a.time - b.time);
+
+      // PERFORMANCE FIX: Downsample if we have too many data points
+      const MAX_POINTS = 2000;
+      if (sortedData.length > MAX_POINTS) {
+        const step = Math.ceil(sortedData.length / MAX_POINTS);
+        const downsampled: EquityCurvePoint[] = [];
+
+        // Always include first point
+        downsampled.push(sortedData[0]);
+
+        // Sample every Nth point
+        for (let i = step; i < sortedData.length - 1; i += step) {
+          downsampled.push(sortedData[i]);
+        }
+
+        // Always include last point (most recent equity)
+        if (sortedData.length > 1) {
+          downsampled.push(sortedData[sortedData.length - 1]);
+        }
+
+        sortedData = downsampled;
+      }
 
       seriesRef.current.setData(
         sortedData.map((point) => ({
@@ -157,7 +204,16 @@ export const EquityCurveChart: React.FC<EquityCurveChartProps> = ({
     }
   }, [data]);
 
-  const currentEquity = data.length > 0 ? data[data.length - 1].value : initialCapitalNum;
+  // Use finalCapital if provided (authoritative), otherwise derive from data
+  const sortedData = [...data].sort((a, b) => a.time - b.time);
+  const dataEquity = sortedData.length > 0 ? sortedData[sortedData.length - 1].value : initialCapitalNum;
+  
+  // Prefer finalCapital prop when available (accurate even with limited snapshot data)
+  const finalCapitalNum = finalCapital !== undefined 
+    ? (typeof finalCapital === 'string' ? parseFloat(finalCapital) : finalCapital)
+    : null;
+  const currentEquity = finalCapitalNum ?? dataEquity;
+  
   const returnPct = ((currentEquity - initialCapitalNum) / initialCapitalNum) * 100;
   const returnAmount = currentEquity - initialCapitalNum;
 

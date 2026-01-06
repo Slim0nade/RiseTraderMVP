@@ -322,4 +322,4 @@ class MT4ResponseValidator:
         )
 
 
-print("✓ T109: Input validation created")
+# Module loaded - validation ready (print removed for MCP compatibility)

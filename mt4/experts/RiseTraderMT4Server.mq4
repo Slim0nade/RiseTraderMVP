@@ -326,6 +326,75 @@ string processRequest(string requestString)
         string accountInfo = getAccountInfo();
         response = createJsonResponse("OK", "", StringFormat("\"account_info\":{%s}", accountInfo));
     }
+    else if(command == "get_pending_orders")
+    {
+        string pendingOrders = getPendingOrders();
+        response = createJsonResponse("OK", "", StringFormat("\"orders\":%s", pendingOrders));
+    }
+    else if(command == "modify_position")
+    {
+        // Modify SL/TP of an open position (for institutional stop-hunting avoidance)
+        string ticketStr = extractValue(requestString, "ticket");
+        string stopLossStr = extractValue(requestString, "stop_loss");
+        string takeProfitStr = extractValue(requestString, "take_profit");
+        
+        int ticket = StringToInteger(ticketStr);
+        double newStopLoss = StringToDouble(stopLossStr);
+        double newTakeProfit = StringToDouble(takeProfitStr);
+        
+        if(OrderSelect(ticket, SELECT_BY_TICKET))
+        {
+            // Only modify market orders (BUY/SELL), not pending orders
+            int orderType = OrderType();
+            if(orderType == OP_BUY || orderType == OP_SELL)
+            {
+                // Use existing values if new values are 0 or not provided
+                double sl = (newStopLoss > 0) ? newStopLoss : OrderStopLoss();
+                double tp = (newTakeProfit > 0) ? newTakeProfit : OrderTakeProfit();
+                
+                bool result = OrderModify(ticket, OrderOpenPrice(), sl, tp, 0, clrNONE);
+                if(result)
+                    response = createJsonResponse("OK", StringFormat("Position %d modified: SL=%.5f, TP=%.5f", ticket, sl, tp));
+                else
+                    response = createJsonResponse("ERROR", StringFormat("Failed to modify position %d. Error: %d", ticket, GetLastError()));
+            }
+            else
+            {
+                response = createJsonResponse("ERROR", StringFormat("Ticket %d is a pending order, not an open position. Use modify_pending_order instead.", ticket));
+            }
+        }
+        else
+        {
+            response = createJsonResponse("ERROR", StringFormat("Position %d not found", ticket));
+        }
+    }
+    else if(command == "delete_pending_order")
+    {
+        string ticketStr = extractValue(requestString, "ticket");
+        int ticket = StringToInteger(ticketStr);
+        
+        if(OrderSelect(ticket, SELECT_BY_TICKET))
+        {
+            // Check if it's actually a pending order
+            int orderType = OrderType();
+            if(orderType >= OP_BUYLIMIT && orderType <= OP_SELLSTOP)
+            {
+                bool result = OrderDelete(ticket);
+                if(result)
+                    response = createJsonResponse("OK", StringFormat("Pending order %d deleted successfully", ticket));
+                else
+                    response = createJsonResponse("ERROR", StringFormat("Failed to delete pending order %d. Error: %d", ticket, GetLastError()));
+            }
+            else
+            {
+                response = createJsonResponse("ERROR", StringFormat("Order %d is not a pending order (type: %d)", ticket, orderType));
+            }
+        }
+        else
+        {
+            response = createJsonResponse("ERROR", StringFormat("Pending order %d not found", ticket));
+        }
+    }
     else
     {
         response = createJsonResponse("ERROR", "Unknown command");
@@ -375,8 +444,13 @@ string getOpenPositions()
     {
         if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
         {
+            // Only include market orders (BUY/SELL), not pending orders
+            int orderType = OrderType();
+            if(orderType != OP_BUY && orderType != OP_SELL)
+                continue;
+                
             string orderTypeStr;
-            switch(OrderType())
+            switch(orderType)
             {
                 case OP_BUY: orderTypeStr = "BUY"; break;
                 case OP_SELL: orderTypeStr = "SELL"; break;
@@ -393,6 +467,45 @@ string getOpenPositions()
         }
     }
     return "[" + positions + "]";
+}
+
+//+------------------------------------------------------------------+
+//| Function to get pending orders                                    |
+//+------------------------------------------------------------------+
+string getPendingOrders()
+{
+    string orders = "";
+    for(int i = 0; i < OrdersTotal(); i++)
+    {
+        if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+        {
+            int orderType = OrderType();
+            
+            // Only include pending orders (BUYLIMIT, SELLLIMIT, BUYSTOP, SELLSTOP)
+            if(orderType < OP_BUYLIMIT || orderType > OP_SELLSTOP)
+                continue;
+            
+            string orderTypeStr;
+            switch(orderType)
+            {
+                case OP_BUYLIMIT: orderTypeStr = "BUY_LIMIT"; break;
+                case OP_SELLLIMIT: orderTypeStr = "SELL_LIMIT"; break;
+                case OP_BUYSTOP: orderTypeStr = "BUY_STOP"; break;
+                case OP_SELLSTOP: orderTypeStr = "SELL_STOP"; break;
+                default: orderTypeStr = "UNKNOWN"; break;
+            }
+
+            string order = StringFormat(
+                "{\"ticket\":%d,\"symbol\":\"%s\",\"type\":\"%s\",\"lots\":%.2f,\"price\":%.5f,\"sl\":%.5f,\"tp\":%.5f,\"comment\":\"%s\",\"expiration\":\"%s\"}",
+                OrderTicket(), OrderSymbol(), orderTypeStr, OrderLots(), OrderOpenPrice(), 
+                OrderStopLoss(), OrderTakeProfit(), OrderComment(), TimeToString(OrderExpiration())
+            );
+
+            if(orders != "") orders += ",";
+            orders += order;
+        }
+    }
+    return "[" + orders + "]";
 }
 
 //+------------------------------------------------------------------+

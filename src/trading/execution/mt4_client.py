@@ -1105,6 +1105,203 @@ class MT4Client:
             logger.error("publish_connection_status_error", error=str(e))
 
     # =========================================================================
+    # Pending Orders (T096)
+    # =========================================================================
+
+    async def create_pending_order(
+        self,
+        symbol: str,
+        order_type: Literal["BUY_STOP", "SELL_STOP", "BUY_LIMIT", "SELL_LIMIT"],
+        volume: Decimal,
+        price: Decimal,
+        stop_loss: Optional[Decimal] = None,
+        take_profit: Optional[Decimal] = None,
+        comment: Optional[str] = None,
+        expiration: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Create a pending order in MT4.
+
+        Args:
+            symbol: Trading symbol (e.g., "CrudeOIL")
+            order_type: Order type (BUY_STOP, SELL_STOP, BUY_LIMIT, SELL_LIMIT)
+            volume: Order volume in lots
+            price: Entry price for the pending order
+            stop_loss: Optional stop loss price
+            take_profit: Optional take profit price
+            comment: Optional order comment
+            expiration: Optional expiration datetime (ISO format)
+
+        Returns:
+            Response dict with success status and ticket number
+
+        Raises:
+            ConnectionError: If not connected
+            TimeoutError: If command times out
+        """
+        from src.trading.execution.mt4_models import CreatePendingOrderCommand
+
+        command = CreatePendingOrderCommand(
+            symbol=symbol,
+            order_type=order_type,
+            volume=volume,
+            price=price,
+            magic_number=self.magic_number,
+            stop_loss=stop_loss,
+            take_profit=take_profit,
+            comment=comment,
+            expiration=expiration
+        )
+
+        with PerformanceTimer(
+            logger=logger,
+            operation="create_pending_order",
+            correlation_id=command.correlation_id,
+            symbol=symbol,
+            order_type=order_type
+        ):
+            response_data = await self.send_command(command)
+
+        # Adapt response format
+        adapted_response = self._adapt_mt4_response(response_data)
+
+        logger.info(
+            "pending_order_submitted",
+            correlation_id=command.correlation_id,
+            symbol=symbol,
+            order_type=order_type,
+            volume=float(volume),
+            price=float(price),
+            success=adapted_response.get("success", False),
+            ticket_number=adapted_response.get("ticket_number")
+        )
+
+        return adapted_response
+
+    async def get_pending_orders(
+        self,
+        magic_number: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        Get all pending orders from MT4.
+
+        Args:
+            magic_number: Optional magic number to filter orders
+
+        Returns:
+            Response dict with list of pending orders
+
+        Raises:
+            ConnectionError: If not connected
+            TimeoutError: If command times out
+        """
+        from src.trading.execution.mt4_models import GetPendingOrdersCommand
+
+        command = GetPendingOrdersCommand(magic_number=magic_number)
+        response_data = await self.send_command(command)
+
+        logger.info(
+            "pending_orders_retrieved",
+            count=len(response_data.get("orders", []))
+        )
+
+        return response_data
+
+    async def delete_pending_order(
+        self,
+        ticket: int
+    ) -> Dict[str, Any]:
+        """
+        Delete/cancel a pending order in MT4.
+
+        Args:
+            ticket: Order ticket number to cancel
+
+        Returns:
+            Response dict with success status
+
+        Raises:
+            ConnectionError: If not connected
+            TimeoutError: If command times out
+        """
+        from src.trading.execution.mt4_models import DeletePendingOrderCommand
+
+        command = DeletePendingOrderCommand(
+            ticket=ticket,
+            magic_number=self.magic_number
+        )
+
+        response_data = await self.send_command(command)
+
+        logger.info(
+            "pending_order_deleted",
+            ticket=ticket,
+            success=response_data.get("success", False) or response_data.get("status") == "OK"
+        )
+
+        return response_data
+
+    # =========================================================================
+    # Position Modification (Institutional Stop-Hunting Avoidance)
+    # =========================================================================
+
+    async def modify_position(
+        self,
+        ticket: int,
+        stop_loss: Optional[Decimal] = None,
+        take_profit: Optional[Decimal] = None
+    ) -> Dict[str, Any]:
+        """
+        Modify stop loss and/or take profit of an open position.
+
+        Used for:
+        - Adjusting stops to non-obvious "weird" levels (anti-stop-hunting)
+        - Implementing trailing stops
+        - Moving stops to breakeven
+
+        Args:
+            ticket: Position ticket number to modify
+            stop_loss: New stop loss price (None to keep existing)
+            take_profit: New take profit price (None to keep existing)
+
+        Returns:
+            Response dict with success status and new SL/TP values
+
+        Raises:
+            ConnectionError: If not connected
+            TimeoutError: If command times out
+        """
+        from src.trading.execution.mt4_models import ModifyPositionCommand
+
+        command = ModifyPositionCommand(
+            ticket=ticket,
+            stop_loss=stop_loss,
+            take_profit=take_profit
+        )
+
+        with PerformanceTimer(
+            logger=logger,
+            operation="modify_position",
+            correlation_id=command.correlation_id,
+            ticket=ticket
+        ):
+            response_data = await self.send_command(command)
+
+        # Adapt response format
+        adapted_response = self._adapt_mt4_response(response_data)
+
+        logger.info(
+            "position_modified",
+            correlation_id=command.correlation_id,
+            ticket=ticket,
+            stop_loss=float(stop_loss) if stop_loss else None,
+            take_profit=float(take_profit) if take_profit else None,
+            success=adapted_response.get("success", False)
+        )
+
+        return adapted_response
+
+    # =========================================================================
     # Graceful Shutdown (T095)
     # =========================================================================
 

@@ -254,7 +254,8 @@ export interface BacktestMetrics {
   sharpe_ratio: number;
   sortino_ratio: number;
   calmar_ratio: number;
-  max_drawdown: number;
+  max_drawdown?: number;       // Legacy field name
+  max_drawdown_abs?: number;   // Backend field name (absolute dollar value)
   max_drawdown_pct: number;
   win_rate: number;
   profit_factor: number;
@@ -270,7 +271,8 @@ export interface BacktestMetrics {
 
 export interface SimulatedTrade {
   id: string;
-  run_id: string;
+  backtest_run_id: string; // Matches backend field name
+  run_id?: string; // Legacy field, kept for backwards compatibility
   symbol: string;
   action: 'BUY' | 'SELL';
   entry_timestamp: string;
@@ -278,7 +280,9 @@ export interface SimulatedTrade {
   quantity: number;
   exit_timestamp?: string;
   exit_price?: number;
-  pnl?: number;
+  gross_pnl?: number; // P&L before fees
+  net_pnl?: number; // P&L after fees (use this for calculations)
+  pnl?: number; // Legacy field, kept for backwards compatibility
   commission?: number;
   slippage?: number;
   stop_loss?: number;

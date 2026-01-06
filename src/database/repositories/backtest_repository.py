@@ -358,7 +358,7 @@ class BacktestRepository(BaseRepository[BacktestConfiguration]):
         self,
         run_id: UUID,
         symbol: Optional[str] = None,
-        limit: int = 1000,
+        limit: int = 10_000_000,
     ) -> List[SimulatedTrade]:
         """
         Get trades for a backtest run.
@@ -366,7 +366,7 @@ class BacktestRepository(BaseRepository[BacktestConfiguration]):
         Args:
             run_id: Backtest run UUID
             symbol: Optional symbol filter
-            limit: Maximum number of trades
+            limit: Maximum number of trades (default 10M, effectively unlimited)
 
         Returns:
             List of SimulatedTrade instances ordered by entry_timestamp

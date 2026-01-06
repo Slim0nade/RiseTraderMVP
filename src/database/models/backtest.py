@@ -64,6 +64,7 @@ class BacktestConfiguration(Base):
         commission_fixed: Fixed commission per trade
         max_leverage: Maximum leverage allowed (default 1.0 = no leverage)
         allow_short_selling: Whether short positions are allowed
+        max_candles: Maximum candles to process (default 150,000, prevents infinite loops)
         config_params: Mode-specific configuration (JSON)
         created_at: Creation timestamp
         updated_at: Last update timestamp
@@ -86,6 +87,7 @@ class BacktestConfiguration(Base):
     commission_fixed = Column(Numeric(10, 2), nullable=False, default=Decimal("0.0"))
     max_leverage = Column(Numeric(5, 2), nullable=False, default=Decimal("1.0"))
     allow_short_selling = Column(Boolean, nullable=False, default=False)
+    max_candles = Column(Integer, nullable=False, default=150000)  # Prevent infinite loops
     config_params = Column(JSONB, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())

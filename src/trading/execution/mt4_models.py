@@ -260,6 +260,76 @@ class CreateInstantOrderCommand(MT4Command):
         return v
 
 
+class CreatePendingOrderCommand(MT4Command):
+    """Command to create a pending order (BUY_STOP, SELL_STOP, BUY_LIMIT, SELL_LIMIT)."""
+
+    command: Literal["create_pending_order"] = "create_pending_order"
+    symbol: str
+    order_type: Literal["BUY_STOP", "SELL_STOP", "BUY_LIMIT", "SELL_LIMIT"]
+    volume: Decimal
+    price: Decimal  # Entry price for pending order
+    magic_number: int
+    stop_loss: Optional[Decimal] = None
+    take_profit: Optional[Decimal] = None
+    comment: Optional[str] = None
+    expiration: Optional[str] = None  # ISO datetime string
+
+    @field_validator('volume')
+    @classmethod
+    def validate_volume(cls, v):
+        """Validate volume is positive."""
+        if v <= 0:
+            raise ValueError("Volume must be positive")
+        return v
+
+    @field_validator('price')
+    @classmethod
+    def validate_price(cls, v):
+        """Validate price is positive."""
+        if v <= 0:
+            raise ValueError("Price must be positive")
+        return v
+
+
+class DeletePendingOrderCommand(MT4Command):
+    """Command to delete/cancel a pending order."""
+
+    command: Literal["delete_pending_order"] = "delete_pending_order"
+    ticket: int
+    magic_number: int
+
+
+class ModifyPositionCommand(MT4Command):
+    """
+    Command to modify stop loss and/or take profit of an open position.
+    
+    Used for:
+    - Adjusting stops to non-obvious "weird" levels (anti-stop-hunting)
+    - Implementing trailing stops
+    - Moving stops to breakeven
+    """
+
+    command: Literal["modify_position"] = "modify_position"
+    ticket: int
+    stop_loss: Optional[Decimal] = None
+    take_profit: Optional[Decimal] = None
+
+    @field_validator('stop_loss', 'take_profit', mode='before')
+    @classmethod
+    def coerce_to_decimal(cls, v):
+        """Convert numeric values to Decimal."""
+        if v is None:
+            return None
+        return Decimal(str(v))
+
+
+class GetPendingOrdersCommand(MT4Command):
+    """Command to get all pending orders."""
+
+    command: Literal["get_pending_orders"] = "get_pending_orders"
+    magic_number: Optional[int] = None  # Filter by magic number
+
+
 class GetAccountInfoCommand(MT4Command):
     """Command to retrieve account information."""
 

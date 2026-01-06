@@ -82,6 +82,7 @@ class BacktestService:
         commission_fixed: Decimal = Decimal("0.0"),
         max_leverage: Decimal = Decimal("1.0"),
         allow_short_selling: bool = False,
+        max_candles: int = 150000,
         config_params: Optional[Dict] = None,
     ) -> BacktestConfiguration:
         """
@@ -100,6 +101,7 @@ class BacktestService:
             commission_fixed: Fixed commission per trade
             max_leverage: Maximum leverage allowed
             allow_short_selling: Whether short selling is allowed
+            max_candles: Maximum candles to process (default 150,000, prevents infinite loops)
             config_params: Mode-specific parameters (JSON)
 
         Returns:
@@ -119,6 +121,7 @@ class BacktestService:
             "commission_fixed": commission_fixed,
             "max_leverage": max_leverage,
             "allow_short_selling": allow_short_selling,
+            "max_candles": max_candles,
             "config_params": config_params or {},
         }
 
@@ -401,7 +404,8 @@ class BacktestService:
                 )
         
         candles_processed = 0
-        trades_count = 0
+        trades_opened = 0  # Track positions opened
+        trades_closed = 0  # Track positions closed (completed round-trip trades)
         snapshot_interval = 10  # Snapshots every 10 candles for accurate equity curve
         progress_interval = 1000  # Publish progress every 1000 candles
         
@@ -417,6 +421,19 @@ class BacktestService:
             progress_callback=progress_callback
         ):
             candles_processed += 1
+
+            # Check max candles limit to prevent infinite loops
+            if candles_processed > config.max_candles:
+                logger.warning(
+                    "max_candles_limit_reached",
+                    run_id=str(run.id),
+                    candles_processed=candles_processed,
+                    max_candles=config.max_candles,
+                )
+                # Mark run as TIMEOUT and break
+                run.status = RunStatus.TIMEOUT
+                run.error_message = f"Exceeded max candles limit ({config.max_candles})"
+                break
 
             # Update portfolio with current market price
             portfolio.update_market_price(tick.symbol, tick.close)
@@ -474,7 +491,7 @@ class BacktestService:
                             )
 
                             if result.success:
-                                trades_count += 1
+                                trades_opened += 1
                                 # Save trade to database
                                 trade_dict = simulator.to_simulated_trade_dict(
                                     result=result,
@@ -499,6 +516,9 @@ class BacktestService:
                             exit_price=tick.close,
                             timestamp=tick.timestamp
                         )
+
+                        # Increment closed trades counter
+                        trades_closed += 1
 
                         # Update trade record with exit details
                         await self.backtest_repo.update_trade(
@@ -536,7 +556,7 @@ class BacktestService:
                     candles_processed=candles_processed,
                     total_candles=total,
                     status="running",
-                    trades_count=trades_count,
+                    trades_count=trades_closed,  # Report closed trades
                     current_capital=float(portfolio.get_total_value()),
                 )
             
@@ -563,7 +583,8 @@ class BacktestService:
                 "final_snapshot_created",
                 run_id=str(run.id),
                 total_value=float(final_snapshot["total_value"]),
-                total_trades=trades_count,
+                trades_opened=trades_opened,
+                trades_closed=trades_closed,
             )
 
         # Update run with candles processed
@@ -577,7 +598,7 @@ class BacktestService:
             await progress_publisher.publish_complete(
                 run_id=run.id,
                 total_candles=candles_processed,
-                trades_count=trades_count,
+                trades_count=trades_closed,  # Report closed trades as the meaningful count
                 final_capital=float(portfolio.get_total_value()),
             )
 

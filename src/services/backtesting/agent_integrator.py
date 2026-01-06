@@ -600,6 +600,39 @@ Available Actions:
 - "CLOSE": Close ALL positions in {context.symbol}
 - "NO_TRADE": Hold current positions, take no action
 
+=== EXIT RULES (CRITICAL - MUST FOLLOW) ===
+You MUST consider closing positions if ANY of these conditions are met:
+
+1. **Zero Buying Power Rule**:
+   - If buying_power <= $100 AND you have open positions with profit > 2%
+   - Action: "CLOSE" the most profitable position to free capital
+   - Rationale: "Freeing capital - buying power exhausted"
+
+2. **Stop Loss Rule**:
+   - If ANY position has unrealized P&L < -5% (relative to entry)
+   - Action: "CLOSE" to prevent further losses
+   - Rationale: "Stop loss triggered at -X%"
+
+3. **Take Profit Rule**:
+   - If ANY position has unrealized P&L > +10%
+   - Action: "CLOSE" to lock in gains
+   - Rationale: "Taking profit at +X%"
+
+4. **High Exposure Rule**:
+   - If exposure > 90% AND no strong conviction for holding
+   - Action: "CLOSE" some positions to reduce risk
+   - Rationale: "Reducing exposure from X%"
+
+5. **Trend Reversal Rule**:
+   - If technical indicators show trend reversal against open positions
+   - Action: "CLOSE" to avoid being caught in reversal
+   - Rationale: "Trend reversal detected"
+
+**IMPORTANT**: Choosing "NO_TRADE" when you have zero buying power is WRONG unless:
+- All positions are within acceptable risk levels (P&L between -5% and +10%)
+- Market conditions don't warrant closing
+- You explicitly explain why holding is better than closing
+
 Respond in JSON format:
 {{
     "direction": "LONG" | "SHORT" | "CLOSE" | "NO_TRADE",
@@ -612,12 +645,14 @@ Respond in JSON format:
 }}
 
 CRITICAL Requirements:
+- ALWAYS check exit rules FIRST before considering new trades
 - Consider EXISTING positions before recommending new trades
 - If already LONG with good conviction, you may add to position (scale in)
-- If exposure is high (>80%), be more conservative
-- Only recommend action if conviction >= {self.decision_threshold}
+- If exposure is high (>80%), be more conservative with new positions
+- Only recommend NEW trade if conviction >= {self.decision_threshold}
 - MUST provide at least 3 key_factors
 - Be specific about WHY given current portfolio state
+- If recommending NO_TRADE with zero buying power, MUST justify why not closing
 """
 
         return prompt

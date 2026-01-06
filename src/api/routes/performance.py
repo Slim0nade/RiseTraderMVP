@@ -143,3 +143,111 @@ async def get_performance_chart(
         end_date=datetime.utcnow(),
         period_type="daily",
     )
+
+
+@router.get("/equity-curve")
+async def get_equity_curve(
+    start_date: datetime = Query(None),
+    end_date: datetime = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get equity curve data over time.
+    Returns timestamp, equity, and drawdown values.
+    """
+    try:
+        if not end_date:
+            end_date = datetime.utcnow()
+        if not start_date:
+            start_date = end_date - timedelta(days=30)
+
+        # Query trading history to build equity curve
+        query = select(TradingHistory).where(
+            TradingHistory.close_time >= start_date,
+            TradingHistory.close_time <= end_date,
+        ).order_by(TradingHistory.close_time)
+
+        result = await db.execute(query)
+        trades = result.scalars().all()
+
+        # Build equity curve from cumulative P&L
+        initial_balance = Decimal("50000")  # TODO: Get from account settings
+        equity_curve = []
+        current_equity = initial_balance
+        peak_equity = initial_balance
+
+        for trade in trades:
+            current_equity += trade.profit
+            peak_equity = max(peak_equity, current_equity)
+            drawdown = current_equity - peak_equity
+
+            equity_curve.append({
+                "timestamp": trade.close_time.isoformat(),
+                "equity": float(current_equity),
+                "drawdown": float(drawdown),
+            })
+
+        logger.info(
+            "get_equity_curve_success",
+            points=len(equity_curve),
+            start=start_date,
+            end=end_date,
+        )
+
+        return equity_curve
+
+    except Exception as e:
+        logger.error("get_equity_curve_failed", error=str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/daily-pnl")
+async def get_daily_pnl(
+    days: int = Query(30, ge=1, le=365),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get daily P&L aggregated by date.
+    Returns date and pnl for each trading day.
+    """
+    try:
+        end_date = datetime.utcnow()
+        start_date = end_date - timedelta(days=days)
+
+        # Query trading history and aggregate by day
+        query = select(
+            func.date(TradingHistory.close_time).label('date'),
+            func.sum(TradingHistory.profit).label('pnl'),
+            func.count(TradingHistory.id).label('trades')
+        ).where(
+            TradingHistory.close_time >= start_date,
+            TradingHistory.close_time <= end_date,
+        ).group_by(
+            func.date(TradingHistory.close_time)
+        ).order_by(
+            func.date(TradingHistory.close_time)
+        )
+
+        result = await db.execute(query)
+        daily_data = result.all()
+
+        daily_pnl = [
+            {
+                "date": str(row.date),
+                "pnl": float(row.pnl),
+                "trades": row.trades,
+            }
+            for row in daily_data
+        ]
+
+        logger.info(
+            "get_daily_pnl_success",
+            days_requested=days,
+            days_returned=len(daily_pnl),
+        )
+
+        return daily_pnl
+
+    except Exception as e:
+        logger.error("get_daily_pnl_failed", error=str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))

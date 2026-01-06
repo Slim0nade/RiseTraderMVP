@@ -13,7 +13,10 @@ export const MetricsTable: React.FC<MetricsTableProps> = ({
   initialCapital,
   finalCapital,
 }) => {
-  const formatCurrency = (value: number) => {
+  const formatCurrency = (value: number | null | undefined) => {
+    if (value === null || value === undefined || isNaN(value)) {
+      return '$0.00';
+    }
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
@@ -22,7 +25,10 @@ export const MetricsTable: React.FC<MetricsTableProps> = ({
     }).format(value);
   };
 
-  const formatPercent = (value: number) => {
+  const formatPercent = (value: number | null | undefined) => {
+    if (value === null || value === undefined || isNaN(value)) {
+      return '0.00%';
+    }
     return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
   };
 
@@ -40,6 +46,10 @@ export const MetricsTable: React.FC<MetricsTableProps> = ({
   };
 
   const riskScore = getRiskScore(metrics.sharpe_ratio);
+
+  // Handle field name differences between backend and frontend
+  // Backend sends max_drawdown_abs, frontend legacy expects max_drawdown
+  const maxDrawdownDollars = metrics.max_drawdown_abs ?? metrics.max_drawdown ?? 0;
 
   return (
     <div className="bg-dark-900 rounded-lg border border-dark-700 p-6">
@@ -143,13 +153,13 @@ export const MetricsTable: React.FC<MetricsTableProps> = ({
             <div className="flex items-center justify-between py-2 border-b border-dark-800">
               <span className="text-sm text-dark-500">Max Drawdown</span>
               <span className="text-sm font-medium text-danger-500">
-                {formatPercent(metrics.max_drawdown_pct)}
+                -{Math.abs(metrics.max_drawdown_pct).toFixed(2)}%
               </span>
             </div>
             <div className="flex items-center justify-between py-2">
               <span className="text-sm text-dark-500">Max Drawdown ($)</span>
               <span className="text-sm font-medium text-danger-500">
-                {formatCurrency(Math.abs(metrics.max_drawdown))}
+                {formatCurrency(Math.abs(maxDrawdownDollars))}
               </span>
             </div>
           </div>

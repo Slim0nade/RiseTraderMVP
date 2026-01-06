@@ -343,4 +343,4 @@ def log_mt4_response(
     )
 
 
-print("✓ T110: Request/response logging created")
+# Module loaded - logging ready (print removed for MCP compatibility)

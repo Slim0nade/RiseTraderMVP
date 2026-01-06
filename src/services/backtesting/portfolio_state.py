@@ -224,12 +224,26 @@ class PortfolioState:
 
     def get_total_value(self) -> Decimal:
         """
-        Get total portfolio value (cash + unrealized position value).
+        Get total portfolio value (cash + position market values).
+
+        The total value includes:
+        - Cash balance (reduced when positions opened)
+        - Market value of all open positions (quantity * current_price)
 
         Returns:
             Total portfolio value
         """
-        return self.cash_balance + self.get_unrealized_pnl()
+        positions_market_value = Decimal("0.0")
+        for symbol, position_list in self.positions.items():
+            current_price = self._current_prices.get(symbol)
+            if current_price is None:
+                # Fallback to entry price if no current price
+                for pos in position_list:
+                    positions_market_value += pos.quantity * pos.entry_price
+            else:
+                for pos in position_list:
+                    positions_market_value += pos.quantity * current_price
+        return self.cash_balance + positions_market_value
 
     def get_total_exposure(self) -> Decimal:
         """

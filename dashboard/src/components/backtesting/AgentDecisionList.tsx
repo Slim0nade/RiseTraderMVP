@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { TrendingUp, TrendingDown, Minus, AlertCircle, CheckCircle, ChevronDown, ChevronRight } from 'lucide-react';
+import { TrendingUp, TrendingDown, Pause, AlertCircle, CheckCircle, ChevronDown, ChevronRight } from 'lucide-react';
 import type { AgentDecision } from '@/types';
 import { format } from 'date-fns';
 
@@ -93,9 +93,9 @@ export const AgentDecisionList: React.FC<AgentDecisionListProps> = ({
       case 'SELL':
         return <TrendingDown className="w-5 h-5 text-danger-500" />;
       case 'HOLD':
-        return <Minus className="w-5 h-5 text-dark-500" />;
+        return <Pause className="w-5 h-5 text-warning-500" />;
       default:
-        return <Minus className="w-5 h-5 text-dark-500" />;
+        return <Pause className="w-5 h-5 text-dark-500" />;
     }
   };
 
@@ -106,7 +106,7 @@ export const AgentDecisionList: React.FC<AgentDecisionListProps> = ({
       case 'SELL':
         return 'bg-danger-500/10 border-danger-500/20 text-danger-400';
       case 'HOLD':
-        return 'bg-dark-800 border-dark-700 text-dark-400';
+        return 'bg-warning-500/10 border-warning-500/20 text-warning-400';
       default:
         return 'bg-dark-800 border-dark-700 text-dark-400';
     }
@@ -146,7 +146,7 @@ export const AgentDecisionList: React.FC<AgentDecisionListProps> = ({
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <Minus className="w-4 h-4 text-dark-500" />
+            <Pause className="w-4 h-4 text-warning-500" />
             <span className="text-dark-400">
               {decisions.filter((d) => d.decision_type === 'HOLD').length} HOLD
             </span>
@@ -271,7 +271,7 @@ export const AgentDecisionList: React.FC<AgentDecisionListProps> = ({
 
                           {/* Tooltip on Hover */}
                           {hoveredDecision === decision.id && (
-                            <div className="absolute left-full ml-4 top-0 z-10 w-80 bg-dark-800 border border-dark-600 rounded-lg shadow-xl p-4 pointer-events-none">
+                            <div className="absolute left-full ml-4 top-0 z-10 w-96 bg-dark-800 border border-dark-600 rounded-lg shadow-xl p-4 pointer-events-none">
                               <div className="space-y-3">
                                 <div className="flex items-center justify-between">
                                   <div className="flex items-center gap-2">
@@ -285,24 +285,78 @@ export const AgentDecisionList: React.FC<AgentDecisionListProps> = ({
                                   </span>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-3 text-sm">
-                                  <div>
-                                    <p className="text-dark-500 text-xs">Symbol</p>
-                                    <p className="text-dark-200">{decision.symbol}</p>
-                                  </div>
-                                  {decision.quantity && (
-                                    <div>
-                                      <p className="text-dark-500 text-xs">Quantity</p>
-                                      <p className="text-dark-200">{decision.quantity}</p>
+                                {/* Order Details Section */}
+                                {decision.decision_type !== 'HOLD' && (
+                                  <div className="bg-dark-900 border border-dark-700 rounded p-3">
+                                    <p className="text-xs font-semibold text-primary-400 mb-2">Order Details</p>
+                                    <div className="grid grid-cols-2 gap-3 text-sm">
+                                      <div>
+                                        <p className="text-dark-500 text-xs">Symbol</p>
+                                        <p className="text-dark-200 font-semibold">{decision.symbol}</p>
+                                      </div>
+                                      {decision.quantity && (
+                                        <div>
+                                          <p className="text-dark-500 text-xs">Quantity</p>
+                                          <p className="text-dark-200 font-semibold">{decision.quantity}</p>
+                                        </div>
+                                      )}
+                                      {decision.market_context?.current_price && (
+                                        <div>
+                                          <p className="text-dark-500 text-xs">Entry Price</p>
+                                          <p className="text-primary-400 font-semibold font-mono">
+                                            ${decision.market_context.current_price.toFixed(2)}
+                                          </p>
+                                        </div>
+                                      )}
+                                      <div>
+                                        <p className="text-dark-500 text-xs">Conviction</p>
+                                        <p className={`${getConvictionColor(decision.conviction_score)} font-semibold`}>
+                                          {(decision.conviction_score * 100).toFixed(0)}%
+                                        </p>
+                                      </div>
                                     </div>
-                                  )}
-                                  <div>
-                                    <p className="text-dark-500 text-xs">Conviction</p>
-                                    <p className={getConvictionColor(decision.conviction_score)}>
-                                      {(decision.conviction_score * 100).toFixed(0)}%
-                                    </p>
+
+                                    {/* Risk Management */}
+                                    {(decision.stop_loss || decision.take_profit) && (
+                                      <div className="mt-3 pt-3 border-t border-dark-700">
+                                        <p className="text-xs font-semibold text-dark-400 mb-2">Risk Management</p>
+                                        <div className="grid grid-cols-2 gap-3 text-sm">
+                                          {decision.stop_loss && (
+                                            <div>
+                                              <p className="text-dark-500 text-xs">Stop Loss</p>
+                                              <p className="text-danger-400 font-semibold font-mono">
+                                                ${decision.stop_loss.toFixed(2)}
+                                              </p>
+                                              {decision.market_context?.current_price && (
+                                                <p className="text-xs text-dark-600 mt-0.5">
+                                                  {((decision.stop_loss - decision.market_context.current_price) / decision.market_context.current_price * 100).toFixed(2)}%
+                                                </p>
+                                              )}
+                                            </div>
+                                          )}
+                                          {decision.take_profit && (
+                                            <div>
+                                              <p className="text-dark-500 text-xs">Take Profit</p>
+                                              <p className="text-success-400 font-semibold font-mono">
+                                                ${decision.take_profit.toFixed(2)}
+                                              </p>
+                                              {decision.market_context?.current_price && (
+                                                <p className="text-xs text-dark-600 mt-0.5">
+                                                  +{((decision.take_profit - decision.market_context.current_price) / decision.market_context.current_price * 100).toFixed(2)}%
+                                                </p>
+                                              )}
+                                            </div>
+                                          )}
+                                        </div>
+                                        {decision.stop_loss && decision.take_profit && decision.market_context?.current_price && (
+                                          <div className="mt-2 text-xs text-dark-500">
+                                            Risk/Reward: 1:{((decision.take_profit - decision.market_context.current_price) / (decision.market_context.current_price - decision.stop_loss)).toFixed(2)}
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
                                   </div>
-                                </div>
+                                )}
 
                                 {decision.reasoning && (
                                   <div>
@@ -322,25 +376,23 @@ export const AgentDecisionList: React.FC<AgentDecisionListProps> = ({
                                   </div>
                                 )}
 
-                                {(decision.stop_loss || decision.take_profit) && (
-                                  <div className="grid grid-cols-2 gap-3 text-sm">
-                                    {decision.stop_loss && (
-                                      <div>
-                                        <p className="text-dark-500 text-xs">Stop Loss</p>
-                                        <p className="text-danger-400">
-                                          ${decision.stop_loss.toFixed(2)}
-                                        </p>
-                                      </div>
-                                    )}
-                                    {decision.take_profit && (
-                                      <div>
-                                        <p className="text-dark-500 text-xs">Take Profit</p>
-                                        <p className="text-success-400">
-                                          ${decision.take_profit.toFixed(2)}
-                                        </p>
-                                      </div>
-                                    )}
-                                  </div>
+                                {/* Market Context */}
+                                {decision.market_context && Object.keys(decision.market_context).length > 0 && (
+                                  <details className="text-xs">
+                                    <summary className="text-dark-500 cursor-pointer hover:text-dark-400">
+                                      Market Context ({Object.keys(decision.market_context).length} indicators)
+                                    </summary>
+                                    <div className="mt-2 bg-dark-900 rounded p-2 max-h-32 overflow-y-auto space-y-1">
+                                      {Object.entries(decision.market_context).map(([key, value]) => (
+                                        <div key={key} className="flex items-center justify-between">
+                                          <span className="text-dark-500">{key}</span>
+                                          <span className="text-dark-300 font-mono">
+                                            {typeof value === 'number' ? value.toFixed(4) : String(value)}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </details>
                                 )}
                               </div>
                             </div>

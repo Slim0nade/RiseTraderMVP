@@ -4,6 +4,7 @@ import { Play, RefreshCw, TrendingUp, BarChart3, AlertCircle, Plus, Loader2, Cop
 import { backtestApi } from '@/api/endpoints';
 import { useBacktestStore } from '@/store/backtestStore';
 import { AgentDecisionList } from '@/components/backtesting/AgentDecisionList';
+import { PositionsList } from '@/components/backtesting/PositionsList';
 import { MetricsTable } from '@/components/backtesting/MetricsTable';
 import { EquityCurveChart } from '@/components/backtesting/EquityCurveChart';
 import { RunStatusBadge } from '@/components/backtesting/RunStatusBadge';
@@ -235,10 +236,11 @@ export const Backtesting: React.FC = () => {
         </div>
         <button
           onClick={() => setIsCreateModalOpen(true)}
-          className="flex items-center gap-2 px-4 py-2.5 bg-primary-500 hover:bg-primary-600 text-white rounded-lg transition-colors"
+          className="flex items-center gap-2 px-6 py-3 bg-gradient-to-br from-primary-400 via-primary-500 to-primary-600 hover:from-primary-500 hover:via-primary-600 hover:to-primary-700 text-white font-semibold rounded-lg shadow-lg shadow-primary-500/50 hover:shadow-xl hover:shadow-primary-500/60 transition-all duration-300 border border-primary-400/30 backdrop-blur-sm relative overflow-hidden group"
         >
-          <Plus className="w-4 h-4" />
-          Create Backtest
+          <div className="absolute inset-0 bg-gradient-to-tr from-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+          <Plus className="w-5 h-5 relative z-10" />
+          <span className="relative z-10">Create Backtest</span>
         </button>
       </div>
 
@@ -374,7 +376,7 @@ export const Backtesting: React.FC = () => {
               {selectedConfig && (
                 <div className="bg-dark-900 rounded-lg border border-dark-700 p-6">
                   <h2 className="text-lg font-semibold text-dark-50 mb-4">Configuration</h2>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
                     <div>
                       <p className="text-xs text-dark-500 mb-1">Symbol</p>
                       <p className="text-sm font-medium text-dark-50">{selectedConfig.symbol}</p>
@@ -398,7 +400,59 @@ export const Backtesting: React.FC = () => {
                         ${selectedConfig.initial_capital?.toLocaleString()}
                       </p>
                     </div>
+                    {selectedConfig.config_params?.agent_config?.model && (
+                      <div>
+                        <p className="text-xs text-dark-500 mb-1">LLM Model</p>
+                        <p className="text-sm font-medium text-primary-400">
+                          {selectedConfig.config_params.agent_config.model}
+                        </p>
+                      </div>
+                    )}
+                    {selectedConfig.config_params?.synthetic_strategy && (
+                      <div>
+                        <p className="text-xs text-dark-500 mb-1">Strategy</p>
+                        <p className="text-sm font-medium text-primary-400">
+                          {selectedConfig.config_params.synthetic_strategy}
+                        </p>
+                      </div>
+                    )}
                   </div>
+                  {selectedConfig.config_params?.agent_config && (
+                    <div className="mt-4 pt-4 border-t border-dark-700 grid grid-cols-2 md:grid-cols-4 gap-4">
+                      {selectedConfig.config_params.agent_config.temperature && (
+                        <div>
+                          <p className="text-xs text-dark-500 mb-1">Temperature</p>
+                          <p className="text-sm font-medium text-dark-300">
+                            {selectedConfig.config_params.agent_config.temperature}
+                          </p>
+                        </div>
+                      )}
+                      {selectedConfig.config_params.agent_config.max_tokens && (
+                        <div>
+                          <p className="text-xs text-dark-500 mb-1">Max Tokens</p>
+                          <p className="text-sm font-medium text-dark-300">
+                            {selectedConfig.config_params.agent_config.max_tokens}
+                          </p>
+                        </div>
+                      )}
+                      {runData?.candles_processed && runData?.start_time && runData?.end_time && (
+                        <div>
+                          <p className="text-xs text-dark-500 mb-1">Processing Speed</p>
+                          <p className="text-sm font-medium text-success-400">
+                            {Math.round(runData.candles_processed / ((new Date(runData.end_time).getTime() - new Date(runData.start_time).getTime()) / 1000))} candles/sec
+                          </p>
+                        </div>
+                      )}
+                      {selectedConfig.config_params.agent_config.model?.includes('gpt') && runData?.agent_decisions_count && (
+                        <div>
+                          <p className="text-xs text-dark-500 mb-1">Est. Cost</p>
+                          <p className="text-sm font-medium text-warning-400">
+                            ${((runData.agent_decisions_count * 0.002)).toFixed(4)}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -543,6 +597,16 @@ export const Backtesting: React.FC = () => {
                   <AgentDecisionList decisions={decisions} loading={!decisionsData} />
                 </div>
               )}
+
+              {/* Positions List - Live */}
+              {trades.length > 0 && (
+                <div className="bg-dark-900 rounded-lg border border-dark-700 p-6">
+                  <h3 className="text-lg font-semibold text-dark-50 mb-6">
+                    Positions ({trades.length})
+                  </h3>
+                  <PositionsList trades={trades} loading={false} />
+                </div>
+              )}
             </div>
           ) : runData?.status === 'failed' ? (
             <div className="bg-dark-900 rounded-lg border border-danger-500/50 p-12 text-center">
@@ -611,7 +675,59 @@ export const Backtesting: React.FC = () => {
                         ${selectedConfig.initial_capital?.toLocaleString()}
                       </p>
                     </div>
+                    {selectedConfig.config_params?.agent_config?.model && (
+                      <div>
+                        <p className="text-xs text-dark-500 mb-1">LLM Model</p>
+                        <p className="text-sm font-medium text-primary-400">
+                          {selectedConfig.config_params.agent_config.model}
+                        </p>
+                      </div>
+                    )}
+                    {selectedConfig.config_params?.synthetic_strategy && (
+                      <div>
+                        <p className="text-xs text-dark-500 mb-1">Strategy</p>
+                        <p className="text-sm font-medium text-primary-400">
+                          {selectedConfig.config_params.synthetic_strategy}
+                        </p>
+                      </div>
+                    )}
                   </div>
+                  {selectedConfig.config_params?.agent_config && (
+                    <div className="mt-4 pt-4 border-t border-dark-700 grid grid-cols-2 md:grid-cols-4 gap-4">
+                      {selectedConfig.config_params.agent_config.temperature && (
+                        <div>
+                          <p className="text-xs text-dark-500 mb-1">Temperature</p>
+                          <p className="text-sm font-medium text-dark-300">
+                            {selectedConfig.config_params.agent_config.temperature}
+                          </p>
+                        </div>
+                      )}
+                      {selectedConfig.config_params.agent_config.max_tokens && (
+                        <div>
+                          <p className="text-xs text-dark-500 mb-1">Max Tokens</p>
+                          <p className="text-sm font-medium text-dark-300">
+                            {selectedConfig.config_params.agent_config.max_tokens}
+                          </p>
+                        </div>
+                      )}
+                      {runData?.candles_processed && runData?.start_time && runData?.end_time && (
+                        <div>
+                          <p className="text-xs text-dark-500 mb-1">Processing Speed</p>
+                          <p className="text-sm font-medium text-success-400">
+                            {Math.round(runData.candles_processed / ((new Date(runData.end_time).getTime() - new Date(runData.start_time).getTime()) / 1000))} candles/sec
+                          </p>
+                        </div>
+                      )}
+                      {selectedConfig.config_params.agent_config.model?.includes('gpt') && runData?.agent_decisions_count && (
+                        <div>
+                          <p className="text-xs text-dark-500 mb-1">Est. Cost</p>
+                          <p className="text-sm font-medium text-warning-400">
+                            ${((runData.agent_decisions_count * 0.002)).toFixed(4)}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -701,17 +817,13 @@ export const Backtesting: React.FC = () => {
                 </div>
               )}
 
-              {/* Trades Table (if any) */}
+              {/* Positions List - Completed */}
               {tradesData && tradesData.items.length > 0 && (
                 <div className="bg-dark-900 rounded-lg border border-dark-700 p-6">
-                  <h3 className="text-lg font-semibold text-dark-50 mb-4">
-                    Simulated Trades ({tradesData.total})
+                  <h3 className="text-lg font-semibold text-dark-50 mb-6">
+                    Positions ({tradesData.total})
                   </h3>
-                  <div className="text-sm text-dark-400">
-                    <p>Open: {tradesData.open_trades}</p>
-                    <p>Closed: {tradesData.closed_trades}</p>
-                  </div>
-                  {/* Add trades table component here if needed */}
+                  <PositionsList trades={tradesData.items} loading={false} />
                 </div>
               )}
             </div>

@@ -68,6 +68,9 @@ class CreateBacktestConfigRequest(BaseModel):
     allow_short_selling: bool = Field(
         default=False, description="Allow short selling"
     )
+    max_candles: int = Field(
+        default=150000, gt=0, description="Maximum candles to process (prevents infinite loops)"
+    )
     config_params: Optional[Dict[str, Any]] = Field(
         None, description="Mode-specific parameters (JSON)"
     )
@@ -156,6 +159,7 @@ class BacktestConfigResponse(BaseModel):
     commission_fixed: Decimal = Field(..., description="Fixed commission")
     max_leverage: Decimal = Field(..., description="Maximum leverage")
     allow_short_selling: bool = Field(..., description="Short selling allowed")
+    max_candles: int = Field(..., description="Maximum candles to process")
     config_params: Optional[Dict[str, Any]] = Field(None, description="Config parameters")
     created_at: datetime = Field(..., description="Creation timestamp")
 

@@ -135,4 +135,4 @@ def create_mt4_error(error_code: int, message: str = None) -> MT4Error:
         return MT4CommandError(full_message, error_code)
 
 
-print("✓ T108: Custom exceptions created")
+# Module loaded - exceptions ready (print removed for MCP compatibility)

@@ -26,19 +26,43 @@ export const MarketData: React.FC = () => {
     appendMarketData,
   } = useMarketStore();
 
-  // Fetch historical data
+  // Fetch historical data for current symbol
   const { data: historicalData, isLoading } = useQuery({
     queryKey: ['market-data', currentSymbol, currentTimeframe],
     queryFn: () => marketDataApi.getHistoricalData(currentSymbol, currentTimeframe, 500),
     refetchInterval: 10000,
   });
 
+  // Fetch latest data for all symbols to populate live instruments
+  useEffect(() => {
+    const fetchAllSymbols = async () => {
+      for (const symbol of SYMBOLS) {
+        try {
+          const data = await marketDataApi.getHistoricalData(symbol, currentTimeframe, 1);
+          if (data && data.length > 0) {
+            updateLatestTick(symbol, data[0]);
+          }
+        } catch (error) {
+          console.error(`Failed to fetch data for ${symbol}:`, error);
+        }
+      }
+    };
+
+    fetchAllSymbols();
+    const interval = setInterval(fetchAllSymbols, 10000); // Refresh every 10 seconds
+    return () => clearInterval(interval);
+  }, [currentTimeframe, updateLatestTick]);
+
   // Update store when historical data changes
   useEffect(() => {
-    if (historicalData) {
+    if (historicalData && historicalData.length > 0) {
       setMarketData(currentSymbol, historicalData);
+
+      // Also update latestTick from the most recent historical data point
+      const latestDataPoint = historicalData[historicalData.length - 1];
+      updateLatestTick(currentSymbol, latestDataPoint);
     }
-  }, [historicalData, currentSymbol, setMarketData]);
+  }, [historicalData, currentSymbol, setMarketData, updateLatestTick]);
 
   // Subscribe to real-time ticks
   useEffect(() => {

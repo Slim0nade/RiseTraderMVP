@@ -26,7 +26,7 @@ from .middleware import (
     register_exception_handlers,
     setup_logging,
 )
-from .routes import agents, trading, market_data, forecasts, performance, strategies, system, ml_forecasting, agent_pipelines, backtesting, vectorized_backtesting
+from .routes import agents, trading, market_data, forecasts, performance, strategies, system, ml_forecasting, agent_pipelines, backtesting, vectorized_backtesting, data_sync
 from src.services.mt4_sync_service import get_mt4_sync_service
 
 # Configure structured logging
@@ -132,6 +132,7 @@ app.include_router(performance.router, prefix="/api")
 app.include_router(strategies.router, prefix="/api")
 app.include_router(system.router, prefix="/api")
 app.include_router(ml_forecasting.router)  # ML forecasting endpoints
+app.include_router(data_sync.router, prefix="/api")  # Data sync endpoints
 
 # Mount Prometheus metrics endpoint
 if settings.prometheus_enabled:
