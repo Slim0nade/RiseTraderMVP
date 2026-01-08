@@ -607,6 +607,161 @@ class RiseTraderMCP:
                         "required": ["entry_price", "direction", "atr_value"]
                     }
                 ),
+
+                # =========================================================
+                # STRATEGY OPTIMIZER TOOLS
+                # =========================================================
+                Tool(
+                    name="optimize_strategy",
+                    description="Run MetaTrader-style strategy optimization. Tests parameter combinations and returns best parameters for maximum returns/Sharpe ratio.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "symbol": {
+                                "type": "string",
+                                "description": "Trading symbol (e.g., 'CrudeOIL')"
+                            },
+                            "timeframe": {
+                                "type": "string",
+                                "enum": ["M1", "M5", "M15", "H1", "H4", "D1"],
+                                "description": "Candle timeframe"
+                            },
+                            "start_date": {
+                                "type": "string",
+                                "description": "Start date (YYYY-MM-DD)"
+                            },
+                            "end_date": {
+                                "type": "string",
+                                "description": "End date (YYYY-MM-DD)"
+                            },
+                            "strategy": {
+                                "type": "string",
+                                "description": "Strategy name (crude_oil_v3, ma_crossover, rsi, mean_reversion)"
+                            },
+                            "optimization_target": {
+                                "type": "string",
+                                "enum": ["sharpe_ratio", "total_return_pct", "profit_factor", "risk_adjusted_return"],
+                                "description": "Metric to optimize (default: sharpe_ratio)",
+                                "default": "sharpe_ratio"
+                            },
+                            "max_combinations": {
+                                "type": "integer",
+                                "description": "Maximum parameter combinations to test (default: 100 for quick scan)",
+                                "default": 100
+                            },
+                            "initial_capital": {
+                                "type": "number",
+                                "description": "Starting capital (default 10000)",
+                                "default": 10000
+                            }
+                        },
+                        "required": ["symbol", "timeframe", "start_date", "end_date", "strategy"]
+                    }
+                ),
+                Tool(
+                    name="get_strategy_param_grid",
+                    description="Get the default parameter grid for a strategy optimization",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "strategy": {
+                                "type": "string",
+                                "description": "Strategy name (crude_oil_v3, ma_crossover, rsi, mean_reversion)"
+                            }
+                        },
+                        "required": ["strategy"]
+                    }
+                ),
+                
+                # =========================================================
+                # ENHANCED OPTIMIZER TOOLS
+                # =========================================================
+                Tool(
+                    name="rolling_window_optimize",
+                    description="Rolling window optimization: re-optimizes parameters at regular intervals using recent data. Simulates real-world periodic re-calibration. Returns cumulative capital growth and robustness ratio.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "symbol": {"type": "string", "description": "Trading symbol"},
+                            "timeframe": {"type": "string", "enum": ["M1", "M5", "M15", "H1", "H4", "D1"]},
+                            "start_date": {"type": "string", "description": "Start date (YYYY-MM-DD)"},
+                            "end_date": {"type": "string", "description": "End date (YYYY-MM-DD)"},
+                            "strategy": {"type": "string", "description": "Strategy name"},
+                            "optimization_target": {"type": "string", "default": "sharpe_ratio"},
+                            "train_months": {"type": "integer", "default": 3, "description": "Training window months"},
+                            "test_months": {"type": "integer", "default": 1, "description": "Testing window months"},
+                            "step_months": {"type": "integer", "default": 1, "description": "Step forward months"},
+                            "max_combinations": {"type": "integer", "default": 100},
+                            "initial_capital": {"type": "number", "default": 10000}
+                        },
+                        "required": ["symbol", "timeframe", "start_date", "end_date", "strategy"]
+                    }
+                ),
+                Tool(
+                    name="time_interval_optimize",
+                    description="Optimize parameters for specific time intervals (quarters, months, seasons). Returns best parameters per interval with stability analysis.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "symbol": {"type": "string", "description": "Trading symbol"},
+                            "timeframe": {"type": "string", "enum": ["M1", "M5", "M15", "H1", "H4", "D1"]},
+                            "start_date": {"type": "string", "description": "Overall start date"},
+                            "end_date": {"type": "string", "description": "Overall end date"},
+                            "strategy": {"type": "string", "description": "Strategy name"},
+                            "intervals": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "name": {"type": "string"},
+                                        "start_date": {"type": "string"},
+                                        "end_date": {"type": "string"}
+                                    }
+                                },
+                                "description": "List of intervals [{name, start_date, end_date}]"
+                            },
+                            "optimization_target": {"type": "string", "default": "sharpe_ratio"},
+                            "max_combinations": {"type": "integer", "default": 100},
+                            "initial_capital": {"type": "number", "default": 10000}
+                        },
+                        "required": ["symbol", "timeframe", "start_date", "end_date", "strategy", "intervals"]
+                    }
+                ),
+                Tool(
+                    name="sensitivity_analysis",
+                    description="Analyze how each parameter affects strategy performance. Returns sensitivity rankings and optimal values.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "symbol": {"type": "string", "description": "Trading symbol"},
+                            "timeframe": {"type": "string", "enum": ["M1", "M5", "M15", "H1", "H4", "D1"]},
+                            "start_date": {"type": "string", "description": "Start date (YYYY-MM-DD)"},
+                            "end_date": {"type": "string", "description": "End date (YYYY-MM-DD)"},
+                            "strategy": {"type": "string", "description": "Strategy name"},
+                            "base_params": {"type": "object", "description": "Base parameters (optional)"},
+                            "initial_capital": {"type": "number", "default": 10000}
+                        },
+                        "required": ["symbol", "timeframe", "start_date", "end_date", "strategy"]
+                    }
+                ),
+                Tool(
+                    name="monte_carlo_validate",
+                    description="Monte Carlo validation: shuffles trade order to estimate luck vs skill. Returns confidence intervals and percentile ranking.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "symbol": {"type": "string", "description": "Trading symbol"},
+                            "timeframe": {"type": "string", "enum": ["M1", "M5", "M15", "H1", "H4", "D1"]},
+                            "start_date": {"type": "string", "description": "Start date (YYYY-MM-DD)"},
+                            "end_date": {"type": "string", "description": "End date (YYYY-MM-DD)"},
+                            "strategy": {"type": "string", "description": "Strategy name"},
+                            "params": {"type": "object", "description": "Strategy parameters to test"},
+                            "num_simulations": {"type": "integer", "default": 100, "description": "Number of Monte Carlo simulations"},
+                            "initial_capital": {"type": "number", "default": 10000}
+                        },
+                        "required": ["symbol", "timeframe", "start_date", "end_date", "strategy", "params"]
+                    }
+                ),
             ]
 
         # =====================================================================
@@ -671,6 +826,20 @@ class RiseTraderMCP:
                     result = await self._modify_position(**arguments)
                 elif name == "calculate_institutional_stop":
                     result = await self._calculate_institutional_stop(**arguments)
+                # Strategy Optimizer
+                elif name == "optimize_strategy":
+                    result = await self._optimize_strategy(**arguments)
+                elif name == "get_strategy_param_grid":
+                    result = await self._get_strategy_param_grid(**arguments)
+                # Enhanced Optimizer
+                elif name == "rolling_window_optimize":
+                    result = await self._rolling_window_optimize(**arguments)
+                elif name == "time_interval_optimize":
+                    result = await self._time_interval_optimize(**arguments)
+                elif name == "sensitivity_analysis":
+                    result = await self._sensitivity_analysis(**arguments)
+                elif name == "monte_carlo_validate":
+                    result = await self._monte_carlo_validate(**arguments)
                 else:
                     result = {"error": f"Unknown tool: {name}"}
 
@@ -728,33 +897,77 @@ class RiseTraderMCP:
         return await self._api_call("POST", "/api/trading/orders", json=payload)
 
     async def _close_position(self, position_id: int) -> Dict[str, Any]:
-        """Close a position."""
-        return await self._api_call("POST", f"/api/trading/positions/{position_id}/close")
+        """Close a position using direct MT4 connection (position_id is the MT4 ticket number)."""
+        try:
+            mt4_client = await self._get_mt4_client()
+            result = await mt4_client.close_position(ticket_number=position_id)
+            
+            success = result.get("success", False) or result.get("status") == "OK"
+            
+            if success:
+                return {
+                    "success": True,
+                    "ticket": position_id,
+                    "message": f"Position {position_id} closed successfully"
+                }
+            else:
+                return {
+                    "success": False,
+                    "ticket": position_id,
+                    "error": result.get("error_message") or result.get("message") or "Failed to close position"
+                }
+        except Exception as e:
+            logger.error(f"Error closing position {position_id}: {e}", exc_info=True)
+            return {
+                "success": False,
+                "ticket": position_id,
+                "error": str(e)
+            }
 
     async def _close_all_positions(self, symbol: Optional[str] = None) -> Dict[str, Any]:
-        """Close all positions (optionally filtered by symbol)."""
-        # Get all open positions (live only)
-        positions = await self._get_open_positions(live_only=True, limit=100)
+        """Close all positions using direct MT4 connection (optionally filtered by symbol)."""
+        try:
+            mt4_client = await self._get_mt4_client()
+            
+            # Get positions directly from MT4
+            result = await mt4_client.get_open_positions()
+            positions = result.get("positions", [])
+            
+            closed = []
+            errors = []
 
-        closed = []
-        errors = []
+            for pos in positions:
+                pos_symbol = pos.get("symbol")
+                ticket = pos.get("ticket")
+                
+                if symbol and pos_symbol != symbol:
+                    continue
+                
+                if ticket:
+                    try:
+                        close_result = await mt4_client.close_position(ticket_number=ticket)
+                        success = close_result.get("success", False) or close_result.get("status") == "OK"
+                        if success:
+                            closed.append({"ticket": ticket, "symbol": pos_symbol})
+                        else:
+                            errors.append({"ticket": ticket, "error": close_result.get("message")})
+                    except Exception as e:
+                        errors.append({"ticket": ticket, "error": str(e)})
 
-        for pos in positions.get("positions", []):
-            if symbol and pos["symbol"] != symbol:
-                continue
-
-            try:
-                result = await self._close_position(pos["id"])
-                closed.append(result)
-            except Exception as e:
-                errors.append({"position_id": pos["id"], "error": str(e)})
-
-        return {
-            "closed_count": len(closed),
-            "error_count": len(errors),
-            "closed": closed,
-            "errors": errors
-        }
+            return {
+                "closed_count": len(closed),
+                "error_count": len(errors),
+                "closed": closed,
+                "errors": errors
+            }
+        except Exception as e:
+            logger.error(f"Error closing all positions: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": str(e),
+                "closed_count": 0,
+                "error_count": 0
+            }
 
     async def _get_open_positions(
         self,
@@ -1815,6 +2028,445 @@ class RiseTraderMCP:
             "is_institutional_level": is_institutional,
             "reasoning": f"ATR-based stop ({atr_multiplier}x ATR = {round(base_stop_distance, 2)}) with {round(random_offset / pip_value, 1)} pip random offset to avoid obvious liquidity clusters"
         }
+
+    # =========================================================================
+    # STRATEGY OPTIMIZER METHODS
+    # =========================================================================
+
+    async def _optimize_strategy(
+        self,
+        symbol: str,
+        timeframe: str,
+        start_date: str,
+        end_date: str,
+        strategy: str,
+        optimization_target: str = "sharpe_ratio",
+        max_combinations: int = 100,
+        initial_capital: float = 10000
+    ) -> Dict[str, Any]:
+        """
+        Run strategy optimization via API.
+        
+        Tests parameter combinations and returns best parameters.
+        """
+        try:
+            payload = {
+                "symbol": symbol,
+                "timeframe": timeframe,
+                "start_date": start_date,
+                "end_date": end_date,
+                "strategy": strategy,
+                "optimization_target": optimization_target,
+                "max_combinations": max_combinations,
+                "initial_capital": initial_capital,
+            }
+            
+            result = await self._api_call(
+                "POST",
+                "/api/optimizer/run",
+                json=payload,
+                timeout=300  # 5 minutes for optimization
+            )
+            
+            return {
+                "success": result.get("success", True),
+                "optimization_id": result.get("optimization_id"),
+                "strategy": strategy,
+                "symbol": symbol,
+                "timeframe": timeframe,
+                "optimization_target": optimization_target,
+                "total_combinations": result.get("total_combinations"),
+                "combinations_tested": result.get("combinations_tested"),
+                "best_params": result.get("best_params"),
+                "best_return_pct": result.get("best_return_pct"),
+                "best_sharpe": result.get("best_sharpe"),
+                "best_profit_factor": result.get("best_profit_factor"),
+                "total_time_seconds": result.get("total_time_seconds"),
+                "top_results": result.get("top_results", [])[:5],
+                "message": f"Optimization complete. Best return: {result.get('best_return_pct', 0):.2f}%, Best Sharpe: {result.get('best_sharpe', 0):.2f}"
+            }
+            
+        except Exception as e:
+            logger.error(f"Optimization failed: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
+    async def _get_strategy_param_grid(
+        self,
+        strategy: str
+    ) -> Dict[str, Any]:
+        """
+        Get the default parameter grid for a strategy.
+        """
+        try:
+            result = await self._api_call(
+                "GET",
+                f"/api/optimizer/param-grids/{strategy}"
+            )
+            return result
+            
+        except Exception as e:
+            # Return defaults if API not available
+            grids = {
+                "ma_crossover": {
+                    "fast_period": [5, 8, 10, 12, 15],
+                    "slow_period": [20, 25, 30, 35, 40, 50],
+                },
+                "rsi": {
+                    "rsi_period": [7, 10, 14, 21],
+                    "rsi_oversold": [20, 25, 30, 35],
+                    "rsi_overbought": [65, 70, 75, 80],
+                },
+                "crude_oil_v3": {
+                    "ema_fast": [5, 8, 10, 12, 15],
+                    "ema_slow": [20, 25, 29, 35, 40],
+                    "rsi_period": [7, 10, 14],
+                    "rsi_oversold": [25, 30, 32, 35, 40],
+                    "rsi_overbought": [60, 65, 68, 70, 75],
+                    "cci_period": [14, 20, 25],
+                    "cci_oversold": [-100, -80, -60],
+                    "cci_overbought": [80, 100, 120],
+                    "use_time_filter": [True, False],
+                    "trade_start_hour": [8],
+                    "trade_end_hour": [20],
+                },
+                "mean_reversion": {
+                    "lookback": [10, 15, 20, 25, 30],
+                    "std_threshold": [1.5, 2.0, 2.5, 3.0],
+                },
+            }
+            
+            if strategy not in grids:
+                return {
+                    "error": f"Unknown strategy: {strategy}",
+                    "available_strategies": list(grids.keys())
+                }
+            
+            grid = grids[strategy]
+            total_combinations = 1
+            for values in grid.values():
+                total_combinations *= len(values)
+            
+            return {
+                "strategy": strategy,
+                "param_grid": grid,
+                "total_combinations": total_combinations,
+                "note": "Returns from local defaults (API not available)"
+            }
+
+
+    async def _rolling_window_optimize(
+        self,
+        symbol: str,
+        timeframe: str,
+        start_date: str,
+        end_date: str,
+        strategy: str,
+        optimization_target: str = "sharpe_ratio",
+        train_months: int = 3,
+        test_months: int = 1,
+        step_months: int = 1,
+        max_combinations: int = 100,
+        initial_capital: float = 10000
+    ) -> Dict[str, Any]:
+        """Run rolling window optimization via API."""
+        try:
+            payload = {
+                "symbol": symbol,
+                "timeframe": timeframe,
+                "start_date": start_date,
+                "end_date": end_date,
+                "strategy": strategy,
+                "optimization_target": optimization_target,
+                "train_months": train_months,
+                "test_months": test_months,
+                "step_months": step_months,
+                "max_combinations": max_combinations,
+                "initial_capital": initial_capital,
+            }
+            
+            result = await self._api_call(
+                "POST",
+                "/api/optimizer/rolling-window",
+                json=payload,
+                timeout=600  # 10 minutes for rolling window
+            )
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Rolling window optimization failed: {e}", exc_info=True)
+            return {"success": False, "error": str(e)}
+
+    async def _time_interval_optimize(
+        self,
+        symbol: str,
+        timeframe: str,
+        start_date: str,
+        end_date: str,
+        strategy: str,
+        intervals: List[Dict[str, str]],
+        optimization_target: str = "sharpe_ratio",
+        max_combinations: int = 100,
+        initial_capital: float = 10000
+    ) -> Dict[str, Any]:
+        """Run time-interval specific optimization via API."""
+        try:
+            payload = {
+                "symbol": symbol,
+                "timeframe": timeframe,
+                "start_date": start_date,
+                "end_date": end_date,
+                "strategy": strategy,
+                "intervals": intervals,
+                "optimization_target": optimization_target,
+                "max_combinations": max_combinations,
+                "initial_capital": initial_capital,
+            }
+            
+            result = await self._api_call(
+                "POST",
+                "/api/optimizer/time-intervals",
+                json=payload,
+                timeout=600
+            )
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Time interval optimization failed: {e}", exc_info=True)
+            return {"success": False, "error": str(e)}
+
+    async def _sensitivity_analysis(
+        self,
+        symbol: str,
+        timeframe: str,
+        start_date: str,
+        end_date: str,
+        strategy: str,
+        base_params: Optional[Dict[str, Any]] = None,
+        initial_capital: float = 10000
+    ) -> Dict[str, Any]:
+        """Run sensitivity analysis via API."""
+        try:
+            payload = {
+                "symbol": symbol,
+                "timeframe": timeframe,
+                "start_date": start_date,
+                "end_date": end_date,
+                "strategy": strategy,
+                "initial_capital": initial_capital,
+            }
+            if base_params:
+                payload["base_params"] = base_params
+            
+            result = await self._api_call(
+                "POST",
+                "/api/optimizer/sensitivity",
+                json=payload,
+                timeout=600
+            )
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Sensitivity analysis failed: {e}", exc_info=True)
+            return {"success": False, "error": str(e)}
+
+    async def _monte_carlo_validate(
+        self,
+        symbol: str,
+        timeframe: str,
+        start_date: str,
+        end_date: str,
+        strategy: str,
+        params: Dict[str, Any],
+        num_simulations: int = 100,
+        initial_capital: float = 10000
+    ) -> Dict[str, Any]:
+        """Run Monte Carlo validation via API."""
+        try:
+            payload = {
+                "symbol": symbol,
+                "timeframe": timeframe,
+                "start_date": start_date,
+                "end_date": end_date,
+                "strategy": strategy,
+                "params": params,
+                "num_simulations": num_simulations,
+                "initial_capital": initial_capital,
+            }
+            
+            result = await self._api_call(
+                "POST",
+                "/api/optimizer/monte-carlo",
+                json=payload,
+                timeout=300
+            )
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Monte Carlo validation failed: {e}", exc_info=True)
+            return {"success": False, "error": str(e)}
+
+
+    async def _rolling_window_optimize(
+        self,
+        symbol: str,
+        timeframe: str,
+        start_date: str,
+        end_date: str,
+        strategy: str,
+        optimization_target: str = "sharpe_ratio",
+        train_months: int = 3,
+        test_months: int = 1,
+        step_months: int = 1,
+        max_combinations: int = 100,
+        initial_capital: float = 10000
+    ) -> Dict[str, Any]:
+        """Run rolling window optimization via API."""
+        try:
+            payload = {
+                "symbol": symbol,
+                "timeframe": timeframe,
+                "start_date": start_date,
+                "end_date": end_date,
+                "strategy": strategy,
+                "optimization_target": optimization_target,
+                "train_months": train_months,
+                "test_months": test_months,
+                "step_months": step_months,
+                "max_combinations": max_combinations,
+                "initial_capital": initial_capital,
+            }
+            
+            result = await self._api_call(
+                "POST",
+                "/api/optimizer/rolling-window",
+                json=payload,
+                timeout=600  # 10 minutes for rolling window
+            )
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Rolling window optimization failed: {e}", exc_info=True)
+            return {"success": False, "error": str(e)}
+
+    async def _time_interval_optimize(
+        self,
+        symbol: str,
+        timeframe: str,
+        start_date: str,
+        end_date: str,
+        strategy: str,
+        intervals: List[Dict[str, str]],
+        optimization_target: str = "sharpe_ratio",
+        max_combinations: int = 100,
+        initial_capital: float = 10000
+    ) -> Dict[str, Any]:
+        """Run time-interval specific optimization via API."""
+        try:
+            payload = {
+                "symbol": symbol,
+                "timeframe": timeframe,
+                "start_date": start_date,
+                "end_date": end_date,
+                "strategy": strategy,
+                "intervals": intervals,
+                "optimization_target": optimization_target,
+                "max_combinations": max_combinations,
+                "initial_capital": initial_capital,
+            }
+            
+            result = await self._api_call(
+                "POST",
+                "/api/optimizer/time-intervals",
+                json=payload,
+                timeout=600
+            )
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Time interval optimization failed: {e}", exc_info=True)
+            return {"success": False, "error": str(e)}
+
+    async def _sensitivity_analysis(
+        self,
+        symbol: str,
+        timeframe: str,
+        start_date: str,
+        end_date: str,
+        strategy: str,
+        base_params: Optional[Dict[str, Any]] = None,
+        initial_capital: float = 10000
+    ) -> Dict[str, Any]:
+        """Run sensitivity analysis via API."""
+        try:
+            payload = {
+                "symbol": symbol,
+                "timeframe": timeframe,
+                "start_date": start_date,
+                "end_date": end_date,
+                "strategy": strategy,
+                "initial_capital": initial_capital,
+            }
+            if base_params:
+                payload["base_params"] = base_params
+            
+            result = await self._api_call(
+                "POST",
+                "/api/optimizer/sensitivity",
+                json=payload,
+                timeout=600
+            )
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Sensitivity analysis failed: {e}", exc_info=True)
+            return {"success": False, "error": str(e)}
+
+    async def _monte_carlo_validate(
+        self,
+        symbol: str,
+        timeframe: str,
+        start_date: str,
+        end_date: str,
+        strategy: str,
+        params: Dict[str, Any],
+        num_simulations: int = 100,
+        initial_capital: float = 10000
+    ) -> Dict[str, Any]:
+        """Run Monte Carlo validation via API."""
+        try:
+            payload = {
+                "symbol": symbol,
+                "timeframe": timeframe,
+                "start_date": start_date,
+                "end_date": end_date,
+                "strategy": strategy,
+                "params": params,
+                "num_simulations": num_simulations,
+                "initial_capital": initial_capital,
+            }
+            
+            result = await self._api_call(
+                "POST",
+                "/api/optimizer/monte-carlo",
+                json=payload,
+                timeout=300
+            )
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Monte Carlo validation failed: {e}", exc_info=True)
+            return {"success": False, "error": str(e)}
 
     async def run(self):
         """Run the MCP server."""

@@ -1,12 +1,8 @@
 """
-Business Logic Services.
+RiseTrader Services Module
 
-Provides high-level orchestration for:
-- Agent lifecycle management
-- Pipeline execution (analysis → decision → execution)
-- Error recovery and retry logic
+Background services for automated trading operations.
 """
+from .stealth_stop_manager import StealthStopManager, DynamicTrailConfig
 
-from src.services.agent_service import AgentService
-
-__all__ = ["AgentService"]
+__all__ = ["StealthStopManager", "DynamicTrailConfig"]

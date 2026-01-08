@@ -256,7 +256,7 @@ async def get_position(
 })
 async def close_position(
     position_id: int,
-    request: ClosePositionRequest,
+    request: Optional[ClosePositionRequest] = None,
     service: TradingService = Depends(get_trading_service),
 ) -> ClosePositionResponse:
     """
@@ -289,7 +289,7 @@ async def close_position(
     try:
         result = await service.close_position(
             position_id=position_id,
-            volume=Decimal(str(request.volume)) if request.volume else None,
+            volume=Decimal(str(request.size)) if request and request.size else None,
         )
 
         # Invalidate positions cache on successful close

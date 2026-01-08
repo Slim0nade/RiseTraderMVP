@@ -12,6 +12,7 @@ import {
   ChevronRight,
   FlaskConical,
   MessageSquare,
+  Sliders,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
@@ -29,6 +30,7 @@ const navItems = [
   { path: '/strategies', icon: BarChart3, label: 'Strategies' },
   { path: '/forecasts', icon: Brain, label: 'Forecasts' },
   { path: '/backtesting', icon: FlaskConical, label: 'Backtesting' },
+  { path: '/optimization', icon: Sliders, label: 'Optimization' },
   { path: '/performance', icon: BarChart3, label: 'Performance' },
   { path: '/settings', icon: Settings, label: 'Settings' },
 ];

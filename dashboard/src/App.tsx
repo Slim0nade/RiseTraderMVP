@@ -15,6 +15,7 @@ import { Strategies } from './pages/Strategies';
 import { Performance } from './pages/Performance';
 import { Forecasts } from './pages/Forecasts';
 import { Backtesting } from './pages/Backtesting';
+import { Optimization } from './pages/Optimization';
 import { Settings } from './pages/Settings';
 
 // Create query client
@@ -44,6 +45,7 @@ function App() {
               <Route path="/performance" element={<Performance />} />
               <Route path="/forecasts" element={<Forecasts />} />
               <Route path="/backtesting" element={<Backtesting />} />
+              <Route path="/optimization" element={<Optimization />} />
               <Route path="/settings" element={<Settings />} />
             </Route>
           </Routes>

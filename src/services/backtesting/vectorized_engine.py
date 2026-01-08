@@ -39,13 +39,20 @@ class VectorizedBacktestConfig:
     strategy: str = "ma_crossover"
     strategy_params: Dict[str, Any] = field(default_factory=dict)
     
-    # Cost model
-    slippage_pct: float = 0.001  # 0.1%
-    commission_pct: float = 0.0005  # 0.05%
+    # Fortrade Cost Model (NO commission, spread + swap only)
+    # Spread: CrudeOIL = 4 pips ($0.04/unit), XAUUSD = 50 pips ($0.50/unit)
+    spread_points: float = 0.04  # Spread in price units (4 pips for CrudeOIL)
+    commission_per_lot: float = 0.0  # Fortrade charges NO commission
+    # Swap: Applied per lot per night held (from Fortrade: ~$3.81/lot/night for CrudeOIL)
+    swap_per_lot_per_night: float = 3.81  # Absolute value, applied as cost
+    
+    # Legacy cost model (for backward compatibility, set to 0)
+    slippage_pct: float = 0.0  # Disabled - use spread_points
+    commission_pct: float = 0.0  # Disabled - use commission_per_lot
     commission_fixed: float = 0.0
     
     # Position sizing
-    position_size: float = 1.0  # Lots
+    position_size: float = 1.0  # Lots (1 lot = 100 barrels for CrudeOIL)
     max_positions: int = 1
 
 
@@ -330,9 +337,9 @@ class VectorizedBacktestEngine:
             atr_period = params.get("atr_period", 10)
             df["atr"] = self._calculate_atr_vectorized(df, atr_period)
             
-            # Momentum
+            # Momentum (MQL4 style: close/close[n] * 100, where 100 = neutral)
             momentum_period = params.get("momentum_period", 10)
-            df["momentum"] = df["close"].pct_change(momentum_period) * 100
+            df["momentum"] = (df["close"] / df["close"].shift(momentum_period)) * 100
             
         elif strategy == "mean_reversion":
             lookback = params.get("lookback", 20)
@@ -396,6 +403,18 @@ class VectorizedBacktestEngine:
             df.loc[sell_signal, "signal"] = -1
             
         elif strategy == "crude_oil_v3":
+            # ================================================================
+            # CRUDE OIL V3 STRATEGY - IMPROVED VERSION
+            # ================================================================
+            # Features:
+            # - EMA trend filter
+            # - RSI/CCI oversold entry
+            # - Time filter (only trade during active hours)
+            # - ATR-based SL/TP
+            # - EMA crossover exit
+            # ================================================================
+            
+            # Parameters
             rsi_oversold = params.get("rsi_oversold", 32)
             rsi_overbought = params.get("rsi_overbought", 68)
             cci_oversold = params.get("cci_oversold", -80)
@@ -403,47 +422,88 @@ class VectorizedBacktestEngine:
             use_cci_filter = params.get("use_cci_filter", True)
             use_strict_filter = params.get("use_strict_filter", False)
             
-            # EMA trend direction (matching MQL4: checks if fast > slow, not just crossover)
+            # Momentum filter thresholds (MQL4: >99.5 for buy, <100.5 for sell)
+            use_momentum_filter = params.get("use_momentum_filter", True)
+            momentum_buy_threshold = params.get("momentum_buy_threshold", 99.5)
+            momentum_sell_threshold = params.get("momentum_sell_threshold", 100.5)
+            
+            # Time filter parameters
+            use_time_filter = params.get("use_time_filter", True)
+            trade_start_hour = params.get("trade_start_hour", 8)   # 8 AM GMT
+            trade_end_hour = params.get("trade_end_hour", 20)      # 8 PM GMT
+            
+            # ATR exit parameters
+            use_atr_exits = params.get("use_atr_exits", False)
+            atr_sl_multiplier = params.get("atr_sl_multiplier", 2.0)
+            atr_tp_multiplier = params.get("atr_tp_multiplier", 3.0)
+            
+            # ================================================================
+            # TIME FILTER
+            # ================================================================
+            if use_time_filter:
+                # Extract hour from index (assuming UTC)
+                hours = df.index.hour
+                time_ok = (hours >= trade_start_hour) & (hours < trade_end_hour)
+            else:
+                time_ok = pd.Series(True, index=df.index)
+            
+            # ================================================================
+            # TREND FILTER (EMA)
+            # ================================================================
+            # Use EMA crossover for trend direction, not just current state
             ema_bullish = df["ema_fast"] > df["ema_slow"]
             ema_bearish = df["ema_fast"] < df["ema_slow"]
             
-            # RSI conditions (BELOW oversold for buy, ABOVE overbought for sell)
+            # EMA crossover signals (for exits)
+            ema_cross_up = ema_bullish & ~ema_bullish.shift(1).fillna(False)
+            ema_cross_down = ema_bearish & ~ema_bearish.shift(1).fillna(False)
+            
+            # ================================================================
+            # OSCILLATOR FILTERS (RSI/CCI)
+            # ================================================================
             rsi_buy = df["rsi"] < rsi_oversold
             rsi_sell = df["rsi"] > rsi_overbought
             
-            # CCI conditions (BELOW oversold for buy, ABOVE overbought for sell)  
             cci_buy = df["cci"] < cci_oversold
             cci_sell = df["cci"] > cci_overbought
             
-            # Momentum conditions (per MQL4: > 99.5 for buy, < 100.5 for sell)
-            # momentum here is pct_change * 100, so 99.5 becomes -0.5%
-            momentum_buy = df["momentum"] > -0.5
-            momentum_sell = df["momentum"] < 0.5
-            
-            # Combined filter logic matching MQL4
+            # Combined filter logic
             if use_cci_filter:
                 if use_strict_filter:
-                    # Require BOTH RSI and CCI
-                    filter_buy = rsi_buy & cci_buy
+                    filter_buy = rsi_buy & cci_buy  # BOTH required
                     filter_sell = rsi_sell & cci_sell
                 else:
-                    # Require EITHER RSI or CCI (default)
-                    filter_buy = rsi_buy | cci_buy
+                    filter_buy = rsi_buy | cci_buy  # EITHER (default)
                     filter_sell = rsi_sell | cci_sell
             else:
-                # Only RSI
                 filter_buy = rsi_buy
                 filter_sell = rsi_sell
             
-            # BUY: EMA bullish + filter + momentum (matching MQL4 logic)
-            buy_condition = ema_bullish & filter_buy & momentum_buy
-            # Only trigger on first bar of buy condition (avoid multiple entries)
+            # ================================================================
+            # ENTRY SIGNALS
+            # ================================================================
+            # BUY: Trend is bullish + oscillator oversold + time filter
+            buy_condition = ema_bullish & filter_buy & time_ok
+            # Only trigger on FIRST bar of condition (avoid re-entries)
             buy_signal = buy_condition & ~buy_condition.shift(1).fillna(False)
             
-            # SELL/CLOSE: EMA turns bearish OR filter says overbought while in downtrend
-            sell_condition = ema_bearish | (filter_sell & ema_bearish)
-            # Only trigger on first bar of sell condition
-            sell_signal = sell_condition & ~sell_condition.shift(1).fillna(False)
+            # ================================================================
+            # EXIT SIGNALS
+            # ================================================================
+            # Exit on EMA cross down OR overbought in bearish trend
+            # This is more aggressive exit than waiting for full reversal
+            exit_on_ema_cross = ema_cross_down
+            exit_on_overbought = filter_sell & ema_bearish
+            
+            sell_signal = exit_on_ema_cross | exit_on_overbought
+            # Only trigger on first bar
+            sell_signal = sell_signal & ~sell_signal.shift(1).fillna(False)
+            
+            # Store ATR for position management (used in _calculate_pnl)
+            df["entry_atr"] = df["atr"]
+            df["atr_sl_mult"] = atr_sl_multiplier
+            df["atr_tp_mult"] = atr_tp_multiplier
+            df["use_atr_exits"] = use_atr_exits
             
             df.loc[buy_signal, "signal"] = 1
             df.loc[sell_signal, "signal"] = -1
@@ -468,6 +528,16 @@ class VectorizedBacktestEngine:
     ) -> pd.DataFrame:
         """
         Calculate positions and P&L vectorized.
+        
+        Fortrade Cost Model:
+        - NO commission
+        - Spread cost on entry/exit (e.g., 4 pips = $4/lot for CrudeOIL)
+        - Swap cost for overnight positions (~$3.81/lot/night for CrudeOIL)
+        
+        For CrudeOIL:
+        - 1 lot = 100 barrels
+        - 1 pip ($0.01) move = $1.00 per lot
+        - 4 pip spread = $4.00 per lot per round trip
         """
         # Forward fill signals to get position state
         # 1 = long, 0 = flat, -1 = short (not implemented yet)
@@ -486,12 +556,15 @@ class VectorizedBacktestEngine:
         
         df["position"] = positions
         
-        # Calculate returns
+        # Calculate raw price returns
         df["price_return"] = df["close"].pct_change()
         
-        # Apply slippage and commission on position changes
+        # Calculate spread cost as % of price (only on position changes)
+        # For CrudeOIL: spread_points=0.04 means $0.04 spread
+        # At $57/barrel, that's 0.04/57 = 0.07% per side
         position_changes = df["position"].diff().abs()
-        df["costs"] = position_changes * (config.slippage_pct + config.commission_pct)
+        spread_cost_pct = config.spread_points / df["close"]  # Spread as % of price
+        df["costs"] = position_changes * spread_cost_pct
         
         # Strategy returns = price returns * position (lagged) - costs
         df["strategy_return"] = (
@@ -514,6 +587,15 @@ class VectorizedBacktestEngine:
     ) -> List[Dict]:
         """
         Extract individual trades from position changes.
+        
+        Fortrade Cost Model:
+        - Spread: 4 pips for CrudeOIL = $4.00 per lot per round trip
+        - Commission: $0 (Fortrade doesn't charge commission)
+        - Swap: ~$3.81/lot/night (only for overnight holds)
+        
+        For CrudeOIL:
+        - 1 lot = 100 barrels
+        - 1 pip ($0.01) = $1.00 per lot ($0.01 * 100 barrels)
         """
         trades = []
         
@@ -522,6 +604,9 @@ class VectorizedBacktestEngine:
         
         entries = df[df["position_change"] == 1].index
         exits = df[df["position_change"] == -1].index
+        
+        # Contract size per lot (100 barrels for CrudeOIL)
+        contract_size = 100
         
         # Match entries to exits
         for entry_time in entries:
@@ -534,12 +619,31 @@ class VectorizedBacktestEngine:
                 entry_price = float(df.loc[entry_time, "close"])
                 exit_price = float(df.loc[exit_time, "close"])
                 
-                # Calculate P&L
-                gross_pnl = (exit_price - entry_price) * config.position_size * 100  # Per lot
-                costs = (entry_price + exit_price) * config.position_size * 100 * (
-                    config.slippage_pct + config.commission_pct
-                )
-                net_pnl = gross_pnl - costs
+                # Calculate P&L (Fortrade model)
+                # Gross P&L = price difference * lots * contract_size
+                gross_pnl = (exit_price - entry_price) * config.position_size * contract_size
+                
+                # Spread cost = spread_points * lots * contract_size (paid on entry and exit)
+                # For CrudeOIL: 0.04 * 1 * 100 = $4.00 round trip
+                spread_cost = config.spread_points * config.position_size * contract_size
+                
+                # Commission cost (Fortrade = $0)
+                commission_cost = config.commission_per_lot * config.position_size
+                
+                # Swap cost (only if held overnight)
+                # Count nights between entry and exit
+                if hasattr(entry_time, 'date') and hasattr(exit_time, 'date'):
+                    nights_held = (exit_time.date() - entry_time.date()).days
+                else:
+                    # Estimate from timestamp difference
+                    time_diff = (exit_time - entry_time).total_seconds() if hasattr(exit_time - entry_time, 'total_seconds') else 0
+                    nights_held = int(time_diff / 86400)  # seconds per day
+                
+                swap_cost = config.swap_per_lot_per_night * config.position_size * max(0, nights_held)
+                
+                # Total costs
+                total_costs = spread_cost + commission_cost + swap_cost
+                net_pnl = gross_pnl - total_costs
                 
                 trades.append({
                     "entry_time": entry_time.isoformat() if hasattr(entry_time, 'isoformat') else str(entry_time),
@@ -548,8 +652,11 @@ class VectorizedBacktestEngine:
                     "exit_price": exit_price,
                     "quantity": config.position_size,
                     "gross_pnl": round(gross_pnl, 2),
+                    "spread_cost": round(spread_cost, 2),
+                    "swap_cost": round(swap_cost, 2),
                     "net_pnl": round(net_pnl, 2),
                     "return_pct": round((exit_price / entry_price - 1) * 100, 2),
+                    "nights_held": nights_held,
                 })
         
         return trades

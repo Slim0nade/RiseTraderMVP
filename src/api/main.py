@@ -3,6 +3,8 @@ RiseTrader FastAPI Application
 
 Main application entry point with middleware, routes, and lifecycle management.
 """
+import asyncio
+import os
 import time
 from contextlib import asynccontextmanager
 
@@ -26,8 +28,9 @@ from .middleware import (
     register_exception_handlers,
     setup_logging,
 )
-from .routes import agents, trading, market_data, forecasts, performance, strategies, system, ml_forecasting, agent_pipelines, backtesting, vectorized_backtesting, data_sync
+from .routes import agents, trading, market_data, forecasts, performance, strategies, system, ml_forecasting, agent_pipelines, backtesting, vectorized_backtesting, data_sync, optimizer, stealth_stops
 from src.services.mt4_sync_service import get_mt4_sync_service
+from src.services.stealth_stop_manager import StealthStopManager, DynamicTrailConfig
 
 # Configure structured logging
 setup_logging()
@@ -37,6 +40,10 @@ logger = structlog.get_logger(__name__)
 # Application startup time
 _app_start_time = time.time()
 
+# Global stealth stop manager instance
+_stealth_stop_manager: StealthStopManager | None = None
+_stealth_stop_task: asyncio.Task | None = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -45,6 +52,8 @@ async def lifespan(app: FastAPI):
 
     Handles startup and shutdown events.
     """
+    global _stealth_stop_manager, _stealth_stop_task
+    
     # Startup
     logger.info("application_starting", version=settings.app_version)
 
@@ -60,6 +69,35 @@ async def lifespan(app: FastAPI):
         mt4_sync = get_mt4_sync_service()
         await mt4_sync.start()
         logger.info("mt4_sync_service_started")
+        
+        # Start Stealth Stop Manager for automated trailing stops
+        stealth_stops_enabled = os.getenv("STEALTH_STOPS_ENABLED", "true").lower() == "true"
+        if stealth_stops_enabled:
+            mt4_host = os.getenv("MT4_HOST", "192.168.0.123")
+            mt4_port = int(os.getenv("MT4_PORT", "5555"))
+            poll_interval = int(os.getenv("STEALTH_STOP_POLL_INTERVAL", "5"))
+            
+            # Dynamic configuration from environment
+            config = DynamicTrailConfig(
+                atr_multiplier_initial=float(os.getenv("ATR_MULTIPLIER_INITIAL", "2.0")),
+                atr_multiplier_trail=float(os.getenv("ATR_MULTIPLIER_TRAIL", "1.5")),
+                trail_trigger_atr=float(os.getenv("TRAIL_TRIGGER_ATR", "1.0")),
+                breakeven_trigger_atr=float(os.getenv("BREAKEVEN_TRIGGER_ATR", "1.5")),
+                min_offset_pips=float(os.getenv("MIN_OFFSET_PIPS", "5")),
+                max_offset_pips=float(os.getenv("MAX_OFFSET_PIPS", "15")),
+                pip_value=float(os.getenv("PIP_VALUE", "0.01")),
+            )
+            
+            _stealth_stop_manager = StealthStopManager(
+                mt4_host=mt4_host,
+                mt4_port=mt4_port,
+                poll_interval=poll_interval,
+                config=config
+            )
+            _stealth_stop_task = asyncio.create_task(_stealth_stop_manager.run())
+            logger.info("stealth_stop_manager_started", mt4_host=mt4_host, mt4_port=mt4_port)
+        else:
+            logger.info("stealth_stop_manager_disabled")
 
     except Exception as e:
         logger.error("startup_failed", error=str(e), exc_info=True)
@@ -73,6 +111,17 @@ async def lifespan(app: FastAPI):
     logger.info("application_shutting_down")
 
     try:
+        # Stop Stealth Stop Manager
+        if _stealth_stop_manager:
+            _stealth_stop_manager.stop()
+            if _stealth_stop_task:
+                _stealth_stop_task.cancel()
+                try:
+                    await _stealth_stop_task
+                except asyncio.CancelledError:
+                    pass
+            logger.info("stealth_stop_manager_stopped")
+        
         # Stop MT4 sync service
         mt4_sync = get_mt4_sync_service()
         await mt4_sync.stop()
@@ -133,6 +182,8 @@ app.include_router(strategies.router, prefix="/api")
 app.include_router(system.router, prefix="/api")
 app.include_router(ml_forecasting.router)  # ML forecasting endpoints
 app.include_router(data_sync.router, prefix="/api")  # Data sync endpoints
+app.include_router(optimizer.router, prefix="/api")  # Strategy optimizer
+app.include_router(stealth_stops.router, prefix="/api")  # Stealth Stop Manager
 
 # Mount Prometheus metrics endpoint
 if settings.prometheus_enabled:
