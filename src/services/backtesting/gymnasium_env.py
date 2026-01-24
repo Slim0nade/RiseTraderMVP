@@ -409,13 +409,15 @@ class BacktestTradingEnv(gym.Env):
                 candles = self.market_data[start_idx:end_idx]
 
                 # Convert to numpy array (OHLCV)
+                # Note: MarketTick uses 'open', 'high', 'low', 'close' attributes
+                # Support both MarketTick (from DataReplayEngine) and generic candle objects
                 candle_array = np.array([
                     [
-                        float(c.open_price),
-                        float(c.high_price),
-                        float(c.low_price),
-                        float(c.close_price),
-                        float(c.volume),
+                        float(getattr(c, 'open', getattr(c, 'open_price', 0))),
+                        float(getattr(c, 'high', getattr(c, 'high_price', 0))),
+                        float(getattr(c, 'low', getattr(c, 'low_price', 0))),
+                        float(getattr(c, 'close', getattr(c, 'close_price', 0))),
+                        float(getattr(c, 'volume', 0)),
                     ]
                     for c in candles
                 ], dtype=np.float32)

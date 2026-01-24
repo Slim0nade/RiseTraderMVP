@@ -5,7 +5,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, SmallInteger, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
@@ -66,6 +66,10 @@ class Indicators(Base):
     fib_high: Mapped[Optional[Decimal]] = mapped_column(Numeric, nullable=True)
     fib_low: Mapped[Optional[Decimal]] = mapped_column(Numeric, nullable=True)
 
+    # ZigZag label for ML training
+    # -1 = VALLEY (buy signal), 0 = NEITHER, 1 = PEAK (sell signal)
+    zigzag_label: Mapped[Optional[int]] = mapped_column(SmallInteger, nullable=True, default=0)
+
     # Timestamp
     created_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True),
@@ -113,5 +117,22 @@ class Indicators(Base):
             "fib_786": float(self.fib_786) if self.fib_786 else None,
             "fib_high": float(self.fib_high) if self.fib_high else None,
             "fib_low": float(self.fib_low) if self.fib_low else None,
+            "zigzag_label": self.zigzag_label,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
+    
+    # ZigZag label helpers
+    @property
+    def is_peak(self) -> bool:
+        """True if this candle is labeled as a peak (sell signal)."""
+        return self.zigzag_label == 1
+    
+    @property
+    def is_valley(self) -> bool:
+        """True if this candle is labeled as a valley (buy signal)."""
+        return self.zigzag_label == -1
+    
+    @property
+    def is_reversal(self) -> bool:
+        """True if this candle is labeled as any reversal point."""
+        return self.zigzag_label is not None and self.zigzag_label != 0

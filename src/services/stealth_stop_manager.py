@@ -317,6 +317,11 @@ class StealthStopManager:
         """
         Calculate new trailing stop based on current price and ATR.
         
+        CRITICAL RULES:
+        - For LONG: Stop must always be ABOVE entry (locks profit)
+        - For SHORT: Stop must always be BELOW entry (locks profit)
+        - Never set a stop that guarantees a loss!
+        
         Returns None if no trail is needed.
         """
         entry = position.entry_price
@@ -329,14 +334,18 @@ class StealthStopManager:
             # Calculate ideal stop (trailing behind current price)
             ideal_stop = current_price - (atr * self.config.atr_multiplier_trail)
             
+            # CRITICAL: Stop must be ABOVE entry to lock profit
+            if ideal_stop <= entry:
+                logger.debug(f"LONG {position.ticket}: ideal_stop ${ideal_stop:.2f} <= entry ${entry:.2f}, skipping (would not lock profit)")
+                return None
+            
             # Only trail if:
             # 1. We're in profit by at least trail_trigger_atr
-            # 2. New stop would be higher than current stop
-            # 3. New stop is higher than entry (never trail into loss)
+            # 2. New stop would be higher than current stop (tightening)
             min_profit_for_trail = atr * self.config.trail_trigger_atr
             
             if profit_distance >= min_profit_for_trail:
-                if ideal_stop > current_stop and ideal_stop > entry:
+                if current_stop == 0 or ideal_stop > current_stop:
                     return ideal_stop
                     
             # Check for breakeven trigger
@@ -344,7 +353,7 @@ class StealthStopManager:
                 breakeven_trigger = atr * self.config.breakeven_trigger_atr
                 if profit_distance >= breakeven_trigger:
                     breakeven_stop = entry + (self.config.breakeven_offset_pips * self.config.pip_value)
-                    if breakeven_stop > current_stop:
+                    if current_stop == 0 or breakeven_stop > current_stop:
                         position.breakeven_triggered = True
                         return breakeven_stop
                         
@@ -355,15 +364,18 @@ class StealthStopManager:
             # Calculate ideal stop (trailing above current price)
             ideal_stop = current_price + (atr * self.config.atr_multiplier_trail)
             
+            # CRITICAL: Stop must be BELOW entry to lock profit
+            if ideal_stop >= entry:
+                logger.debug(f"SHORT {position.ticket}: ideal_stop ${ideal_stop:.2f} >= entry ${entry:.2f}, skipping (would not lock profit)")
+                return None
+            
             # Only trail if:
             # 1. We're in profit by at least trail_trigger_atr
-            # 2. New stop would be lower than current stop
-            # 3. New stop is lower than entry (never trail into loss)
+            # 2. New stop would be lower than current stop (tightening)
             min_profit_for_trail = atr * self.config.trail_trigger_atr
             
             if profit_distance >= min_profit_for_trail:
-                # For short, we want stop to be LOWER (tighter) but still above current price
-                if current_stop == 0 or (ideal_stop < current_stop and ideal_stop < entry):
+                if current_stop == 0 or ideal_stop < current_stop:
                     return ideal_stop
                     
             # Check for breakeven trigger

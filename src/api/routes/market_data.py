@@ -126,6 +126,64 @@ async def get_symbols(
         )
 
 
+@router.get("/timeframes/available", responses={
+    200: {"description": "Available timeframes per symbol"},
+})
+async def get_available_timeframes(
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get available timeframes for each symbol.
+
+    Returns a mapping of symbol names to their available timeframes.
+    Useful for UI to disable timeframe buttons when data doesn't exist.
+
+    Example:
+        GET /api/market-data/timeframes/available
+
+    Response:
+        {
+            "CrudeOIL": ["M1", "M5", "H1"],
+            "DXY": ["M1"],
+            "VIX": ["M1"]
+        }
+    """
+    try:
+        # Query distinct symbol/timeframe combinations
+        query = select(
+            distinct(MarketData.symbol),
+            MarketData.timeframe
+        ).order_by(MarketData.symbol, MarketData.timeframe)
+
+        result = await db.execute(query)
+        rows = result.all()
+
+        # Build dictionary of symbol -> [timeframes]
+        timeframes_by_symbol = {}
+        for symbol, timeframe in rows:
+            if symbol not in timeframes_by_symbol:
+                timeframes_by_symbol[symbol] = []
+            timeframes_by_symbol[symbol].append(timeframe)
+
+        logger.info(
+            "get_available_timeframes_success",
+            symbols=list(timeframes_by_symbol.keys()),
+        )
+
+        return timeframes_by_symbol
+
+    except Exception as e:
+        logger.error(
+            "get_available_timeframes_failed",
+            error=str(e),
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve available timeframes: {str(e)}",
+        )
+
+
 @router.get("/{symbol}", response_model=MarketDataListResponse, responses={
     404: {"model": ErrorResponse, "description": "Symbol not found"},
     400: {"model": ErrorResponse, "description": "Invalid timeframe"},

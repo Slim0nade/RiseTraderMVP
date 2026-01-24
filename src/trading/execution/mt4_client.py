@@ -20,6 +20,7 @@ from src.trading.execution.mt4_models import (
     CreateInstantOrderCommand,
     GetAccountInfoCommand,
     GetOpenPositionsCommand,
+    GetTradeHistoryCommand,
     GetSymbolsCommand,
     ClosePositionCommand,
     OrderResponse,
@@ -312,6 +313,43 @@ class MT4Client:
             )
             raise ConnectionError(f"Failed to connect to MT4: {e}")
 
+    async def _reset_req_socket(self) -> None:
+        """Reset the REQ socket to recover from an invalid state (e.g., EFSM error).
+        
+        ZMQ REQ sockets can get stuck in an invalid state if a send/receive cycle
+        is interrupted. This method closes and recreates the socket to recover.
+        """
+        try:
+            logger.warning("mt4_socket_reset", magic_number=self.magic_number)
+            
+            # Close old socket if it exists
+            if self._req_socket:
+                self._req_socket.close(linger=0)  # Don't wait for pending messages
+                self._req_socket = None
+            
+            # Create new socket
+            if self._context:
+                self._req_socket = self._context.socket(zmq.REQ)
+                
+                # Configure encryption if enabled
+                if self.encryption_manager.encryption_enabled:
+                    self._req_socket = self.encryption_manager.configure_socket(self._req_socket)
+                
+                # Reconnect
+                endpoint = f"tcp://{self.host}:{self.rep_port}"
+                self._req_socket.connect(endpoint)
+                
+                logger.info("mt4_socket_reset_complete", magic_number=self.magic_number)
+            else:
+                # Context is gone, need full reconnect
+                self._connected = False
+                raise ConnectionError("ZMQ context not available, need full reconnect")
+                
+        except Exception as e:
+            logger.error("mt4_socket_reset_failed", error=str(e))
+            self._connected = False
+            raise ConnectionError(f"Socket reset failed: {e}")
+
     async def disconnect(self) -> None:
         """Close ZMQ connection (with disconnect event logging - T110)."""
         if not self._connected:
@@ -478,6 +516,22 @@ class MT4Client:
             # Record failure in circuit breaker (T091) - only if enabled
             if self.circuit_breaker:
                 self.circuit_breaker.record_failure()
+
+            # Check for EFSM (finite state machine) error - socket is in bad state
+            # This happens when send/receive cycle is interrupted
+            error_str = str(e).lower()
+            if "state" in error_str or "efsm" in error_str or "operation cannot be accomplished" in error_str:
+                logger.warning(
+                    "mt4_socket_state_error",
+                    command_type=command_type,
+                    error=str(e),
+                    recovery="attempting socket reset"
+                )
+                # Attempt socket recovery for next call
+                try:
+                    await self._reset_req_socket()
+                except Exception as reset_error:
+                    logger.error("mt4_socket_reset_failed_in_send", error=str(reset_error))
 
             raise ConnectionError(f"ZMQ error: {e}")
 
@@ -723,6 +777,46 @@ class MT4Client:
         logger.info(
             "positions_received",
             count=len(response_data.get("positions", []))
+        )
+
+        return response_data
+
+    async def get_trade_history(
+        self,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+        ticket: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        Get trade history from MT4 for closed positions.
+
+        Args:
+            start_time: Start time filter (None = all history)
+            end_time: End time filter (None = now)
+            ticket: Specific ticket to fetch (None = all)
+
+        Returns:
+            Dictionary with:
+            - status: str ("OK" or "ERROR")
+            - trades: List of trade dictionaries with close data
+
+        Raises:
+            ConnectionError: If not connected to MT4
+            TimeoutError: If MT4 doesn't respond
+        """
+        if not self.is_connected():
+            raise ConnectionError("Not connected to MT4")
+
+        command = GetTradeHistoryCommand(
+            start_time=int(start_time.timestamp()) if start_time else None,
+            end_time=int(end_time.timestamp()) if end_time else None,
+            ticket=ticket
+        )
+        response_data = await self.send_command(command)
+
+        logger.info(
+            "trade_history_received",
+            count=len(response_data.get("trades", []))
         )
 
         return response_data

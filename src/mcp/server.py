@@ -165,7 +165,7 @@ class RiseTraderMCP:
                 ),
                 Tool(
                     name="get_open_positions",
-                    description="Get open trading positions with optional filtering",
+                    description="Get open trading positions with optional filtering. Use source='mt4' (default) for real-time live data, or source='database' for cached data.",
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -182,16 +182,29 @@ class RiseTraderMCP:
                                 "type": "integer",
                                 "description": "Maximum positions to return (default: 20)",
                                 "default": 20
+                            },
+                            "source": {
+                                "type": "string",
+                                "enum": ["mt4", "database"],
+                                "description": "Data source: 'mt4' for real-time live data (default), 'database' for cached data",
+                                "default": "mt4"
                             }
                         }
                     }
                 ),
                 Tool(
                     name="get_account_info",
-                    description="Get trading account information (balance, equity, margin)",
+                    description="Get trading account information (balance, equity, margin). Use source='mt4' (default) for real-time live data.",
                     inputSchema={
                         "type": "object",
-                        "properties": {}
+                        "properties": {
+                            "source": {
+                                "type": "string",
+                                "enum": ["mt4", "database"],
+                                "description": "Data source: 'mt4' for real-time live data (default), 'database' for cached data",
+                                "default": "mt4"
+                            }
+                        }
                     }
                 ),
 
@@ -783,7 +796,7 @@ class RiseTraderMCP:
                 elif name == "get_open_positions":
                     result = await self._get_open_positions(**arguments)
                 elif name == "get_account_info":
-                    result = await self._get_account_info()
+                    result = await self._get_account_info(**arguments)
                 elif name == "get_latest_candles":
                     result = await self._get_latest_candles(**arguments)
                 elif name == "get_symbols":
@@ -884,45 +897,107 @@ class RiseTraderMCP:
         stop_loss: Optional[float] = None,
         take_profit: Optional[float] = None
     ) -> Dict[str, Any]:
-        """Place a market order."""
-        payload = {
-            "symbol": symbol,
-            "order_type": "market",
-            "side": side,
-            "quantity": quantity,
-            "stop_loss": stop_loss,
-            "take_profit": take_profit
-        }
+        """Place a market order using direct MT4 connection."""
+        max_retries = 2
+        last_error = None
 
-        return await self._api_call("POST", "/api/trading/orders", json=payload)
+        # Map side to MT4 direction (BUY/SELL uppercase)
+        direction = side.upper()
+
+        for attempt in range(max_retries):
+            try:
+                mt4_client = await self._get_mt4_client()
+
+                # Convert to Decimal for MT4 client
+                result = await mt4_client.create_instant_order(
+                    symbol=symbol,
+                    direction=direction,
+                    volume=Decimal(str(quantity)),
+                    stop_loss=Decimal(str(stop_loss)) if stop_loss else None,
+                    take_profit=Decimal(str(take_profit)) if take_profit else None,
+                    comment="MCP Market Order"
+                )
+
+                # Check if order was successful
+                if result.success:
+                    return {
+                        "success": True,
+                        "ticket": result.ticket_number,
+                        "order_number": result.ticket_number,
+                        "symbol": symbol,
+                        "direction": direction,
+                        "volume": quantity,
+                        "message": f"Market order placed successfully: {result.ticket_number}"
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "error": result.error_message or "Failed to place market order"
+                    }
+
+            except ConnectionError as e:
+                last_error = e
+                logger.warning(f"Place market order attempt {attempt + 1} failed: {e}")
+                if attempt < max_retries - 1:
+                    # Wait briefly before retry
+                    await asyncio.sleep(0.5)
+                    continue
+            except Exception as e:
+                logger.error(f"Error placing market order {symbol} {direction} {quantity}: {e}", exc_info=True)
+                return {
+                    "success": False,
+                    "error": str(e)
+                }
+
+        return {
+            "success": False,
+            "error": str(last_error) if last_error else "Failed after retries"
+        }
 
     async def _close_position(self, position_id: int) -> Dict[str, Any]:
         """Close a position using direct MT4 connection (position_id is the MT4 ticket number)."""
-        try:
-            mt4_client = await self._get_mt4_client()
-            result = await mt4_client.close_position(ticket_number=position_id)
-            
-            success = result.get("success", False) or result.get("status") == "OK"
-            
-            if success:
-                return {
-                    "success": True,
-                    "ticket": position_id,
-                    "message": f"Position {position_id} closed successfully"
-                }
-            else:
+        max_retries = 2
+        last_error = None
+        
+        for attempt in range(max_retries):
+            try:
+                mt4_client = await self._get_mt4_client()
+                result = await mt4_client.close_position(ticket_number=position_id)
+                
+                success = result.get("success", False) or result.get("status") == "OK"
+                
+                if success:
+                    return {
+                        "success": True,
+                        "ticket": position_id,
+                        "message": f"Position {position_id} closed successfully"
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "ticket": position_id,
+                        "error": result.get("error_message") or result.get("message") or "Failed to close position"
+                    }
+            except ConnectionError as e:
+                last_error = e
+                logger.warning(f"Close position attempt {attempt + 1} failed: {e}")
+                if attempt < max_retries - 1:
+                    # Wait briefly before retry (socket recovery should have been triggered)
+                    await asyncio.sleep(0.5)
+                    continue
+            except Exception as e:
+                logger.error(f"Error closing position {position_id}: {e}", exc_info=True)
                 return {
                     "success": False,
                     "ticket": position_id,
-                    "error": result.get("error_message") or result.get("message") or "Failed to close position"
+                    "error": str(e)
                 }
-        except Exception as e:
-            logger.error(f"Error closing position {position_id}: {e}", exc_info=True)
-            return {
-                "success": False,
-                "ticket": position_id,
-                "error": str(e)
-            }
+        
+        return {
+            "success": False,
+            "ticket": position_id,
+            "error": str(last_error) if last_error else "Failed after retries"
+        }
 
     async def _close_all_positions(self, symbol: Optional[str] = None) -> Dict[str, Any]:
         """Close all positions using direct MT4 connection (optionally filtered by symbol)."""
@@ -973,15 +1048,70 @@ class RiseTraderMCP:
         self,
         symbol: Optional[str] = None,
         live_only: bool = True,
-        limit: int = 20
+        limit: int = 20,
+        source: str = "mt4"
     ) -> Dict[str, Any]:
-        """Get open positions with filtering."""
-        # Build query params
+        """Get open positions with filtering.
+        
+        Args:
+            symbol: Filter by symbol (optional)
+            live_only: Only show live (non-simulated) positions
+            limit: Maximum positions to return
+            source: Data source - "mt4" for live MT4 data (default), "database" for cached DB data
+        """
+        if source == "mt4":
+            # Query MT4 directly for real-time accurate data
+            try:
+                mt4_client = await self._get_mt4_client()
+                result = await mt4_client.get_open_positions()
+                positions = result.get("positions", [])
+                
+                # Filter by symbol if specified
+                if symbol:
+                    positions = [p for p in positions if p.get("symbol") == symbol]
+                
+                # Apply limit
+                positions = positions[:limit]
+                
+                # Format positions to match expected structure
+                formatted_positions = []
+                for p in positions:
+                    formatted_positions.append({
+                        "ticket": p.get("ticket"),
+                        "number": str(p.get("ticket")),
+                        "type": p.get("type"),
+                        "size": str(p.get("volume", p.get("lots", 0))),
+                        "symbol": p.get("symbol"),
+                        "price": str(p.get("open_price", p.get("price", 0))),
+                        "current_price": str(p.get("current_price", 0)),
+                        "stop_loss": str(p.get("stop_loss", 0)) if p.get("stop_loss") else None,
+                        "take_profit": str(p.get("take_profit", 0)) if p.get("take_profit") else None,
+                        "profit": p.get("profit", 0),
+                        "swap": p.get("swap", 0),
+                        "commission": p.get("commission", 0),
+                        "comment": p.get("comment"),
+                        "open_time": p.get("open_time"),
+                        "simulation": False,
+                        "source": "mt4_live"
+                    })
+                
+                return {
+                    "positions": formatted_positions,
+                    "total": len(formatted_positions),
+                    "live_only": live_only,
+                    "limit": limit,
+                    "source": "mt4_live",
+                    "note": "Real-time data from MT4"
+                }
+            except Exception as e:
+                logger.warning(f"MT4 query failed, falling back to database: {e}")
+                # Fall through to database query
+        
+        # Database query (may be stale)
         params = {"page_size": limit}
         if symbol:
             params["symbol"] = symbol
         
-        # Get positions from API
         result = await self._api_call("GET", "/api/trading/positions", params=params)
         
         positions = result.get("positions", [])
@@ -997,12 +1127,46 @@ class RiseTraderMCP:
             "positions": positions,
             "total": len(positions),
             "live_only": live_only,
-            "limit": limit
+            "limit": limit,
+            "source": "database",
+            "warning": "Database data may be stale. Use source='mt4' for real-time data."
         }
 
-    async def _get_account_info(self) -> Dict[str, Any]:
-        """Get account information."""
-        return await self._api_call("GET", "/api/trading/account")
+    async def _get_account_info(self, source: str = "mt4") -> Dict[str, Any]:
+        """Get account information.
+        
+        Args:
+            source: Data source - "mt4" for live MT4 data (default), "database" for cached DB data
+        """
+        if source == "mt4":
+            try:
+                mt4_client = await self._get_mt4_client()
+                result = await mt4_client.get_account_info()
+                
+                # Format to match expected structure
+                return {
+                    "account_number": result.get("account_number", result.get("login")),
+                    "balance": str(result.get("balance", 0)),
+                    "equity": str(result.get("equity", 0)),
+                    "margin": str(result.get("margin", 0)),
+                    "free_margin": str(result.get("free_margin", 0)),
+                    "margin_level": str(result.get("margin_level", 0)),
+                    "profit": str(result.get("profit", 0)),
+                    "currency": result.get("currency", "USD"),
+                    "leverage": result.get("leverage"),
+                    "server": result.get("server"),
+                    "source": "mt4_live",
+                    "note": "Real-time data from MT4"
+                }
+            except Exception as e:
+                logger.warning(f"MT4 account query failed, falling back to database: {e}")
+                # Fall through to database query
+        
+        # Database query (may be stale)
+        result = await self._api_call("GET", "/api/trading/account")
+        result["source"] = "database"
+        result["warning"] = "Database data may be stale. Use source='mt4' for real-time data."
+        return result
 
     async def _get_latest_candles(
         self,

@@ -24,11 +24,15 @@ class SyntheticSignal:
         quantity: Position size
         confidence: Signal confidence (0.0-1.0)
         reason: Human-readable reason for decision
+        stop_loss: Optional stop loss price for the trade
+        take_profit: Optional take profit price for the trade
     """
     action: Optional[str]
     quantity: Decimal
     confidence: float
     reason: str
+    stop_loss: Optional[Decimal] = None
+    take_profit: Optional[Decimal] = None
 
 
 class SyntheticEngine:
@@ -470,12 +474,14 @@ class SyntheticEngine:
         self.has_position = self._crude_oil_strategy.has_position
         self.entry_price = self._crude_oil_strategy.entry_price
 
-        # Convert CrudeOilSignal to SyntheticSignal
+        # Convert CrudeOilSignal to SyntheticSignal (including SL/TP)
         return SyntheticSignal(
             action=signal.action,
             quantity=signal.quantity,
             confidence=signal.confidence,
-            reason=signal.reason
+            reason=signal.reason,
+            stop_loss=Decimal(str(signal.stop_loss)) if signal.stop_loss else None,
+            take_profit=Decimal(str(signal.take_profit)) if signal.take_profit else None,
         )
 
     def reset(self) -> None:

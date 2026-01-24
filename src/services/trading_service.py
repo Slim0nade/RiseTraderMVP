@@ -227,7 +227,6 @@ class TradingService:
         # If MT4 client available, send close order
         if self.mt4_client:
             try:
-                # TODO: Implement MT4 close order via ZMQ
                 logger.info(
                     "closing_position_via_mt4",
                     position_id=position_id,
@@ -235,16 +234,28 @@ class TradingService:
                     volume=volume or position.volume,
                 )
 
-                # For now, return pending status
-                return {
-                    "success": True,
-                    "message": "Close order sent to MT4",
-                    "position_id": position_id,
-                    "ticket": position.ticket,
-                    "close_volume": float(volume or position.volume),
-                    "status": "pending",
-                }
+                # Actually call MT4 to close the position
+                result = await self.mt4_client.close_position(
+                    ticket_number=position.ticket
+                )
 
+                success = result.get("success", False) or result.get("status") == "OK"
+
+                if success:
+                    return {
+                        "success": True,
+                        "message": f"Position {position.ticket} closed successfully",
+                        "position_id": position_id,
+                        "ticket": position.ticket,
+                        "close_volume": float(volume or position.volume),
+                        "status": "closed",
+                    }
+                else:
+                    error_msg = result.get("error_message") or result.get("message") or "Unknown error"
+                    raise ValueError(f"MT4 failed to close position: {error_msg}")
+
+            except ValueError:
+                raise
             except Exception as e:
                 logger.error(
                     "mt4_close_failed",

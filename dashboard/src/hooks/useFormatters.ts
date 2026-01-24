@@ -6,22 +6,22 @@ export const useFormatters = () => {
   return useMemo(
     () => ({
       // Format currency
-      currency: (value: number, decimals = 2): string => {
+      currency: (value: number | string, decimals = 2): string => {
         return numeral(value).format(`$0,0.${'0'.repeat(decimals)}`);
       },
 
       // Format percentage
-      percentage: (value: number, decimals = 2): string => {
-        return numeral(value / 100).format(`0,0.${'0'.repeat(decimals)}%`);
+      percentage: (value: number | string, decimals = 2): string => {
+        return numeral(Number(value) / 100).format(`0,0.${'0'.repeat(decimals)}%`);
       },
 
       // Format number with commas
-      number: (value: number, decimals = 0): string => {
+      number: (value: number | string, decimals = 0): string => {
         return numeral(value).format(`0,0.${'0'.repeat(decimals)}`);
       },
 
       // Format price (more decimals for precision)
-      price: (value: number): string => {
+      price: (value: number | string): string => {
         return numeral(value).format('0,0.00000');
       },
 
@@ -61,9 +61,10 @@ export const useFormatters = () => {
       },
 
       // Format P&L with color
-      pnl: (value: number): { text: string; color: string } => {
-        const text = numeral(value).format('$0,0.00');
-        const color = value >= 0 ? 'text-success-500' : 'text-danger-500';
+      pnl: (value: number | string): { text: string; color: string } => {
+        const numValue = Number(value);
+        const text = numeral(numValue).format('$0,0.00');
+        const color = numValue >= 0 ? 'text-success-500' : 'text-danger-500';
         return { text, color };
       },
     }),

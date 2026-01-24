@@ -30,12 +30,13 @@ export interface Trade {
 export interface MarketData {
   symbol: string;
   timeframe: string;
-  timestamp: string;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
+  time: string;  // API returns 'time' not 'timestamp'
+  timestamp?: string;  // Keep for backwards compatibility
+  open: number | string;  // API returns strings, we convert to numbers
+  high: number | string;
+  low: number | string;
+  close: number | string;
+  volume: number | string;
   tick_volume?: number;
   spread?: number;
 }
