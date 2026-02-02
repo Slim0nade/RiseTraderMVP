@@ -228,6 +228,28 @@ class RiseTraderMCP:
                         "properties": {}
                     }
                 ),
+                Tool(
+                    name="get_symbol_info",
+                    description="Get detailed symbol specifications (leverage, margin %, swap rates, trading hours, contract size). Essential for Dalio-style portfolio diversification and risk management.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "symbol": {
+                                "type": "string",
+                                "description": "Trading symbol (e.g., 'CrudeOIL', 'EURUSD')"
+                            }
+                        },
+                        "required": ["symbol"]
+                    }
+                ),
+                Tool(
+                    name="get_all_symbols_info",
+                    description="Get detailed specifications for ALL trading symbols. Returns leverage, margin %, swap rates for portfolio analysis and finding high-leverage opportunities.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {}
+                    }
+                ),
 
                 # Backtesting
                 Tool(
@@ -762,6 +784,83 @@ class RiseTraderMCP:
                         "required": ["symbol", "timeframe", "start_date", "end_date", "strategy", "params"]
                     }
                 ),
+
+                # =========================================================
+                # ASYNC OPTIMIZATION JOB TOOLS
+                # =========================================================
+                Tool(
+                    name="submit_optimization_job",
+                    description="Submit an async optimization job. Returns immediately with job_id. Use get_optimization_job_status to poll for progress. Best for large parameter grids that take minutes to hours.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "symbol": {"type": "string", "description": "Trading symbol (e.g., 'CrudeOIL')"},
+                            "timeframe": {"type": "string", "enum": ["M1", "M5", "M15", "H1", "H4", "D1"]},
+                            "start_date": {"type": "string", "description": "Start date (YYYY-MM-DD)"},
+                            "end_date": {"type": "string", "description": "End date (YYYY-MM-DD)"},
+                            "strategy": {"type": "string", "description": "Strategy name (crude_oil_v3, ma_crossover, rsi, mean_reversion)"},
+                            "param_grid": {
+                                "type": "object",
+                                "description": "Parameter grid to search (e.g., {'fast_period': [5, 10, 15], 'slow_period': [20, 30, 40]})",
+                                "additionalProperties": {"type": "array"}
+                            },
+                            "optimization_target": {
+                                "type": "string",
+                                "enum": ["sharpe_ratio", "total_return_pct", "profit_factor", "risk_adjusted_return"],
+                                "default": "sharpe_ratio"
+                            },
+                            "initial_capital": {"type": "number", "default": 10000}
+                        },
+                        "required": ["symbol", "timeframe", "start_date", "end_date", "strategy", "param_grid"]
+                    }
+                ),
+                Tool(
+                    name="get_optimization_job_status",
+                    description="Get the current status and progress of an optimization job",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "job_id": {"type": "string", "description": "Job ID returned from submit_optimization_job"}
+                        },
+                        "required": ["job_id"]
+                    }
+                ),
+                Tool(
+                    name="cancel_optimization_job",
+                    description="Cancel a running optimization job",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "job_id": {"type": "string", "description": "Job ID to cancel"}
+                        },
+                        "required": ["job_id"]
+                    }
+                ),
+                Tool(
+                    name="list_optimization_jobs",
+                    description="List all active optimization jobs with their status",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "status_filter": {
+                                "type": "string",
+                                "enum": ["pending", "running", "completed", "failed", "cancelled"],
+                                "description": "Filter by status (optional)"
+                            }
+                        }
+                    }
+                ),
+                Tool(
+                    name="get_optimization_job_results",
+                    description="Get full results for a completed optimization job, including all tested parameter combinations and metrics",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "job_id": {"type": "string", "description": "Job ID of the completed job"}
+                        },
+                        "required": ["job_id"]
+                    }
+                ),
             ]
 
         # =====================================================================
@@ -788,6 +887,10 @@ class RiseTraderMCP:
                     result = await self._get_latest_candles(**arguments)
                 elif name == "get_symbols":
                     result = await self._get_symbols()
+                elif name == "get_symbol_info":
+                    result = await self._get_symbol_info(**arguments)
+                elif name == "get_all_symbols_info":
+                    result = await self._get_all_symbols_info()
                 elif name == "create_backtest":
                     result = await self._create_backtest(**arguments)
                 elif name == "get_backtest_results":
@@ -884,45 +987,107 @@ class RiseTraderMCP:
         stop_loss: Optional[float] = None,
         take_profit: Optional[float] = None
     ) -> Dict[str, Any]:
-        """Place a market order."""
-        payload = {
-            "symbol": symbol,
-            "order_type": "market",
-            "side": side,
-            "quantity": quantity,
-            "stop_loss": stop_loss,
-            "take_profit": take_profit
-        }
+        """Place a market order using direct MT4 connection."""
+        max_retries = 2
+        last_error = None
 
-        return await self._api_call("POST", "/api/trading/orders", json=payload)
+        # Map side to MT4 direction (BUY/SELL uppercase)
+        direction = side.upper()
+
+        for attempt in range(max_retries):
+            try:
+                mt4_client = await self._get_mt4_client()
+
+                # Convert to Decimal for MT4 client
+                result = await mt4_client.create_instant_order(
+                    symbol=symbol,
+                    direction=direction,
+                    volume=Decimal(str(quantity)),
+                    stop_loss=Decimal(str(stop_loss)) if stop_loss else None,
+                    take_profit=Decimal(str(take_profit)) if take_profit else None,
+                    comment="MCP Market Order"
+                )
+
+                # Check if order was successful
+                if result.success:
+                    return {
+                        "success": True,
+                        "ticket": result.ticket_number,
+                        "order_number": result.ticket_number,
+                        "symbol": symbol,
+                        "direction": direction,
+                        "volume": quantity,
+                        "message": f"Market order placed successfully: {result.ticket_number}"
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "error": result.error_message or "Failed to place market order"
+                    }
+
+            except ConnectionError as e:
+                last_error = e
+                logger.warning(f"Place market order attempt {attempt + 1} failed: {e}")
+                if attempt < max_retries - 1:
+                    # Wait briefly before retry
+                    await asyncio.sleep(0.5)
+                    continue
+            except Exception as e:
+                logger.error(f"Error placing market order {symbol} {direction} {quantity}: {e}", exc_info=True)
+                return {
+                    "success": False,
+                    "error": str(e)
+                }
+
+        return {
+            "success": False,
+            "error": str(last_error) if last_error else "Failed after retries"
+        }
 
     async def _close_position(self, position_id: int) -> Dict[str, Any]:
         """Close a position using direct MT4 connection (position_id is the MT4 ticket number)."""
-        try:
-            mt4_client = await self._get_mt4_client()
-            result = await mt4_client.close_position(ticket_number=position_id)
-            
-            success = result.get("success", False) or result.get("status") == "OK"
-            
-            if success:
-                return {
-                    "success": True,
-                    "ticket": position_id,
-                    "message": f"Position {position_id} closed successfully"
-                }
-            else:
+        max_retries = 2
+        last_error = None
+        
+        for attempt in range(max_retries):
+            try:
+                mt4_client = await self._get_mt4_client()
+                result = await mt4_client.close_position(ticket_number=position_id)
+                
+                success = result.get("success", False) or result.get("status") == "OK"
+                
+                if success:
+                    return {
+                        "success": True,
+                        "ticket": position_id,
+                        "message": f"Position {position_id} closed successfully"
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "ticket": position_id,
+                        "error": result.get("error_message") or result.get("message") or "Failed to close position"
+                    }
+            except ConnectionError as e:
+                last_error = e
+                logger.warning(f"Close position attempt {attempt + 1} failed: {e}")
+                if attempt < max_retries - 1:
+                    # Wait briefly before retry (socket recovery should have been triggered)
+                    await asyncio.sleep(0.5)
+                    continue
+            except Exception as e:
+                logger.error(f"Error closing position {position_id}: {e}", exc_info=True)
                 return {
                     "success": False,
                     "ticket": position_id,
-                    "error": result.get("error_message") or result.get("message") or "Failed to close position"
+                    "error": str(e)
                 }
-        except Exception as e:
-            logger.error(f"Error closing position {position_id}: {e}", exc_info=True)
-            return {
-                "success": False,
-                "ticket": position_id,
-                "error": str(e)
-            }
+        
+        return {
+            "success": False,
+            "ticket": position_id,
+            "error": str(last_error) if last_error else "Failed after retries"
+        }
 
     async def _close_all_positions(self, symbol: Optional[str] = None) -> Dict[str, Any]:
         """Close all positions using direct MT4 connection (optionally filtered by symbol)."""
@@ -975,34 +1140,67 @@ class RiseTraderMCP:
         live_only: bool = True,
         limit: int = 20
     ) -> Dict[str, Any]:
-        """Get open positions with filtering."""
-        # Build query params
-        params = {"page_size": limit}
-        if symbol:
-            params["symbol"] = symbol
-        
-        # Get positions from API
-        result = await self._api_call("GET", "/api/trading/positions", params=params)
-        
-        positions = result.get("positions", [])
-        
-        # Filter out simulated positions if live_only
-        if live_only:
-            positions = [p for p in positions if not p.get("simulation", False)]
-        
-        # Apply limit after filtering
-        positions = positions[:limit]
-        
-        return {
-            "positions": positions,
-            "total": len(positions),
-            "live_only": live_only,
-            "limit": limit
-        }
+        """Get open positions directly from MT4 via ZMQ."""
+        try:
+            # Get positions directly from MT4
+            mt4_client = await self._get_mt4_client()
+            result = await mt4_client.get_open_positions()
+
+            positions = result.get("positions", [])
+
+            # Filter by symbol if specified
+            if symbol:
+                positions = [p for p in positions if p.get("symbol") == symbol]
+
+            # Apply limit
+            positions = positions[:limit]
+
+            return {
+                "positions": positions,
+                "total": len(positions),
+                "live_only": True,  # MT4 positions are always live
+                "limit": limit,
+                "source": "MT4 (direct ZMQ connection)"
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting positions from MT4: {e}")
+            return {
+                "positions": [],
+                "total": 0,
+                "error": f"Could not fetch positions from MT4: {str(e)}",
+                "note": "MT4 connection failed - ensure EA is running"
+            }
 
     async def _get_account_info(self) -> Dict[str, Any]:
-        """Get account information."""
-        return await self._api_call("GET", "/api/trading/account")
+        """Get account information directly from MT4 via ZMQ."""
+        try:
+            mt4_client = await self._get_mt4_client()
+            result = await mt4_client.get_account_info()
+
+            if result.get("success", False):
+                return {
+                    "account_number": result.get("account_number"),
+                    "balance": result.get("balance"),
+                    "equity": result.get("equity"),
+                    "margin": result.get("margin"),
+                    "free_margin": result.get("free_margin"),
+                    "margin_level": result.get("margin_level"),
+                    "profit": result.get("profit"),
+                    "currency": result.get("currency", "USD"),
+                    "leverage": result.get("leverage"),
+                    "source": "MT4 (direct ZMQ connection)"
+                }
+            else:
+                return {
+                    "error": result.get("error_message", "Failed to get account info"),
+                    "source": "MT4"
+                }
+        except Exception as e:
+            self.logger.error(f"Error getting account info from MT4: {e}")
+            return {
+                "error": f"Could not fetch account info from MT4: {str(e)}",
+                "note": "MT4 connection failed - ensure EA is running"
+            }
 
     async def _get_latest_candles(
         self,
@@ -1018,19 +1216,124 @@ class RiseTraderMCP:
         return await self._api_call("GET", f"/api/market-data/{symbol}", params=params)
 
     async def _get_symbols(self) -> Dict[str, Any]:
-        """Get available symbols (lightweight list only)."""
-        # Return known symbols to avoid heavy API call
-        # The API endpoint /api/market-data/symbols may return too much data
-        return {
-            "symbols": [
-                {"symbol": "CrudeOIL", "description": "WTI Crude Oil"},
-                {"symbol": "XAUUSD", "description": "Gold vs USD"},
-                {"symbol": "EURUSD", "description": "Euro vs USD"},
-                {"symbol": "GBPUSD", "description": "British Pound vs USD"},
-                {"symbol": "USDJPY", "description": "USD vs Japanese Yen"},
-            ],
-            "note": "For full symbol list with metadata, use the dashboard or API directly"
-        }
+        """Get available symbols directly from MT4 via ZMQ."""
+        try:
+            # Get symbols directly from MT4
+            mt4_client = await self._get_mt4_client()
+            symbols_list = await mt4_client.get_symbols()
+
+            # Transform to expected format
+            symbols = [{"symbol": sym, "description": sym} for sym in symbols_list]
+
+            return {
+                "symbols": symbols,
+                "total": len(symbols),
+                "source": "MT4 (direct ZMQ connection)"
+            }
+        except Exception as e:
+            self.logger.warning(f"Failed to fetch symbols from MT4: {e}")
+            return {
+                "symbols": [],
+                "error": f"Could not fetch symbols from MT4: {str(e)}",
+                "note": "MT4 connection failed - ensure EA is running"
+            }
+
+    async def _get_symbol_info(self, symbol: str) -> Dict[str, Any]:
+        """Get detailed symbol specifications directly from MT4 via ZMQ."""
+        try:
+            mt4_client = await self._get_mt4_client()
+            result = await mt4_client.get_symbol_info(symbol)
+
+            if result.get("success", False):
+                return {
+                    "success": True,
+                    "symbol": symbol,
+                    "specifications": result,
+                    "source": "MT4 (direct ZMQ connection)"
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": result.get("error_message", f"Failed to get info for {symbol}"),
+                    "symbol": symbol
+                }
+        except Exception as e:
+            self.logger.warning(f"Failed to fetch symbol info from MT4: {e}")
+            return {
+                "success": False,
+                "error": f"Could not fetch symbol info from MT4: {str(e)}",
+                "symbol": symbol,
+                "note": "MT4 connection failed - ensure EA is running"
+            }
+
+    async def _get_all_symbols_info(self) -> Dict[str, Any]:
+        """Get detailed specifications for all symbols directly from MT4 via ZMQ."""
+        try:
+            mt4_client = await self._get_mt4_client()
+            result = await mt4_client.get_all_symbols_info()
+
+            if result.get("success", False):
+                symbols_info = result.get("symbols", [])
+
+                # Categorize symbols by type for Dalio-style analysis
+                categories = {
+                    "commodities": [],
+                    "forex": [],
+                    "indices": [],
+                    "stocks": [],
+                    "crypto": [],
+                    "other": []
+                }
+
+                for sym in symbols_info:
+                    symbol_name = sym.get("symbol", "").upper()
+
+                    # Simple categorization logic
+                    if any(x in symbol_name for x in ["OIL", "GOLD", "SILVER", "GAS", "COPPER", "PLATINUM", "PALLADIUM", "WHEAT", "CORN", "COFFEE", "SUGAR", "COCOA", "BRENT", "WTI", "XAU", "XAG"]):
+                        categories["commodities"].append(sym)
+                    elif any(x in symbol_name for x in ["USD", "EUR", "GBP", "JPY", "CHF", "AUD", "CAD", "NZD"]) and len(symbol_name) <= 7:
+                        categories["forex"].append(sym)
+                    elif any(x in symbol_name for x in ["US500", "US30", "US100", "DAX", "FTSE", "NIKKEI", "SPX", "NDX", "DJI", "NAS", "GER", "UK100", "JP225"]):
+                        categories["indices"].append(sym)
+                    elif any(x in symbol_name for x in ["AAPL", "AMZN", "GOOGL", "MSFT", "TSLA", "NVDA", "META", "NFLX"]):
+                        categories["stocks"].append(sym)
+                    elif any(x in symbol_name for x in ["BTC", "ETH", "XRP", "LTC", "BCH", "DOGE", "CRYPTO"]):
+                        categories["crypto"].append(sym)
+                    else:
+                        categories["other"].append(sym)
+
+                # Sort each category by leverage (highest first)
+                for cat in categories:
+                    categories[cat] = sorted(
+                        categories[cat],
+                        key=lambda x: x.get("leverage", 0),
+                        reverse=True
+                    )
+
+                return {
+                    "success": True,
+                    "total": len(symbols_info),
+                    "symbols": symbols_info,
+                    "by_category": categories,
+                    "top_leverage": {
+                        cat: [{"symbol": s.get("symbol"), "leverage": s.get("leverage"), "margin_pct": s.get("margin_pct")}
+                              for s in syms[:5]]
+                        for cat, syms in categories.items() if syms
+                    },
+                    "source": "MT4 (direct ZMQ connection)"
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": result.get("error_message", "Failed to get symbols info")
+                }
+        except Exception as e:
+            self.logger.warning(f"Failed to fetch all symbols info from MT4: {e}")
+            return {
+                "success": False,
+                "error": f"Could not fetch symbols info from MT4: {str(e)}",
+                "note": "MT4 connection failed - ensure EA is running"
+            }
 
     async def _create_backtest(
         self,
@@ -1218,6 +1521,14 @@ class RiseTraderMCP:
                 "momentum_period": 10,
             },
             "mean_reversion": {"lookback": 20, "std_threshold": 2.0},
+            "value_area": {
+                "lookback_periods": 24,
+                "value_area_percent": 0.70,
+                "tpo_resolution": 0.10,
+                "stop_atr_multiplier": 1.5,
+                "target_mode": "poc",
+                "atr_period": 14,
+            },
         }
         return defaults.get(strategy, {})
     
@@ -1535,33 +1846,44 @@ class RiseTraderMCP:
             raise
 
     async def _list_strategies(self) -> Dict[str, Any]:
-        """List available strategies."""
-        # This would ideally come from the API, but for now return hardcoded list
-        return {
-            "strategies": [
-                {
-                    "name": "crude_oil_v3",
-                    "description": "Multi-indicator strategy with EMA, RSI, CCI, and ATR-based stops",
-                    "parameters": {
-                        "ema_fast": 8,
-                        "ema_slow": 29,
-                        "rsi_period": 10,
-                        "rsi_overbought": 68,
-                        "rsi_oversold": 32,
-                        "cci_period": 20,
-                        "atr_period": 10
-                    }
-                },
-                {
-                    "name": "ma_crossover",
-                    "description": "Simple moving average crossover strategy",
-                    "parameters": {
-                        "fast_period": 10,
-                        "slow_period": 20
-                    }
-                }
-            ]
-        }
+        """List available backtesting strategies from SyntheticEngine."""
+        # Import SyntheticEngine to get available strategies dynamically
+        try:
+            from src.services.backtesting.synthetic_engine import SyntheticEngine
+
+            # Get all strategy default params (this defines available strategies)
+            strategies = []
+            strategy_descriptions = {
+                "crude_oil_v3": "Multi-indicator strategy with EMA, RSI, CCI, and ATR-based stops",
+                "ma_crossover": "Simple moving average crossover strategy",
+                "rsi": "RSI overbought/oversold mean reversion strategy",
+                "trend_following": "Simple trend following with momentum",
+                "mean_reversion": "Statistical mean reversion with standard deviation bands",
+                "value_area": "Volume Profile / TPO based mean-reversion from VAH/VAL to POC"
+            }
+
+            for strategy_name in ["crude_oil_v3", "ma_crossover", "rsi", "trend_following", "mean_reversion", "value_area"]:
+                params = SyntheticEngine._default_params(strategy_name)
+                if params:  # Only include if params exist
+                    # Remove quantity from display params
+                    display_params = {k: v for k, v in params.items() if k != 'quantity'}
+                    strategies.append({
+                        "name": strategy_name,
+                        "description": strategy_descriptions.get(strategy_name, ""),
+                        "parameters": display_params
+                    })
+
+            return {
+                "strategies": strategies,
+                "total": len(strategies),
+                "source": "SyntheticEngine (dynamic)"
+            }
+        except Exception as e:
+            self.logger.error(f"Error listing strategies: {e}")
+            return {
+                "strategies": [],
+                "error": str(e)
+            }
 
     # =========================================================================
     # PENDING ORDERS IMPLEMENTATION
@@ -2466,6 +2788,112 @@ class RiseTraderMCP:
             
         except Exception as e:
             logger.error(f"Monte Carlo validation failed: {e}", exc_info=True)
+            return {"success": False, "error": str(e)}
+
+    # =========================================================================
+    # Price Alert MCP Tools (T062)
+    # =========================================================================
+
+    async def _set_price_alerts(
+        self,
+        ticket: int,
+        alerts: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        Set multiple price alerts for a position.
+
+        Args:
+            ticket: MT4 position ticket number
+            alerts: List of alert configurations, each with:
+                - alert_type: liquidity_sweep, breakeven, key_level, custom
+                - price_level: Price level to monitor
+                - direction: above or below
+                - metadata: Optional additional data
+
+        Returns:
+            Created alerts with IDs
+        """
+        try:
+            result = await self._api_call(
+                "POST",
+                "/api/alerts/batch",
+                json={
+                    "ticket": ticket,
+                    "alerts": alerts
+                },
+                timeout=15
+            )
+
+            return {
+                "success": True,
+                "ticket": ticket,
+                "alerts_created": result.get("total", 0),
+                "alerts": result.get("alerts", []),
+            }
+
+        except Exception as e:
+            logger.error(f"Set price alerts failed: {e}", exc_info=True)
+            return {"success": False, "error": str(e)}
+
+    async def _get_position_alerts(
+        self,
+        ticket: int
+    ) -> Dict[str, Any]:
+        """
+        Get all active alerts for a position.
+
+        Args:
+            ticket: MT4 position ticket number
+
+        Returns:
+            List of alerts for the position
+        """
+        try:
+            result = await self._api_call(
+                "GET",
+                f"/api/alerts/position/{ticket}",
+                timeout=10
+            )
+
+            return {
+                "success": True,
+                "ticket": ticket,
+                "alerts": result.get("alerts", []),
+                "total": result.get("total", 0),
+            }
+
+        except Exception as e:
+            logger.error(f"Get position alerts failed: {e}", exc_info=True)
+            return {"success": False, "error": str(e)}
+
+    async def _clear_position_alerts(
+        self,
+        ticket: int
+    ) -> Dict[str, Any]:
+        """
+        Clear all alerts for a position (e.g., when position is closed).
+
+        Args:
+            ticket: MT4 position ticket number
+
+        Returns:
+            Number of alerts deleted
+        """
+        try:
+            result = await self._api_call(
+                "DELETE",
+                f"/api/alerts/position/{ticket}",
+                timeout=10
+            )
+
+            return {
+                "success": True,
+                "ticket": ticket,
+                "deleted": result.get("deleted", 0),
+            }
+
+        except Exception as e:
+            logger.error(f"Clear position alerts failed: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
 
     async def run(self):

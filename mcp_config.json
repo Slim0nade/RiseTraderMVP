@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "risetrader": {
+      "command": "python",
+      "args": [
+        "-m",
+        "src.mcp.server"
+      ],
+      "cwd": "/Users/slimrouissi/Documents/VSCode/Rise/RiseTraderMVP",
+      "env": {
+        "PYTHONPATH": "/Users/slimrouissi/Documents/VSCode/Rise/RiseTraderMVP",
+        "RISETRADER_API_URL": "http://localhost:8003"
+      }
+    }
+  }
+}

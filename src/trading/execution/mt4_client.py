@@ -20,7 +20,10 @@ from src.trading.execution.mt4_models import (
     CreateInstantOrderCommand,
     GetAccountInfoCommand,
     GetOpenPositionsCommand,
+    GetTradeHistoryCommand,
     GetSymbolsCommand,
+    GetSymbolInfoCommand,
+    GetAllSymbolsInfoCommand,
     ClosePositionCommand,
     OrderResponse,
 )
@@ -312,6 +315,43 @@ class MT4Client:
             )
             raise ConnectionError(f"Failed to connect to MT4: {e}")
 
+    async def _reset_req_socket(self) -> None:
+        """Reset the REQ socket to recover from an invalid state (e.g., EFSM error).
+        
+        ZMQ REQ sockets can get stuck in an invalid state if a send/receive cycle
+        is interrupted. This method closes and recreates the socket to recover.
+        """
+        try:
+            logger.warning("mt4_socket_reset", magic_number=self.magic_number)
+            
+            # Close old socket if it exists
+            if self._req_socket:
+                self._req_socket.close(linger=0)  # Don't wait for pending messages
+                self._req_socket = None
+            
+            # Create new socket
+            if self._context:
+                self._req_socket = self._context.socket(zmq.REQ)
+                
+                # Configure encryption if enabled
+                if self.encryption_manager.encryption_enabled:
+                    self._req_socket = self.encryption_manager.configure_socket(self._req_socket)
+                
+                # Reconnect
+                endpoint = f"tcp://{self.host}:{self.rep_port}"
+                self._req_socket.connect(endpoint)
+                
+                logger.info("mt4_socket_reset_complete", magic_number=self.magic_number)
+            else:
+                # Context is gone, need full reconnect
+                self._connected = False
+                raise ConnectionError("ZMQ context not available, need full reconnect")
+                
+        except Exception as e:
+            logger.error("mt4_socket_reset_failed", error=str(e))
+            self._connected = False
+            raise ConnectionError(f"Socket reset failed: {e}")
+
     async def disconnect(self) -> None:
         """Close ZMQ connection (with disconnect event logging - T110)."""
         if not self._connected:
@@ -478,6 +518,22 @@ class MT4Client:
             # Record failure in circuit breaker (T091) - only if enabled
             if self.circuit_breaker:
                 self.circuit_breaker.record_failure()
+
+            # Check for EFSM (finite state machine) error - socket is in bad state
+            # This happens when send/receive cycle is interrupted
+            error_str = str(e).lower()
+            if "state" in error_str or "efsm" in error_str or "operation cannot be accomplished" in error_str:
+                logger.warning(
+                    "mt4_socket_state_error",
+                    command_type=command_type,
+                    error=str(e),
+                    recovery="attempting socket reset"
+                )
+                # Attempt socket recovery for next call
+                try:
+                    await self._reset_req_socket()
+                except Exception as reset_error:
+                    logger.error("mt4_socket_reset_failed_in_send", error=str(reset_error))
 
             raise ConnectionError(f"ZMQ error: {e}")
 
@@ -661,6 +717,121 @@ class MT4Client:
 
         return symbols
 
+    async def get_symbol_info(self, symbol: str) -> Dict[str, Any]:
+        """
+        Get detailed symbol specifications from MT4.
+
+        Returns leverage, margin %, swap rates, trading hours, contract size, etc.
+
+        Args:
+            symbol: Trading symbol (e.g., "CrudeOIL", "EURUSD")
+
+        Returns:
+            Dictionary with symbol specifications:
+            - symbol: str
+            - bid: float
+            - ask: float
+            - spread: float (in points)
+            - contract_size: float
+            - leverage: float (calculated)
+            - margin_pct: float (margin percentage)
+            - swap_long: float (swap points for long positions)
+            - swap_short: float (swap points for short positions)
+            - min_lot: float
+            - max_lot: float
+            - lot_step: float
+            - digits: int (price decimal places)
+            - trade_allowed: bool
+            - point: float
+            - tick_size: float
+            - tick_value: float
+
+        Raises:
+            ConnectionError: If not connected
+            TimeoutError: If command times out
+        """
+        if not self.is_connected():
+            raise ConnectionError("Not connected to MT4")
+
+        command = GetSymbolInfoCommand(
+            symbol=symbol,
+            magic_number=self.magic_number
+        )
+
+        response_data = await self.send_command(command)
+
+        # Adapt response format
+        response_data = self._adapt_mt4_response(response_data)
+
+        if not response_data.get("success", False):
+            logger.error(
+                "get_symbol_info_failed",
+                symbol=symbol,
+                error=response_data.get("error_message", "Unknown error")
+            )
+            return response_data
+
+        logger.info(
+            "symbol_info_retrieved",
+            symbol=symbol,
+            leverage=response_data.get("leverage"),
+            margin_pct=response_data.get("margin_pct")
+        )
+
+        return response_data
+
+    async def get_all_symbols_info(self) -> Dict[str, Any]:
+        """
+        Get detailed specifications for all available symbols from MT4.
+
+        Returns specifications for all tradeable symbols including:
+        - Leverage/margin requirements
+        - Swap rates
+        - Contract sizes
+        - Trading hours
+        - Spread information
+
+        Useful for:
+        - Portfolio diversification analysis (Dalio's Holy Grail)
+        - Finding high-leverage opportunities
+        - Understanding margin requirements
+
+        Returns:
+            Dictionary with:
+            - success: bool
+            - symbols: List of symbol info dictionaries
+            - total: int (number of symbols)
+
+        Raises:
+            ConnectionError: If not connected
+            TimeoutError: If command times out
+        """
+        if not self.is_connected():
+            raise ConnectionError("Not connected to MT4")
+
+        command = GetAllSymbolsInfoCommand(magic_number=self.magic_number)
+
+        response_data = await self.send_command(command)
+
+        # Adapt response format
+        response_data = self._adapt_mt4_response(response_data)
+
+        if not response_data.get("success", False):
+            logger.error(
+                "get_all_symbols_info_failed",
+                error=response_data.get("error_message", "Unknown error")
+            )
+            return response_data
+
+        symbols_count = len(response_data.get("symbols", []))
+
+        logger.info(
+            "all_symbols_info_retrieved",
+            count=symbols_count
+        )
+
+        return response_data
+
     async def get_account_info(self) -> Dict[str, Any]:
         """
         Get MT4 account information (T080 - User Story 4).
@@ -723,6 +894,46 @@ class MT4Client:
         logger.info(
             "positions_received",
             count=len(response_data.get("positions", []))
+        )
+
+        return response_data
+
+    async def get_trade_history(
+        self,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+        ticket: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        Get trade history from MT4 for closed positions.
+
+        Args:
+            start_time: Start time filter (None = all history)
+            end_time: End time filter (None = now)
+            ticket: Specific ticket to fetch (None = all)
+
+        Returns:
+            Dictionary with:
+            - status: str ("OK" or "ERROR")
+            - trades: List of trade dictionaries with close data
+
+        Raises:
+            ConnectionError: If not connected to MT4
+            TimeoutError: If MT4 doesn't respond
+        """
+        if not self.is_connected():
+            raise ConnectionError("Not connected to MT4")
+
+        command = GetTradeHistoryCommand(
+            start_time=int(start_time.timestamp()) if start_time else None,
+            end_time=int(end_time.timestamp()) if end_time else None,
+            ticket=ticket
+        )
+        response_data = await self.send_command(command)
+
+        logger.info(
+            "trade_history_received",
+            count=len(response_data.get("trades", []))
         )
 
         return response_data

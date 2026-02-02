@@ -31,9 +31,9 @@ export const PriceChart: React.FC<PriceChartProps> = ({ data, height = 400 }) =>
 
   const chartData = useMemo(() => {
     return data.map((item) => ({
-      timestamp: new Date(item.timestamp).getTime(),
-      price: item.close,
-      volume: item.volume,
+      timestamp: new Date(item.time || item.timestamp || '').getTime(),
+      price: typeof item.close === 'string' ? parseFloat(item.close) : item.close,
+      volume: typeof item.volume === 'string' ? parseFloat(item.volume) : item.volume,
     }));
   }, [data]);
 

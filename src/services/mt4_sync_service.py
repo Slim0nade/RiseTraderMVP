@@ -270,17 +270,23 @@ class MT4SyncService:
             return False
 
     async def _sync_positions(self, session: AsyncSession) -> bool:
-        """Sync open positions from MT4."""
+        """
+        Sync open positions from MT4.
+
+        Clean architecture:
+        1. Fetch current positions from MT4
+        2. Compare with database to find disappeared positions
+        3. Archive disappeared positions to trading_history (with close data)
+        4. Delete disappeared positions from open_positions
+        5. Upsert remaining positions
+        """
         try:
-            # Query MT4
+            # Query MT4 for current open positions
             command = GetOpenPositionsCommand()
             response = await self.mt4_client.send_command(command)
 
-            # Handle both response formats:
-            # New format: {"success": true, "data": {"positions": [...]}}
-            # Old format: {"status": "OK", "positions": [...]}
+            # Handle both response formats
             is_success = response.get("success", False) or response.get("status") == "OK"
-
             if not response or not is_success:
                 logger.warning("mt4_positions_query_failed", response=response)
                 return False
@@ -291,53 +297,72 @@ class MT4SyncService:
             else:
                 positions_data = response.get("positions", [])
 
-            # DEBUG: Log the raw position data to see what MT4 is actually sending
-            logger.info("mt4_positions_received",
-                       count=len(positions_data),
-                       raw_data=positions_data[:2] if positions_data else [])  # Log first 2
+            # Get current MT4 tickets
+            mt4_tickets = {str(pos.get("ticket", "")) for pos in positions_data}
 
-            # Upsert positions: INSERT new or UPDATE existing
+            # Get current database tickets (live positions only)
+            db_result = await session.execute(
+                text("SELECT number FROM open_positions WHERE simulation = false")
+            )
+
+            # Filter out corrupted tickets (only keep valid integer strings)
+            db_tickets_raw = {str(row[0]) for row in db_result}
+            db_tickets = set()
+            for ticket in db_tickets_raw:
+                try:
+                    int(ticket)  # Validate it's a clean integer string
+                    db_tickets.add(ticket)
+                except (ValueError, TypeError):
+                    logger.debug("corrupted_ticket_in_db", ticket=str(ticket)[:50])
+
+            # Find positions that DISAPPEARED (in DB but not in MT4)
+            disappeared_tickets = db_tickets - mt4_tickets
+
+            logger.info(
+                "position_sync_comparison",
+                mt4_count=len(mt4_tickets),
+                db_count=len(db_tickets),
+                disappeared_count=len(disappeared_tickets)
+            )
+
+            # Archive disappeared positions to trading_history
+            if disappeared_tickets:
+                await self._archive_closed_positions(session, disappeared_tickets)
+
+            # Upsert positions that still exist in MT4
             upserted_count = 0
-
             for pos_data in positions_data:
                 ticket = str(pos_data.get("ticket", ""))
-
-                # MT4 returns camelCase field names: openPrice, curPrice, not open_price
                 open_price = float(pos_data.get("openPrice", 0.0))
                 cur_price = float(pos_data.get("curPrice", 0.0))
                 lots = float(pos_data.get("lots", 0.0))
                 position_type = pos_data.get("type", "BUY").upper()
 
-                # Calculate P&L: (current_price - open_price) * lots * contract_size
-                # For commodities like CrudeOIL, contract size is typically 1000 barrels
-                # For now, use simplified calculation: (cur_price - open_price) * lots * 1000
+                # Calculate P&L
                 contract_size = 1000.0  # CrudeOIL contract size
                 if position_type == "BUY":
                     pnl = (cur_price - open_price) * lots * contract_size
-                else:  # SELL
+                else:
                     pnl = (open_price - cur_price) * lots * contract_size
 
                 # Prepare values
                 params = {
                     "number": ticket,
-                    "pos_type": position_type,
                     "size": lots,
                     "symbol": pos_data.get("symbol", ""),
                     "price": open_price,
-                    "stop_loss": pos_data.get("sl"),  # MT4 uses "sl" not "stop_loss"
-                    "take_profit": pos_data.get("tp"),  # MT4 uses "tp" not "take_profit"
+                    "stop_loss": pos_data.get("sl"),
+                    "take_profit": pos_data.get("tp"),
                     "commission": pos_data.get("commission", 0.0),
                     "last_profit": pnl,
                     "last_update": datetime.utcnow(),
-                    "last_strategy": "MT4_LIVE",  # Keep this - it's a string, not an enum
+                    "last_strategy": "MT4_LIVE",
                     "simulation": False,
                     "created_at": datetime.utcnow(),
                     "updated_at": datetime.utcnow(),
                 }
 
-                # Use UPSERT (INSERT ... ON CONFLICT) to handle both new and existing positions
-                # Create SQL with literal enum value to avoid parameter mixing issues
-                # Constraint is on 'number' only, not (number, simulation)
+                # UPSERT position
                 upsert_sql = text(f"""
                     INSERT INTO open_positions (
                         number, type, size, symbol, price,
@@ -360,22 +385,137 @@ class MT4SyncService:
                         updated_at = EXCLUDED.updated_at
                 """)
 
-                # Remove pos_type from params since it's now in the SQL string
-                params_without_type = {k: v for k, v in params.items() if k != "pos_type"}
-                await session.execute(upsert_sql, params_without_type)
-
+                await session.execute(upsert_sql, params)
                 upserted_count += 1
 
             await session.commit()
 
-            logger.debug("positions_upserted", count=upserted_count)
+            logger.info(
+                "positions_synced",
+                upserted=upserted_count,
+                archived=len(disappeared_tickets)
+            )
 
             return True
 
         except Exception as e:
-            logger.error("sync_positions_failed", error=str(e))
+            logger.error("sync_positions_failed", error=str(e), exc_info=True)
             await session.rollback()
             return False
+
+    async def _archive_closed_positions(self, session: AsyncSession, tickets: set):
+        """
+        Archive closed positions to trading_history with complete close data.
+
+        Args:
+            session: Database session
+            tickets: Set of ticket numbers that disappeared from MT4
+        """
+        try:
+            for ticket in tickets:
+                # Validate ticket is a clean integer string
+                try:
+                    ticket_int = int(ticket)
+                except (ValueError, TypeError) as e:
+                    logger.warning(
+                        "corrupted_ticket_skipped",
+                        ticket=str(ticket)[:100],  # Limit length for logging
+                        error=str(e)
+                    )
+                    # Try to delete corrupted ticket without archiving
+                    try:
+                        await session.execute(
+                            text("DELETE FROM open_positions WHERE number = :ticket"),
+                            {"ticket": str(ticket)}
+                        )
+                    except Exception as delete_error:
+                        logger.warning(
+                            "corrupted_ticket_delete_failed",
+                            ticket=str(ticket)[:100],
+                            error=str(delete_error)[:200]
+                        )
+                    continue
+
+                # Fetch close data from MT4 trade history
+                history_response = await self.mt4_client.get_trade_history(ticket=ticket_int)
+
+                if not history_response or history_response.get("status") != "OK":
+                    logger.warning("trade_history_fetch_failed", ticket=ticket)
+                    # Still delete from open_positions even if history fetch fails
+                    await session.execute(
+                        text("DELETE FROM open_positions WHERE number = :ticket"),
+                        {"ticket": ticket}
+                    )
+                    continue
+
+                trades = history_response.get("trades", [])
+                if not trades:
+                    logger.warning("trade_not_found_in_history", ticket=ticket)
+                    await session.execute(
+                        text("DELETE FROM open_positions WHERE number = :ticket"),
+                        {"ticket": ticket}
+                    )
+                    continue
+
+                # Get trade data (should be single trade for specific ticket)
+                trade = trades[0]
+
+                # Calculate days in trade
+                open_time = datetime.fromtimestamp(trade.get("openTime", 0))
+                close_time = datetime.fromtimestamp(trade.get("closeTime", 0))
+                days_in_trade = (close_time - open_time).total_seconds() / 86400
+
+                # Get order type and embed in SQL (same pattern as position upsert)
+                order_type = trade.get("type", "BUY")
+
+                # Insert into trading_history - use f-string for enum to avoid asyncpg syntax issues
+                insert_sql = text(f"""
+                    INSERT INTO trading_history (
+                        time, symbol, order_type, volume, price,
+                        sl, tp, commission, swap, profit,
+                        order_number, days_in_trade, simulation,
+                        created_at, updated_at
+                    ) VALUES (
+                        :close_time, :symbol, '{order_type}'::ordertype, :volume, :close_price,
+                        :sl, :tp, :commission, :swap, :profit,
+                        :order_number, :days_in_trade, false,
+                        :created_at, :updated_at
+                    )
+                """)
+
+                await session.execute(insert_sql, {
+                    "close_time": close_time,
+                    "symbol": trade.get("symbol", ""),
+                    "volume": trade.get("lots", 0.0),
+                    "close_price": trade.get("closePrice", 0.0),
+                    "sl": trade.get("sl", 0.0) or None,
+                    "tp": trade.get("tp", 0.0) or None,
+                    "commission": trade.get("commission", 0.0),
+                    "swap": trade.get("swap", 0.0),
+                    "profit": trade.get("profit", 0.0),
+                    "order_number": ticket,
+                    "days_in_trade": days_in_trade,
+                    "created_at": datetime.utcnow(),
+                    "updated_at": datetime.utcnow()
+                })
+
+                # Delete from open_positions
+                await session.execute(
+                    text("DELETE FROM open_positions WHERE number = :ticket"),
+                    {"ticket": ticket}
+                )
+
+                logger.info(
+                    "position_archived",
+                    ticket=ticket,
+                    symbol=trade.get("symbol"),
+                    profit=trade.get("profit"),
+                    close_price=trade.get("closePrice")
+                )
+
+        except Exception as e:
+            logger.error("archive_closed_positions_failed", error=str(e), exc_info=True)
+            raise
 
     async def _stream_loop(self):
         """Listen to MT4 real-time stream and save market data."""

@@ -25,14 +25,21 @@ export const marketDataApi = {
   getLatestTick: (symbol: string) =>
     apiClient.get<MarketData>(`/api/market-data/${symbol}/latest`),
 
-  getHistoricalData: (symbol: string, timeframe: string, limit?: number) =>
-    apiClient.get<MarketData[]>(`/api/market-data/${symbol}`, {
+  getHistoricalData: async (symbol: string, timeframe: string, limit?: number) => {
+    const response = await apiClient.get<{ data: MarketData[] }>(`/api/market-data/${symbol}`, {
       timeframe,
       limit: limit || 500,
-    }),
+    });
+    return response.data;
+  },
 
-  getSymbols: () =>
-    apiClient.get<string[]>('/api/market-data/symbols'),
+  getSymbols: async () => {
+    const response = await apiClient.get<{ symbols: Array<{ symbol: string }> }>('/api/market-data/symbols');
+    return response.symbols.map(s => s.symbol);
+  },
+
+  getAvailableTimeframes: () =>
+    apiClient.get<Record<string, string[]>>('/api/market-data/timeframes/available'),
 };
 
 // Trading
@@ -297,6 +304,231 @@ export const riskApi = {
     apiClient.get<{ var_daily: number; confidence: number }>('/api/risk/var', {
       confidence: confidence || 0.95,
     }),
+};
+
+// Strategy Optimizer
+export const optimizerApi = {
+  // Basic optimization
+  runOptimization: (params: {
+    symbol: string;
+    timeframe: string;
+    start_date: string;
+    end_date: string;
+    strategy: string;
+    param_grid?: Record<string, any[]>;
+    optimization_target?: string;
+    initial_capital?: number;
+    max_combinations?: number;
+  }) =>
+    apiClient.post<any>('/api/optimizer/run', params),
+
+  quickScan: (params: {
+    symbol: string;
+    timeframe: string;
+    start_date: string;
+    end_date: string;
+    strategy: string;
+    num_samples?: number;
+    initial_capital?: number;
+  }) =>
+    apiClient.post<any>('/api/optimizer/quick-scan', params),
+
+  walkForward: (params: {
+    symbol: string;
+    timeframe: string;
+    start_date: string;
+    end_date: string;
+    strategy: string;
+    param_grid?: Record<string, any[]>;
+    optimization_target?: string;
+    train_pct?: number;
+    num_folds?: number;
+    initial_capital?: number;
+  }) =>
+    apiClient.post<any>('/api/optimizer/walk-forward', params),
+
+  // Enhanced optimization
+  rollingWindow: (params: {
+    symbol: string;
+    timeframe: string;
+    start_date: string;
+    end_date: string;
+    strategy: string;
+    param_grid?: Record<string, any[]>;
+    optimization_target?: string;
+    train_months?: number;
+    test_months?: number;
+    step_months?: number;
+    initial_capital?: number;
+    max_combinations?: number;
+  }) =>
+    apiClient.post<any>('/api/optimizer/rolling-window', params),
+
+  timeIntervals: (params: {
+    symbol: string;
+    timeframe: string;
+    start_date: string;
+    end_date: string;
+    strategy: string;
+    intervals: { name: string; start_date: string; end_date: string }[];
+    param_grid?: Record<string, any[]>;
+    optimization_target?: string;
+    initial_capital?: number;
+    max_combinations?: number;
+  }) =>
+    apiClient.post<any>('/api/optimizer/time-intervals', params),
+
+  sensitivity: (params: {
+    symbol: string;
+    timeframe: string;
+    start_date: string;
+    end_date: string;
+    strategy: string;
+    base_params?: Record<string, any>;
+    initial_capital?: number;
+  }) =>
+    apiClient.post<any>('/api/optimizer/sensitivity', params),
+
+  monteCarlo: (params: {
+    symbol: string;
+    timeframe: string;
+    start_date: string;
+    end_date: string;
+    strategy: string;
+    params: Record<string, any>;
+    num_simulations?: number;
+    initial_capital?: number;
+  }) =>
+    apiClient.post<any>('/api/optimizer/monte-carlo', params),
+
+  // Metadata
+  getStrategies: () =>
+    apiClient.get<{ strategies: any[]; optimization_targets: string[] }>('/api/optimizer/strategies'),
+
+  getParamGrid: (strategy: string) =>
+    apiClient.get<{ strategy: string; param_grid: Record<string, any[]>; total_combinations: number }>(
+      `/api/optimizer/param-grids/${strategy}`
+    ),
+};
+
+// EDA - Automated Data Quality Analysis
+export const edaApi = {
+  // Data quality summary with score
+  getDataQuality: (symbol: string, timeframe: string = 'M5', startDate?: string, endDate?: string) =>
+    apiClient.get<{
+      status: string;
+      symbol: string;
+      timeframe: string;
+      data_points: number;
+      date_range: { start: string; end: string };
+      checks: {
+        missing_values: { status: string; details: Record<string, number>; total_missing: number };
+        duplicate_timestamps: { status: string; count: number };
+        price_consistency: { status: string; inconsistent_candles: number };
+        outliers: { status: string; count: number; percentage: number; bounds: { lower: number; upper: number } };
+        volume_anomalies: { status: string; zero_volume_candles: number; extreme_volume_candles: number };
+        data_gaps: { status: string; gap_count: number; largest_gaps: { start: string; duration_minutes: number }[] };
+      };
+      issues: { type: string; severity: string; message: string }[];
+      score: number;
+    }>(`/api/eda/quality/${symbol}`, {
+      timeframe,
+      ...(startDate && { start_date: startDate }),
+      ...(endDate && { end_date: endDate }),
+    }),
+
+  // Distribution analysis for OHLCV and derived features
+  getDistributions: (symbol: string, timeframe: string = 'M5', startDate?: string, endDate?: string) =>
+    apiClient.get<{
+      status: string;
+      symbol: string;
+      timeframe: string;
+      data_points: number;
+      distributions: Record<string, {
+        count: number;
+        mean: number;
+        median: number;
+        std: number;
+        min: number;
+        max: number;
+        q25: number;
+        q75: number;
+        skewness: number;
+        kurtosis: number;
+        histogram: { counts: number[]; bin_edges: number[] };
+      }>;
+    }>(`/api/eda/distributions/${symbol}`, {
+      timeframe,
+      ...(startDate && { start_date: startDate }),
+      ...(endDate && { end_date: endDate }),
+    }),
+
+  // Correlation matrix
+  getCorrelations: (symbol: string, timeframe: string = 'M5', includeIndicators: boolean = true) =>
+    apiClient.get<{
+      status: string;
+      symbol: string;
+      timeframe: string;
+      data_points: number;
+      features: string[];
+      matrix: number[][];
+      high_correlations: { feature_1: string; feature_2: string; correlation: number }[];
+    }>(`/api/eda/correlations/${symbol}`, { timeframe, include_indicators: includeIndicators }),
+
+  // Compare two periods (train/test validation)
+  comparePeriods: (
+    symbol: string,
+    timeframe: string,
+    period1Start: string,
+    period1End: string,
+    period2Start: string,
+    period2End: string
+  ) =>
+    apiClient.get<{
+      status: string;
+      symbol: string;
+      timeframe: string;
+      period1: { start: string; end: string; data_points: number };
+      period2: { start: string; end: string; data_points: number };
+      comparisons: Record<string, {
+        period1: { mean: number; std: number; min: number; max: number };
+        period2: { mean: number; std: number; min: number; max: number };
+        mean_shift_std: number;
+        std_ratio: number;
+      }>;
+      warnings: { type: string; feature: string; message: string }[];
+    }>(`/api/eda/compare-periods/${symbol}`, {
+      timeframe,
+      period1_start: period1Start,
+      period1_end: period1End,
+      period2_start: period2Start,
+      period2_end: period2End,
+    }),
+
+  // Full automated EDA report
+  getFullReport: (symbol: string, timeframe: string = 'M5', startDate?: string, endDate?: string) =>
+    apiClient.get<{
+      status: string;
+      symbol: string;
+      timeframe: string;
+      generated_at: string;
+      quality_summary: any;
+      distributions: any;
+      correlations: any;
+      recommendations: { priority: string; category: string; action: string }[];
+    }>(`/api/eda/report/${symbol}`, {
+      timeframe,
+      ...(startDate && { start_date: startDate }),
+      ...(endDate && { end_date: endDate }),
+    }),
+
+  // Quick overview of all symbols
+  getSymbolsOverview: (timeframe: string = 'M5') =>
+    apiClient.get<{
+      status: string;
+      timeframe: string;
+      symbols: { symbol: string; timeframe: string; score: number; status: string; data_points: number; issue_count: number }[];
+    }>('/api/eda/symbols-overview', { timeframe }),
 };
 
 // System / Network Location

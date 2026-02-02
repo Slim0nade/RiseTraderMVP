@@ -1,0 +1,65 @@
+# Stealth Stop Manager Configuration
+# Enhanced Multi-Layer Risk Protection System
+# Schema: specs/007-stealth-stop-protection/contracts/stealth_stops.yaml.schema
+
+defaults:
+  # Disaster stop - initial protection on position detection
+  disaster_stop_multiplier: 3.0     # 3× ATR initial protection (FR-002)
+
+  # Trail trigger - lowered from 1.0 to 0.5 (FR-011)
+  trail_trigger_atr: 0.5             # Start trailing after 0.5× ATR profit
+
+  # Breakeven trigger - lowered from 1.5 to 0.5 (FR-011)
+  breakeven_trigger_atr: 0.5         # Move to breakeven after 0.5× ATR profit
+
+  # Profit erosion protection (FR-010)
+  erosion_threshold_atr: 0.5         # Tighten stop when erosion > 0.5× ATR
+  erosion_alert_threshold_atr: 0.3   # Early warning when erosion > 0.3× ATR
+
+  # Trailing configuration
+  atr_multiplier_trail: 1.5          # Trailing stop distance (× ATR from price)
+  trail_step_atr: 0.5                # Trail every 0.5× ATR of additional profit
+
+  # Breakeven settings
+  breakeven_offset_pips: 10          # Lock 10 pips profit at breakeven
+
+  # Monitoring
+  monitoring_cycle_seconds: 60       # Position check interval (60s default)
+  max_volatility_adjustment: 0.5     # Max 50% stop change per cycle
+
+  # Fallback when ATR unavailable
+  atr_fallback_percentage: 0.02      # 2% of entry price as fallback
+
+  # Manual override protection
+  manual_override_grace_period: 60   # Respect manual changes for 60 seconds
+
+  # Institutional pricing (anti-stop-hunting)
+  min_offset_pips: 5                 # Minimum random offset
+  max_offset_pips: 15                # Maximum random offset
+  pip_value: 0.01                    # 0.01 for commodities, 0.0001 for forex
+
+# Per-symbol overrides
+symbol_overrides:
+  CRUDEOIL:
+    disaster_stop_multiplier: 2.5    # Tighter for high-volatility oil
+    trail_trigger_atr: 0.4           # More aggressive trailing
+    erosion_threshold_atr: 0.4       # Protect profit sooner
+    pip_value: 0.01
+
+  XAUUSD:
+    disaster_stop_multiplier: 2.5    # Gold is also volatile
+    trail_trigger_atr: 0.4
+    pip_value: 0.01
+
+  EURUSD:
+    disaster_stop_multiplier: 4.0    # Wider for slower forex
+    trail_trigger_atr: 0.6           # Less aggressive trailing
+    pip_value: 0.0001
+
+# Feature flags - gradual rollout
+features:
+  enable_disaster_stops: true        # FR-002: Initial protection (P1)
+  enable_profit_erosion: true        # FR-010: Erosion detection (P2)
+  enable_early_breakeven: true       # FR-011: Soft breakeven at 0.5× ATR (P2)
+  enable_audit_trail: false          # Optional: Database logging (adds overhead)
+  enable_institutional_pricing: true # Anti-stop-hunting randomization

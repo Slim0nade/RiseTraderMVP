@@ -25,6 +25,7 @@ from .simulations import TradingSimulation
 from .strategy import Strategy, StrategyAllocation, StrategyPerformance, StrategyStatus, PerformancePeriod
 from .strategy_team import StrategyTeam
 from .trading_history import TradingHistory
+from .optimization import OptimizationRun, PriceAlert, OptimizationStatus, AlertType, AlertDirection
 
 __all__ = [
     "Base",
@@ -58,4 +59,10 @@ __all__ = [
     "PortfolioAllocation",
     "StrategyTeam",
     "MCPTool",
+    # Optimization models (Feature 008)
+    "OptimizationRun",
+    "PriceAlert",
+    "OptimizationStatus",
+    "AlertType",
+    "AlertDirection",
 ]

@@ -13,6 +13,7 @@ import {
   FlaskConical,
   MessageSquare,
   Sliders,
+  Database,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
@@ -26,6 +27,7 @@ const navItems = [
   { path: '/agents', icon: Activity, label: 'Agents' },
   { path: '/agent-chat', icon: MessageSquare, label: 'Agent Chat' },
   { path: '/market', icon: TrendingUp, label: 'Market Data' },
+  { path: '/data-quality', icon: Database, label: 'Data Quality' },
   { path: '/trading', icon: Target, label: 'Trading' },
   { path: '/strategies', icon: BarChart3, label: 'Strategies' },
   { path: '/forecasts', icon: Brain, label: 'Forecasts' },

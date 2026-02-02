@@ -55,7 +55,7 @@ services:
     command: sleep infinity
     network_mode: host  # Allows connection to MT4 on host network
     environment:
-      - MT4_HOST=75.154.254.186
+      - MT4_HOST=${MT4_HOST:-192.168.0.123}
       - MT4_REP_PORT=5555
       - MT4_PUB_PORT=5556
 
@@ -104,6 +104,28 @@ services:
   #   # - qwen3:14b
   #   # - deepseek-r1:14b
 
+  # MCP Server for Claude Desktop integration
+  mcp:
+    build:
+      context: .
+      dockerfile: docker/mcp/Dockerfile
+    container_name: risetrader-mcp
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+    environment:
+      MT4_HOST: ${MT4_HOST:-192.168.0.123}
+      MT4_PORT: ${MT4_COMMAND_PORT:-5555}
+      RISETRADER_API_URL: http://api:8000
+      PYTHONPATH: /app
+    volumes:
+      - ./src:/app/src
+      - ./config:/app/config
+    networks:
+      - risetrader
+    depends_on:
+      - api
+
   # FastAPI service
   api:
     build:
@@ -111,6 +133,8 @@ services:
       dockerfile: docker/api/Dockerfile.simple
     container_name: risetrader-api
     restart: unless-stopped
+    env_file:
+      - .env
     # network_mode: host  # Disabled - doesn't work on macOS Docker Desktop
     ports:
       - "${API_PORT:-8003}:8000"
@@ -125,17 +149,29 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-risetrader2024}@postgres:5432/${POSTGRES_DB:-risetrader}
       REDIS_URL: redis://redis:6379
       MLFLOW_TRACKING_URI: http://localhost:5000
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://75.154.254.186:11434}
-      MT4_HOST: ${MT4_HOST:-75.154.254.186}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://192.168.0.123:11434}
+      MT4_HOST: ${MT4_HOST:-192.168.0.123}
       MT4_REP_PORT: ${MT4_REP_PORT:-5555}
       MT4_PUB_PORT: ${MT4_PUB_PORT:-5556}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       CORS_ENABLED: "true"
-      CORS_ORIGINS: "http://localhost:3000,http://localhost:5173"
+      CORS_ORIGINS: "http://localhost:3000,http://localhost:3001,http://localhost:3003,http://localhost:5173"
+      ENABLE_HOT_RELOAD: "true"  # Enable hot reload for development
+      # LLM API Keys for proprietary models
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY}
+      # Stealth Stop Manager settings
+      STEALTH_STOPS_ENABLED: ${STEALTH_STOPS_ENABLED:-true}
+      STEALTH_STOP_POLL_INTERVAL: ${STEALTH_STOP_POLL_INTERVAL:-5}
     networks:
       - risetrader
     volumes:
       - ./logs:/app/logs
+      - ./src:/app/src  # Mount source code for hot reload
+      - ./config:/app/config  # Mount config for hot reload
+      - ./scripts:/app/scripts  # Mount scripts for data pipeline
+      - ./data:/app/data  # Mount data directory for downloads
 
 volumes:
   postgres_data:

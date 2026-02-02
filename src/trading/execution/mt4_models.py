@@ -360,6 +360,37 @@ class GetSymbolsCommand(MT4Command):
     magic_number: int
 
 
+class GetSymbolInfoCommand(MT4Command):
+    """Command to retrieve detailed symbol specifications (leverage, swap, margin, etc.)."""
+
+    command: Literal["get_symbol_info"] = "get_symbol_info"
+    symbol: str
+    magic_number: int
+
+
+class GetAllSymbolsInfoCommand(MT4Command):
+    """Command to retrieve detailed specs for all available symbols."""
+
+    command: Literal["get_all_symbols_info"] = "get_all_symbols_info"
+    magic_number: int
+
+
+class GetTradeHistoryCommand(MT4Command):
+    """
+    Command to retrieve trade history for closed positions.
+
+    Args:
+        start_time: Unix timestamp for start of range (None = all history)
+        end_time: Unix timestamp for end of range (None = now)
+        ticket: Specific ticket number to fetch (None = all)
+    """
+
+    command: Literal["get_trade_history"] = "get_trade_history"
+    start_time: Optional[int] = None
+    end_time: Optional[int] = None
+    ticket: Optional[int] = None
+
+
 class MT4Response(BaseModel):
     """Base model for responses from MT4."""
 

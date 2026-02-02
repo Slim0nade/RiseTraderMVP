@@ -614,6 +614,60 @@ def get_position_cache_key(ticket_number: int) -> str:
 
 
 # =============================================================================
+# Optimization Job Key Helpers
+# =============================================================================
+
+def get_optimization_job_key(job_id: str) -> str:
+    """
+    Get Redis key for optimization job state.
+
+    Args:
+        job_id: Optimization job identifier
+
+    Returns:
+        Redis key
+    """
+    return f"opt:job:{job_id}"
+
+
+def get_optimization_jobs_list_key() -> str:
+    """Get Redis key for list of active optimization jobs."""
+    return "opt:jobs:active"
+
+
+# =============================================================================
+# Price Alert Key Helpers
+# =============================================================================
+
+def get_price_alert_key(ticket: int, alert_type: str, alert_id: str) -> str:
+    """
+    Get Redis key for a price alert.
+
+    Args:
+        ticket: MT4 position ticket
+        alert_type: Type of alert (e.g., 'liquidity_sweep', 'breakeven')
+        alert_id: Unique alert identifier
+
+    Returns:
+        Redis key
+    """
+    return f"alert:{ticket}:{alert_type}:{alert_id}"
+
+
+def get_ticket_alerts_pattern(ticket: int) -> str:
+    """
+    Get Redis key pattern for all alerts on a position.
+
+    Args:
+        ticket: MT4 position ticket
+
+    Returns:
+        Redis key pattern for SCAN/KEYS
+    """
+    return f"alert:{ticket}:*"
+
+
+# =============================================================================
 # Channel Names
 # =============================================================================
 
@@ -626,6 +680,18 @@ CHANNEL_MARKET_TICK = "mt4:events:market_tick"
 CHANNEL_CONNECTION_STATUS = "mt4:events:connection_status"
 CHANNEL_PORTFOLIO_RISK = "mt4:events:portfolio_risk"
 CHANNEL_CIRCUIT_BREAKER = "mt4:events:circuit_breaker"
+
+# SSE event channel for real-time notifications
+CHANNEL_SSE_EVENTS = "sse:events"
+
+# Optimization job channels
+CHANNEL_OPTIMIZATION_STARTED = "opt:events:job_started"
+CHANNEL_OPTIMIZATION_PROGRESS = "opt:events:job_progress"
+CHANNEL_OPTIMIZATION_COMPLETE = "opt:events:job_complete"
+CHANNEL_OPTIMIZATION_FAILED = "opt:events:job_failed"
+
+# Price alert channels
+CHANNEL_PRICE_ALERT = "alerts:events:price_alert"
 
 
 # =============================================================================

@@ -159,7 +159,7 @@ export const NetworkSwitcher: React.FC = () => {
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-dark-500">75.154.254.186</p>
+                  <p className="text-xs text-dark-500">75.154.254.174</p>
                   <p className="text-xs text-dark-600 mt-1">
                     Remote access • Available anywhere
                   </p>

@@ -12,6 +12,7 @@ import numpy as np
 
 from .data_replay_engine import MarketTick
 from .crude_oil_strategy import CrudeOilStrategy, CrudeOilParams, create_crude_oil_strategy
+from .value_area_strategy import ValueAreaStrategy, ValueAreaParams, create_value_area_strategy
 
 
 @dataclass
@@ -24,11 +25,15 @@ class SyntheticSignal:
         quantity: Position size
         confidence: Signal confidence (0.0-1.0)
         reason: Human-readable reason for decision
+        stop_loss: Optional stop loss price for the trade
+        take_profit: Optional take profit price for the trade
     """
     action: Optional[str]
     quantity: Decimal
     confidence: float
     reason: str
+    stop_loss: Optional[Decimal] = None
+    take_profit: Optional[Decimal] = None
 
 
 class SyntheticEngine:
@@ -72,11 +77,21 @@ class SyntheticEngine:
         self._crude_oil_strategy: Optional[CrudeOilStrategy] = None
         if strategy == "crude_oil_v3":
             self._crude_oil_strategy = create_crude_oil_strategy(**{
-                k: v for k, v in self.params.items() 
+                k: v for k, v in self.params.items()
                 if k != 'quantity'
             })
             if 'quantity' in self.params:
                 self._crude_oil_strategy.params.quantity = self.params['quantity']
+
+        # Initialize Value Area strategy if selected
+        self._value_area_strategy: Optional[ValueAreaStrategy] = None
+        if strategy == "value_area":
+            self._value_area_strategy = create_value_area_strategy(**{
+                k: v for k, v in self.params.items()
+                if k != 'quantity'
+            })
+            if 'quantity' in self.params:
+                self._value_area_strategy.params.quantity = self.params['quantity']
 
         # Price history for indicators
         self.price_history: List[Decimal] = []
@@ -129,6 +144,21 @@ class SyntheticEngine:
                 "trading_start_hour": 8,
                 "trading_end_hour": 20,
                 "quantity": Decimal("1.0")
+            },
+            "value_area": {
+                "lookback_periods": 24,
+                "value_area_percent": 0.70,
+                "tpo_resolution": 0.10,
+                "require_rejection": True,
+                "min_penetration_atr": 0.3,
+                "max_penetration_atr": 2.0,
+                "atr_period": 14,
+                "stop_atr_multiplier": 1.5,
+                "target_mode": "poc",
+                "use_time_filter": True,
+                "trading_start_hour": 8,
+                "trading_end_hour": 20,
+                "quantity": Decimal("1.0")
             }
         }
         return defaults.get(strategy, {})
@@ -159,6 +189,8 @@ class SyntheticEngine:
             return self._mean_reversion_strategy(tick)
         elif self.strategy == "crude_oil_v3":
             return self._crude_oil_v3_strategy(tick)
+        elif self.strategy == "value_area":
+            return self._value_area_strategy_handler(tick)
         else:
             return SyntheticSignal(
                 action=None,
@@ -470,12 +502,46 @@ class SyntheticEngine:
         self.has_position = self._crude_oil_strategy.has_position
         self.entry_price = self._crude_oil_strategy.entry_price
 
-        # Convert CrudeOilSignal to SyntheticSignal
+        # Convert CrudeOilSignal to SyntheticSignal (including SL/TP)
         return SyntheticSignal(
             action=signal.action,
             quantity=signal.quantity,
             confidence=signal.confidence,
-            reason=signal.reason
+            reason=signal.reason,
+            stop_loss=Decimal(str(signal.stop_loss)) if signal.stop_loss else None,
+            take_profit=Decimal(str(signal.take_profit)) if signal.take_profit else None,
+        )
+
+    def _value_area_strategy_handler(self, tick: MarketTick) -> SyntheticSignal:
+        """
+        Value Area Trading strategy handler.
+
+        Mean-reversion strategy trading from VAH/VAL back to POC.
+        Uses TPO profile analysis for value area calculation.
+        """
+        if self._value_area_strategy is None:
+            return SyntheticSignal(
+                action=None,
+                quantity=Decimal("0.0"),
+                confidence=0.0,
+                reason="Value Area strategy not initialized"
+            )
+
+        # Delegate to the full strategy implementation
+        signal = self._value_area_strategy.process_tick(tick)
+
+        # Sync position state
+        self.has_position = self._value_area_strategy.has_position
+        self.entry_price = self._value_area_strategy.entry_price
+
+        # Convert ValueAreaSignal to SyntheticSignal
+        return SyntheticSignal(
+            action=signal.action,
+            quantity=signal.quantity,
+            confidence=signal.confidence,
+            reason=signal.reason,
+            stop_loss=Decimal(str(signal.stop_loss)) if signal.stop_loss else None,
+            take_profit=Decimal(str(signal.take_profit)) if signal.take_profit else None,
         )
 
     def reset(self) -> None:
@@ -483,10 +549,14 @@ class SyntheticEngine:
         self.price_history.clear()
         self.has_position = False
         self.entry_price = None
-        
+
         # Reset CrudeOil strategy if initialized
         if self._crude_oil_strategy is not None:
             self._crude_oil_strategy.reset()
+
+        # Reset Value Area strategy if initialized
+        if self._value_area_strategy is not None:
+            self._value_area_strategy.reset()
 
     def get_state(self) -> Dict:
         """

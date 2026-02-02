@@ -388,6 +388,8 @@ class BacktestService:
                         return {
                             "action": signal.action,
                             "quantity": signal.quantity,
+                            "stop_loss": signal.stop_loss,
+                            "take_profit": signal.take_profit,
                         }
                     return None
                 
@@ -449,6 +451,47 @@ class BacktestService:
                     total_value=float(initial_snapshot["total_value"]),
                 )
 
+            # ========== SL/TP ENFORCEMENT ==========
+            # Check all open positions for stop loss / take profit hits
+            # This happens BEFORE decision engine to ensure risk management is enforced
+            if portfolio.has_position(tick.symbol):
+                exit_signals = portfolio.check_exit_signals(tick.symbol, tick.close)
+                for position, exit_reason in exit_signals:
+                    # Close the position due to SL/TP hit
+                    exit_result, gross_pnl, net_pnl = simulator.execute_exit(
+                        portfolio=portfolio,
+                        symbol=tick.symbol,
+                        exit_price=tick.close,
+                        timestamp=tick.timestamp,
+                        position_id=position.position_id,
+                    )
+                    trades_closed += 1
+
+                    # Update trade record with exit details
+                    await self.backtest_repo.update_trade(
+                        trade_id=exit_result.trade_id,
+                        update_data={
+                            "exit_timestamp": tick.timestamp,
+                            "exit_price": tick.close,
+                            "gross_pnl": gross_pnl,
+                            "net_pnl": net_pnl,
+                            "holding_duration_seconds": int(
+                                (tick.timestamp - exit_result.timestamp).total_seconds()
+                            ) if exit_result.timestamp else None,
+                        }
+                    )
+                    logger.info(
+                        "position_closed_by_exit_signal",
+                        run_id=str(run.id),
+                        trade_id=str(exit_result.trade_id),
+                        exit_reason=exit_reason,
+                        exit_price=float(tick.close),
+                        gross_pnl=float(gross_pnl),
+                        net_pnl=float(net_pnl),
+                        portfolio_value=float(portfolio.get_total_value()),
+                    )
+            # ========== END SL/TP ENFORCEMENT ==========
+
             # Get trading decision (if decision engine provided)
             if decision_engine:
                 # DEBUG: Log every 500th candle
@@ -472,6 +515,8 @@ class BacktestService:
                 if decision:
                     action = decision.get("action")
                     quantity = decision.get("quantity", Decimal("1.0"))
+                    stop_loss = decision.get("stop_loss")
+                    take_profit = decision.get("take_profit")
 
                     # Execute trade based on decision
                     if action in ["buy", "sell"]:
@@ -487,7 +532,9 @@ class BacktestService:
                                 action=action,
                                 price=tick.close,
                                 quantity=quantity,
-                                timestamp=tick.timestamp
+                                timestamp=tick.timestamp,
+                                stop_loss=stop_loss,
+                                take_profit=take_profit,
                             )
 
                             if result.success:
@@ -505,6 +552,8 @@ class BacktestService:
                                     action=action,
                                     price=float(tick.close),
                                     quantity=float(quantity),
+                                    stop_loss=float(stop_loss) if stop_loss else None,
+                                    take_profit=float(take_profit) if take_profit else None,
                                     portfolio_value=float(portfolio.get_total_value()),
                                 )
 

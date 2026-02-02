@@ -25,12 +25,44 @@ export const MarketData: React.FC = () => {
     updateLatestTick,
     appendMarketData,
   } = useMarketStore();
+  const [availableTimeframes, setAvailableTimeframes] = useState<Record<string, string[]>>({});
+
+  // Fetch available timeframes on mount
+  useEffect(() => {
+    const fetchAvailableTimeframes = async () => {
+      try {
+        const timeframes = await marketDataApi.getAvailableTimeframes();
+        setAvailableTimeframes(timeframes);
+      } catch (error) {
+        console.error('Failed to fetch available timeframes:', error);
+      }
+    };
+    fetchAvailableTimeframes();
+  }, []);
+
+  // Check if a timeframe is available for the current symbol
+  const isTimeframeAvailable = (timeframe: string) => {
+    const symbolTimeframes = availableTimeframes[currentSymbol];
+    return symbolTimeframes ? symbolTimeframes.includes(timeframe) : true; // Default to enabled if not loaded yet
+  };
+
+  // Auto-switch to available timeframe when symbol changes
+  useEffect(() => {
+    if (Object.keys(availableTimeframes).length > 0) {
+      const symbolTimeframes = availableTimeframes[currentSymbol];
+      if (symbolTimeframes && !symbolTimeframes.includes(currentTimeframe)) {
+        // Current timeframe not available, switch to first available (usually M1)
+        setCurrentTimeframe(symbolTimeframes[0]);
+      }
+    }
+  }, [currentSymbol, availableTimeframes]);
 
   // Fetch historical data for current symbol
   const { data: historicalData, isLoading } = useQuery({
     queryKey: ['market-data', currentSymbol, currentTimeframe],
     queryFn: () => marketDataApi.getHistoricalData(currentSymbol, currentTimeframe, 500),
     refetchInterval: 10000,
+    enabled: isTimeframeAvailable(currentTimeframe), // Only fetch if timeframe is available
   });
 
   // Fetch latest data for all symbols to populate live instruments
@@ -38,7 +70,8 @@ export const MarketData: React.FC = () => {
     const fetchAllSymbols = async () => {
       for (const symbol of SYMBOLS) {
         try {
-          const data = await marketDataApi.getHistoricalData(symbol, currentTimeframe, 1);
+          // Always use M1 for live instruments as it's available for all symbols
+          const data = await marketDataApi.getHistoricalData(symbol, 'M1', 1);
           if (data && data.length > 0) {
             updateLatestTick(symbol, data[0]);
           }
@@ -51,7 +84,7 @@ export const MarketData: React.FC = () => {
     fetchAllSymbols();
     const interval = setInterval(fetchAllSymbols, 10000); // Refresh every 10 seconds
     return () => clearInterval(interval);
-  }, [currentTimeframe, updateLatestTick]);
+  }, [updateLatestTick]);
 
   // Update store when historical data changes
   useEffect(() => {
@@ -117,20 +150,27 @@ export const MarketData: React.FC = () => {
           <div>
             <label className="text-sm text-dark-500 mb-2 block">Timeframe</label>
             <div className="flex gap-2">
-              {TIMEFRAMES.map((tf) => (
-                <button
-                  key={tf}
-                  onClick={() => setCurrentTimeframe(tf)}
-                  className={cn(
-                    'px-4 py-2 rounded-lg font-medium transition-colors',
-                    currentTimeframe === tf
-                      ? 'bg-primary-500 text-white'
-                      : 'bg-dark-800 text-dark-300 hover:bg-dark-700'
-                  )}
-                >
-                  {tf}
-                </button>
-              ))}
+              {TIMEFRAMES.map((tf) => {
+                const available = isTimeframeAvailable(tf);
+                return (
+                  <button
+                    key={tf}
+                    onClick={() => available && setCurrentTimeframe(tf)}
+                    disabled={!available}
+                    className={cn(
+                      'px-4 py-2 rounded-lg font-medium transition-colors',
+                      currentTimeframe === tf
+                        ? 'bg-primary-500 text-white'
+                        : available
+                        ? 'bg-dark-800 text-dark-300 hover:bg-dark-700'
+                        : 'bg-dark-900 text-dark-600 cursor-not-allowed opacity-50'
+                    )}
+                    title={!available ? 'No data available for this timeframe' : undefined}
+                  >
+                    {tf}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -150,12 +190,12 @@ export const MarketData: React.FC = () => {
               <div className="flex items-center gap-2 mb-2">
                 <TrendingUp className="w-5 h-5 text-success-500" />
                 <span className="text-lg font-semibold text-success-500">
-                  +{((latestTick.close - latestTick.open) / latestTick.open * 100).toFixed(2)}%
+                  +{(((Number(latestTick.close) - Number(latestTick.open)) / Number(latestTick.open)) * 100).toFixed(2)}%
                 </span>
               </div>
               <div className="flex items-center gap-2 text-dark-400">
                 <Clock className="w-4 h-4" />
-                <span className="text-sm">{formatters.relativeTime(latestTick.timestamp)}</span>
+                <span className="text-sm">{formatters.relativeTime(latestTick.time || latestTick.timestamp)}</span>
               </div>
             </div>
           </div>
@@ -233,8 +273,8 @@ export const MarketData: React.FC = () => {
               );
             }
 
-            const priceChange = tick.close - tick.open;
-            const priceChangePercent = (priceChange / tick.open) * 100;
+            const priceChange = Number(tick.close) - Number(tick.open);
+            const priceChangePercent = (priceChange / Number(tick.open)) * 100;
             const isPositive = priceChange >= 0;
 
             return (
@@ -257,7 +297,7 @@ export const MarketData: React.FC = () => {
                       )}
                     </div>
                     <p className="text-xs text-dark-500 mt-1">
-                      Updated {formatters.relativeTime(tick.timestamp)}
+                      Updated {formatters.relativeTime(tick.time || tick.timestamp)}
                     </p>
                   </div>
 
@@ -323,20 +363,20 @@ export const MarketData: React.FC = () => {
               <p className="text-sm text-dark-500 mb-1">Avg Volume</p>
               <p className="text-2xl font-bold text-dark-50">
                 {formatters.number(
-                  chartData.reduce((sum, d) => sum + d.volume, 0) / chartData.length
+                  chartData.reduce((sum, d) => sum + Number(d.volume), 0) / chartData.length
                 )}
               </p>
             </div>
             <div>
               <p className="text-sm text-dark-500 mb-1">Period High</p>
               <p className="text-2xl font-bold text-success-500">
-                {formatters.price(Math.max(...chartData.map((d) => d.high)))}
+                {formatters.price(Math.max(...chartData.map((d) => Number(d.high))))}
               </p>
             </div>
             <div>
               <p className="text-sm text-dark-500 mb-1">Period Low</p>
               <p className="text-2xl font-bold text-danger-500">
-                {formatters.price(Math.min(...chartData.map((d) => d.low)))}
+                {formatters.price(Math.min(...chartData.map((d) => Number(d.low))))}
               </p>
             </div>
           </div>

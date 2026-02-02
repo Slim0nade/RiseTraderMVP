@@ -123,6 +123,8 @@ class TradeSimulator:
         quantity: Decimal,
         timestamp: datetime,
         decision_context: Optional[dict] = None,
+        stop_loss: Optional[Decimal] = None,
+        take_profit: Optional[Decimal] = None,
     ) -> TradeResult:
         """
         Execute a position entry (open new position).
@@ -135,6 +137,8 @@ class TradeSimulator:
             quantity: Position size
             timestamp: Execution timestamp
             decision_context: Optional agent decision context (for full mode)
+            stop_loss: Optional stop loss price for the position
+            take_profit: Optional take profit price for the position
 
         Returns:
             TradeResult with execution details
@@ -169,7 +173,7 @@ class TradeSimulator:
             )
 
         try:
-            # Open position in portfolio
+            # Open position in portfolio with SL/TP
             position = portfolio.open_position(
                 symbol=symbol,
                 action=action,
@@ -177,6 +181,8 @@ class TradeSimulator:
                 quantity=quantity,
                 timestamp=timestamp,
                 trade_id=trade_id,
+                stop_loss=stop_loss,
+                take_profit=take_profit,
             )
 
             # Deduct fees from cash

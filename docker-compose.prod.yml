@@ -178,7 +178,7 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,https://localhost}
 
       # MT4 Connection
-      MT4_HOST: ${MT4_HOST:-75.154.254.186}
+      MT4_HOST: ${MT4_HOST:-75.154.254.174}
       MT4_COMMAND_PORT: ${MT4_COMMAND_PORT:-5555}
       MT4_STREAM_PORT: ${MT4_STREAM_PORT:-5556}
       ZMQ_CLIENT_SECRET_KEY: ${ZMQ_CLIENT_SECRET_KEY}

@@ -46,6 +46,12 @@ from .crude_oil_strategy_extended import (
     CrudeOilSignalExtended,
     create_crude_oil_strategy_extended,
 )
+from .value_area_strategy import (
+    ValueAreaStrategy,
+    ValueAreaParams,
+    ValueAreaSignal,
+    create_value_area_strategy,
+)
 from .batch_optimizer import (
     BatchOptimizer,
     ParameterGrid,
@@ -90,6 +96,11 @@ __all__ = [
     "CrudeOilParamsExtended",
     "CrudeOilSignalExtended",
     "create_crude_oil_strategy_extended",
+    # Value Area Trading Strategy
+    "ValueAreaStrategy",
+    "ValueAreaParams",
+    "ValueAreaSignal",
+    "create_value_area_strategy",
     # Batch Optimization
     "BatchOptimizer",
     "ParameterGrid",

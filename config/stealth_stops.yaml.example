@@ -1,0 +1,128 @@
+# Stealth Stop Manager Configuration - Example Template
+# Copy this file to config/stealth_stops.yaml and customize for your setup
+#
+# Schema: specs/007-stealth-stop-protection/contracts/stealth_stops.yaml.schema
+#
+# Quick Start:
+#   cp config/stealth_stops.yaml.example config/stealth_stops.yaml
+#   # Edit values as needed
+#   python3 -m src.services.stealth_stop_manager
+
+# ============================================================================
+# DEFAULT SETTINGS (apply to all symbols unless overridden)
+# ============================================================================
+defaults:
+  # --------------------------------------------------------------------------
+  # DISASTER STOP PROTECTION (P1 - Critical)
+  # Sets an initial stop loss on every position within 10 seconds of detection
+  # --------------------------------------------------------------------------
+  disaster_stop_multiplier: 3.0     # Distance from entry in ATR multiples
+                                     # Example: ATR=0.75, entry=$60 → stop at $62.25 (short)
+                                     # Range: 1.0-10.0, Default: 3.0
+
+  # --------------------------------------------------------------------------
+  # EARLY PROFIT LOCKING (P2)
+  # Triggers trailing/breakeven earlier than traditional 1.0× ATR
+  # --------------------------------------------------------------------------
+  trail_trigger_atr: 0.5             # Start trailing after N× ATR profit
+                                     # Lowered from 1.0 to 0.5 per spec
+                                     # Range: 0.1-5.0, Default: 0.5
+
+  breakeven_trigger_atr: 0.5         # Move to breakeven after N× ATR profit
+                                     # Lowered from 1.5 to 0.5 per spec
+                                     # Range: 0.1-5.0, Default: 0.5
+
+  # --------------------------------------------------------------------------
+  # PROFIT EROSION DETECTION (P2)
+  # Detects when profit erodes from highwater mark
+  # --------------------------------------------------------------------------
+  erosion_threshold_atr: 0.5         # Tighten stop when erosion exceeds N× ATR
+                                     # Example: Highwater=$0.75, current=$0.25 → erosion=0.50
+                                     # Range: 0.1-5.0, Default: 0.5
+
+  erosion_alert_threshold_atr: 0.3   # Log warning when erosion exceeds N× ATR
+                                     # Range: 0.1-5.0, Default: 0.3
+
+  # --------------------------------------------------------------------------
+  # TRAILING STOP CONFIGURATION
+  # --------------------------------------------------------------------------
+  atr_multiplier_trail: 1.5          # Trailing stop distance (× ATR from price)
+                                     # Example: Price=$59.00, ATR=$0.75 → stop at $60.125 (short)
+                                     # Range: 0.5-5.0, Default: 1.5
+
+  trail_step_atr: 0.5                # Minimum profit move to trail again
+                                     # Prevents excessive stop modifications
+                                     # Range: 0.1-2.0, Default: 0.5
+
+  # --------------------------------------------------------------------------
+  # BREAKEVEN SETTINGS
+  # --------------------------------------------------------------------------
+  breakeven_offset_pips: 10          # Lock N pips profit at breakeven
+                                     # Range: 0-100, Default: 10
+
+  # --------------------------------------------------------------------------
+  # MONITORING SETTINGS
+  # --------------------------------------------------------------------------
+  monitoring_cycle_seconds: 60       # Position check interval
+                                     # Lower = more responsive, higher = less overhead
+                                     # Range: 10-300, Default: 60
+
+  max_volatility_adjustment: 0.5     # Max stop change per cycle (50%)
+                                     # Prevents wild stop movements
+                                     # Range: 0.1-1.0, Default: 0.5
+
+  atr_fallback_percentage: 0.02      # Fallback when ATR calculation unavailable
+                                     # Uses 2% of entry price
+                                     # Range: 0.01-0.10, Default: 0.02
+
+  manual_override_grace_period: 60   # Respect manual stop changes for N seconds
+                                     # Range: 0-300, Default: 60
+
+  # --------------------------------------------------------------------------
+  # INSTITUTIONAL PRICING (Anti-Stop-Hunting)
+  # --------------------------------------------------------------------------
+  min_offset_pips: 5                 # Minimum random offset for stop price
+  max_offset_pips: 15                # Maximum random offset for stop price
+  pip_value: 0.01                    # Pip size: 0.01 for commodities, 0.0001 for forex
+
+# ============================================================================
+# PER-SYMBOL OVERRIDES
+# ============================================================================
+# Override any default setting for specific symbols
+# Symbol names must be uppercase (e.g., CRUDEOIL, EURUSD, XAUUSD)
+symbol_overrides:
+  # Example: High-volatility crude oil
+  # CRUDEOIL:
+  #   disaster_stop_multiplier: 2.5   # Tighter initial protection
+  #   trail_trigger_atr: 0.4          # More aggressive trailing
+  #   erosion_threshold_atr: 0.4      # Protect profit sooner
+  #   pip_value: 0.01
+
+  # Example: Low-volatility forex
+  # EURUSD:
+  #   disaster_stop_multiplier: 4.0   # Wider initial protection
+  #   trail_trigger_atr: 0.6          # Less aggressive trailing
+  #   pip_value: 0.0001
+
+# ============================================================================
+# FEATURE FLAGS (Gradual Rollout)
+# ============================================================================
+features:
+  # P1 - Critical (Enable first)
+  enable_disaster_stops: true        # Initial protection on every position
+
+  # P2 - Important (Enable second)
+  enable_profit_erosion: true        # Detect and protect against profit erosion
+  enable_early_breakeven: true       # Soft breakeven at 0.5× ATR
+
+  # Optional
+  enable_audit_trail: false          # Database logging (adds overhead)
+  enable_institutional_pricing: true # Anti-stop-hunting randomization
+
+# ============================================================================
+# GRADUAL ROLLOUT STRATEGY
+# ============================================================================
+# Week 1: Only enable_disaster_stops: true (all others false)
+# Week 2: Add enable_profit_erosion: true
+# Week 3: Add enable_early_breakeven: true
+# Week 4: Optionally enable_audit_trail: true for debugging

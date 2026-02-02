@@ -192,7 +192,7 @@ export const CreateBacktestModal: React.FC<CreateBacktestModalProps> = ({
         configData.config_params = {
           agent_config: {
             model: formData.model,
-            ollama_base_url: 'http://75.154.254.186:11434/v1',
+            ollama_base_url: 'http://75.154.254.174:11434/v1',
             temperature: 0.7,
             max_tokens: 500,
           },

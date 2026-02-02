@@ -126,6 +126,7 @@ class VectorizedBacktestEngine:
     - rsi: RSI overbought/oversold
     - crude_oil_v3: Multi-indicator crude oil strategy
     - mean_reversion: Bollinger band mean reversion
+    - value_area: TPO-based value area (VAH/VAL/POC)
     
     Example:
         engine = VectorizedBacktestEngine(session)
@@ -348,12 +349,41 @@ class VectorizedBacktestEngine:
             df["upper_band"] = df["sma"] + 2 * df["std"]
             df["lower_band"] = df["sma"] - 2 * df["std"]
             df["z_score"] = (df["close"] - df["sma"]) / df["std"]
-            
+
+        elif strategy == "value_area":
+            # ================================================================
+            # VALUE AREA STRATEGY - TPO-BASED SUPPORT/RESISTANCE
+            # ================================================================
+            # Parameters
+            lookback_periods = params.get("lookback_periods", 24)
+            value_area_percent = params.get("value_area_percent", 0.70)
+            tpo_resolution = params.get("tpo_resolution", 0.10)
+            atr_period = params.get("atr_period", 14)
+
+            # Calculate ATR for stop loss sizing
+            df["atr"] = self._calculate_atr_vectorized(df, atr_period)
+
+            # Calculate Value Area (POC, VAH, VAL) using rolling windows
+            df["poc"] = df["close"].rolling(window=lookback_periods).apply(
+                lambda x: self._calculate_poc_from_closes(x, tpo_resolution),
+                raw=False
+            )
+
+            df["vah"] = df["close"].rolling(window=lookback_periods).apply(
+                lambda x: self._calculate_vah(x, value_area_percent, tpo_resolution, True),
+                raw=False
+            )
+
+            df["val"] = df["close"].rolling(window=lookback_periods).apply(
+                lambda x: self._calculate_vah(x, value_area_percent, tpo_resolution, False),
+                raw=False
+            )
+
         else:
             # Default: simple MA
             df["fast_ma"] = df["close"].rolling(window=10).mean()
             df["slow_ma"] = df["close"].rolling(window=30).mean()
-        
+
         return df
     
     def _generate_signals(
@@ -510,17 +540,59 @@ class VectorizedBacktestEngine:
             
         elif strategy == "mean_reversion":
             std_threshold = params.get("std_threshold", 2.0)
-            
+
             # Buy when price below lower band (oversold)
             buy_signal = df["z_score"] < -std_threshold
             buy_signal = buy_signal & ~buy_signal.shift(1).fillna(False)
-            
+
             # Sell when price returns to mean
             sell_signal = (df["z_score"] > -0.5) & (df["z_score"].shift(1) <= -0.5)
-            
+
             df.loc[buy_signal, "signal"] = 1
             df.loc[sell_signal, "signal"] = -1
-        
+
+        elif strategy == "value_area":
+            # ================================================================
+            # VALUE AREA ENTRY/EXIT SIGNALS
+            # ================================================================
+            # Parameters
+            atr_multiplier = params.get("stop_atr_multiplier", 1.5)
+
+            # Buy signal: Price crosses below VAL with rejection (closes above VAL next bar)
+            # This signals institutional buying at value area support
+            price_below_val = df["close"] < df["val"]
+            price_above_val_next = df["close"].shift(-1) > df["val"].shift(-1)
+
+            buy_signal = (
+                price_below_val &
+                price_above_val_next.fillna(False) &
+                df["val"].notna()
+            )
+            # Only trigger on first signal
+            buy_signal = buy_signal & ~buy_signal.shift(1).fillna(False)
+
+            # Sell signal: Price crosses above VAH with rejection (closes below VAH next bar)
+            # This signals institutional selling at value area resistance
+            price_above_vah = df["close"] > df["vah"]
+            price_below_vah_next = df["close"].shift(-1) < df["vah"].shift(-1)
+
+            sell_signal = (
+                price_above_vah &
+                price_below_vah_next.fillna(False) &
+                df["vah"].notna()
+            )
+            # Only trigger on first signal
+            sell_signal = sell_signal & ~sell_signal.shift(1).fillna(False)
+
+            # Store ATR for position management (used in _calculate_pnl)
+            df["entry_atr"] = df["atr"]
+            df["atr_sl_mult"] = atr_multiplier
+            df["atr_tp_mult"] = 2.0  # Default TP multiplier
+            df["use_atr_exits"] = True
+
+            df.loc[buy_signal, "signal"] = 1
+            df.loc[sell_signal, "signal"] = -1
+
         return df
     
     def _calculate_pnl(
@@ -779,11 +851,151 @@ class VectorizedBacktestEngine:
         high_low = df["high"] - df["low"]
         high_close = (df["high"] - df["close"].shift()).abs()
         low_close = (df["low"] - df["close"].shift()).abs()
-        
+
         true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
         atr = true_range.rolling(window=period).mean()
-        
+
         return atr
+
+    @staticmethod
+    def _calculate_poc_from_closes(
+        closes: pd.Series, tpo_resolution: float = 0.10
+    ) -> float:
+        """
+        Calculate Point of Control (POC) from close prices.
+
+        POC is the price level with the most time spent (mode of activity).
+        Uses histogram bucketing to find the price bucket with most observations.
+
+        Args:
+            closes: Series of close prices
+            tpo_resolution: Size of each price bucket (e.g., 0.10 for $0.10 buckets)
+
+        Returns:
+            POC price level
+        """
+        if len(closes) == 0 or closes.isna().all():
+            return np.nan
+
+        closes = closes.dropna()
+        if len(closes) == 0:
+            return np.nan
+
+        # Create price buckets
+        min_price = closes.min()
+        max_price = closes.max()
+
+        if min_price == max_price:
+            return min_price
+
+        # Bucket closes into TPO resolution
+        buckets = np.floor(closes / tpo_resolution) * tpo_resolution
+
+        # Find most common bucket (mode)
+        bucket_counts = buckets.value_counts()
+        poc_bucket = bucket_counts.idxmax() if len(bucket_counts) > 0 else min_price
+
+        return float(poc_bucket)
+
+    @staticmethod
+    def _calculate_vah(
+        closes: pd.Series,
+        value_area_percent: float = 0.70,
+        tpo_resolution: float = 0.10,
+        is_high: bool = True,
+    ) -> float:
+        """
+        Calculate Value Area High or Low.
+
+        VAH/VAL are the bounds that contain the specified percentage of activity
+        around the POC (Point of Control).
+
+        Args:
+            closes: Series of close prices
+            value_area_percent: Percentage of activity to include (e.g., 0.70 for 70%)
+            tpo_resolution: Size of each price bucket
+            is_high: True for VAH, False for VAL
+
+        Returns:
+            VAH or VAL price level
+        """
+        if len(closes) == 0 or closes.isna().all():
+            return np.nan
+
+        closes = closes.dropna()
+        if len(closes) == 0:
+            return np.nan
+
+        # Calculate POC
+        poc = VectorizedBacktestEngine._calculate_poc_from_closes(closes, tpo_resolution)
+
+        if np.isnan(poc):
+            return np.nan
+
+        # Create buckets
+        buckets = np.floor(closes / tpo_resolution) * tpo_resolution
+        bucket_counts = buckets.value_counts().sort_index()
+
+        if len(bucket_counts) == 0:
+            return np.nan
+
+        # Find POC bucket
+        poc_bucket = np.floor(poc / tpo_resolution) * tpo_resolution
+
+        # Build distribution from POC outward
+        total_activity = len(closes)
+        target_activity = total_activity * value_area_percent
+
+        # Track cumulative activity
+        cumulative = 0
+        current_activity = bucket_counts.get(poc_bucket, 0)
+        cumulative += current_activity
+
+        # Add buckets above and below POC alternately
+        offset = tpo_resolution
+        bucket_index = 0
+
+        while cumulative < target_activity:
+            bucket_index += 1
+
+            # Try upper bucket
+            upper_bucket = poc_bucket + offset * bucket_index
+            if upper_bucket in bucket_counts.index:
+                cumulative += bucket_counts[upper_bucket]
+
+            if cumulative >= target_activity:
+                break
+
+            # Try lower bucket
+            lower_bucket = poc_bucket - offset * bucket_index
+            if lower_bucket in bucket_counts.index:
+                cumulative += bucket_counts[lower_bucket]
+
+        # Determine VAH/VAL based on direction
+        if is_high:
+            # VAH: find highest bucket in value area
+            va_buckets = []
+            for i in range(bucket_index + 1):
+                upper = poc_bucket + offset * i
+                lower = poc_bucket - offset * i
+                if upper in bucket_counts.index:
+                    va_buckets.append(upper)
+                if lower in bucket_counts.index:
+                    va_buckets.append(lower)
+
+            return float(max(va_buckets)) if va_buckets else float(poc)
+        else:
+            # VAL: find lowest bucket in value area
+            va_buckets = []
+            for i in range(bucket_index + 1):
+                upper = poc_bucket + offset * i
+                lower = poc_bucket - offset * i
+                if upper in bucket_counts.index:
+                    va_buckets.append(upper)
+                if lower in bucket_counts.index:
+                    va_buckets.append(lower)
+
+            return float(min(va_buckets)) if va_buckets else float(poc)
 
 
 # =============================================================================

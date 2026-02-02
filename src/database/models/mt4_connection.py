@@ -78,7 +78,7 @@ class MT4Connection(Base, TimestampMixin):
     mt4_server_host: Mapped[str] = mapped_column(
         String(100),
         nullable=False,
-        default='75.154.254.186',
+        default='75.154.254.174',
         comment="MT4 server IP/hostname"
     )
 

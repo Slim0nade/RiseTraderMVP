@@ -22,6 +22,7 @@ from .strategy_repository import StrategyRepository
 from .strategy_team_repository import StrategyTeamRepository
 from .trading_history_repository import TradingHistoryRepository
 from .trading_repository import TradingRepository
+from .optimization_repository import OptimizationRepository
 
 __all__ = [
     "BaseRepository",
@@ -47,4 +48,6 @@ __all__ = [
     # Backtesting repositories (Feature 006)
     "BacktestRepository",
     "ParameterGridRepository",
+    # Optimization repositories (Feature 008)
+    "OptimizationRepository",
 ]

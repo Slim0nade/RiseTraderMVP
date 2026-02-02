@@ -1,0 +1,29 @@
+{
+  "mcpServers": {
+    "serena": {
+      "command": "uvx",
+      "args": [
+        "--from", "git+https://github.com/oraios/serena",
+        "serena", "start-mcp-server",
+        "--project", "/Users/erinrouissi/Documents/VSCode/Rise/RiseTraderMVP"
+      ]
+    },
+    "risetrader-db": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-postgres", "postgresql://postgres:risetrader2024@localhost:5433/risetrader"]
+    },
+    "risetradermvp-mcp": {
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "--network", "risetrader_network",
+        "-e", "MT4_HOST=192.168.0.123",
+        "-e", "MT4_PORT=5555",
+        "-e", "RISETRADER_API_URL=http://risetrader-api:8000",
+        "-v", "/Users/erinrouissi/Documents/VSCode/Rise/RiseTraderMVP/src:/app/src:ro",
+        "-v", "/Users/erinrouissi/Documents/VSCode/Rise/RiseTraderMVP/config:/app/config:ro",
+        "risetradermvp-mcp"
+      ]
+    }
+  }
+}

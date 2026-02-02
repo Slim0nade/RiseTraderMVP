@@ -23,28 +23,70 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Current Status:** Infrastructure complete (PostgreSQL + Redis ready). Database restored with 13.5M market data records. Ready to begin agent system development - Phase 2.5.
 
-## 🔴 CRITICAL: Service Network Configuration (READ THIS FIRST!)
+## 🔴 CRITICAL: Unified Server Architecture (READ THIS FIRST!)
 
-**Current Mode: REMOTE** (connecting to external VPS server)
+**IMPORTANT:** Both Ollama LLM server AND MT4 trading platform run on the **SAME physical server**.
 
-### Remote Mode (Current - VPS at 75.154.254.186)
-- **Ollama Server**: `http://75.154.254.186:11434`
+This server has **TWO access methods** depending on your location:
+
+### **Unified Server Access:**
+```
+┌─────────────────────────────────────────┐
+│  Windows VPS Server                     │
+│  Both services on SAME machine:         │
+│  • Ollama (LLM inference)               │
+│  • MT4 + ZMQ Expert Advisor             │
+├─────────────────────────────────────────┤
+│  Local IP:  192.168.0.123  (at home)    │
+│  Public IP: 75.154.254.174 (anywhere)   │
+└─────────────────────────────────────────┘
+```
+
+### Local Mode (At Home - Fast)
+**Use when:** Connected to home network
+- **IP Address:** `192.168.0.123`
+- **Ollama:** `http://192.168.0.123:11434`
   - Available models: qwen3:14b, deepseek-r1:14b, mistral:7b-instruct, llama3.1:8b
-  - ⚠️ **DO NOT** append `/v1` in configs - code automatically adds it for OpenAI-compatible endpoint
-  - Test: `curl http://75.154.254.186:11434/api/tags`
-
-- **MT4 Server**: `75.154.254.186`
+  - LLM latency: 5-10s (LAN speed)
+- **MT4:** `192.168.0.123:5555/5556`
   - REP Port: 5555 (commands)
   - PUB Port: 5556 (streaming data)
-  - Test: `telnet 75.154.254.186 5555`
+- **Test:** `curl http://192.168.0.123:11434/api/tags`
 
-### Local Mode (192.168.0.123 - when on same network)
-- **Ollama Server**: `http://192.168.0.123:11434`
-- **MT4 Server**: `192.168.0.123:5555/5556`
+### Remote Mode (Anywhere - Slower)
+**Use when:** Working remotely (coffee shop, traveling, office)
+- **IP Address:** `75.154.254.174`
+- **Ollama:** `http://75.154.254.174:11434`
+  - Same models as local
+  - LLM latency: 60-180s (internet routing + inference)
+- **MT4:** `75.154.254.174:5555/5556`
+  - Same ports as local
+- **Test:** `curl http://75.154.254.174:11434/api/tags`
 
-**⚠️ IMPORTANT**: When switching between remote/local, update BOTH service IPs in:
-- `.env` file: `OLLAMA_BASE_URL`, `MT4_HOST`
-- Backtest configs: `ollama_base_url` in `config_params`
+### ⚠️ CRITICAL: Always Switch BOTH Services Together
+
+**Why:** They're on the SAME server, so IPs must match!
+
+**Correct Switching:**
+```bash
+# Use automated script (recommended)
+python3 scripts/switch_network.py local   # OR remote
+docker-compose restart api
+
+# Manual switching (updates both automatically)
+NETWORK_LOCATION=local  # in .env
+→ MT4_HOST=192.168.0.123
+→ OLLAMA_BASE_URL=http://192.168.0.123:11434
+```
+
+**⚠️ DON'T Mix IPs:**
+```bash
+# WRONG - mixing local and remote IPs
+MT4_HOST=192.168.0.123
+OLLAMA_BASE_URL=http://75.154.254.174:11434  # ❌ Different IPs!
+```
+
+**Network Config Details:** See `INFRASTRUCTURE_ARCHITECTURE_2026-01-06.md` and `NETWORK_SWITCHING_GUIDE.md`
 
 ## Key Architecture Components
 
@@ -241,7 +283,7 @@ docker-compose up jupyter
 **MUST be implemented before production:**
 
 1. **MT4 Connection Security (Week 3-4)**
-   - Current: Exposed at IP 75.154.254.186 with no encryption
+   - Current: Exposed at IP 75.154.254.174 with no encryption
    - Required: Implement ZMQ CurveZMQ encryption OR VPN tunnel
    - Configuration: `ZMQ_CLIENT_SECRET_KEY`, `ZMQ_CLIENT_PUBLIC_KEY`, `ZMQ_SERVER_PUBLIC_KEY`
 
@@ -421,12 +463,87 @@ Market Tick → MarketDataAgent validates
 
 This autonomous flow requires careful testing and monitoring at each stage.
 
+## MCP Server Tools
+
+The MCP server at `src/mcp/server.py` exposes the following tools for trading and analysis:
+
+### Trading Tools
+| Tool | Description |
+|------|-------------|
+| `place_market_order` | Place immediate market order (buy/sell) |
+| `close_position` | Close position by ticket ID |
+| `close_all_positions` | Emergency close all positions |
+| `get_open_positions` | Get current open positions |
+| `get_account_info` | Get account balance, equity, margin |
+| `place_pending_order` | Place pending order (BUY_STOP, SELL_STOP, etc.) |
+| `get_pending_orders` | List pending orders |
+| `cancel_pending_order` | Cancel specific pending order |
+| `cancel_all_pending_orders` | Cancel all pending orders |
+| `modify_position` | Modify SL/TP of open position |
+| `calculate_institutional_stop` | Calculate ATR-based stop with random offset |
+
+### Backtesting & Optimization Tools
+| Tool | Description |
+|------|-------------|
+| `create_backtest` | Start async backtest (returns immediately) |
+| `run_backtest_and_wait` | Backtest with internal polling (blocks until done) |
+| `get_backtest_results` | Get completed backtest results |
+| `get_backtest_status` | Poll backtest progress |
+| `list_backtests` | List all backtests |
+| `cancel_backtest` | Cancel running backtest |
+| `cancel_all_backtests` | Cancel all running backtests |
+| `cleanup_ghost_backtests` | Mark stale backtests as failed |
+| `optimize_strategy` | Grid search optimization |
+| `get_strategy_param_grid` | Get default params for strategy |
+| `rolling_window_optimize` | Walk-forward optimization |
+| `time_interval_optimize` | Optimize by quarters/seasons |
+| `sensitivity_analysis` | Analyze param sensitivity |
+| `monte_carlo_validate` | Monte Carlo robustness testing |
+
+### Market Data Tools
+| Tool | Description |
+|------|-------------|
+| `get_latest_candles` | Get OHLCV candle data |
+| `get_symbols` | List available trading symbols |
+| `get_forecast` | Get ML price forecast |
+| `list_strategies` | List available trading strategies |
+
+### SSE Events (Feature 008)
+
+Connect to `/api/events/stream` for real-time notifications:
+
+| Event | Trigger |
+|-------|---------|
+| `job_started` | Optimization job begins |
+| `job_progress` | Progress update (every 5%) |
+| `job_complete` | Optimization finished |
+| `job_failed` | Optimization error |
+| `price_alert` | Price crossed alert level |
+| `fast_move` | >2× ATR move in 5 minutes |
+| `liquidity_sweep` | Stop hunting pattern detected |
+
+### Price Alert Configuration
+
+```python
+# Set alerts for position monitoring
+await mcp.set_price_alerts(
+    ticket=12345,
+    liquidity_sweep_price=58.50,  # Below this = sweep
+    breakeven_price=59.00,
+    key_levels=[
+        {"price": 57.00, "direction": "below", "label": "Support"}
+    ]
+)
+```
+
 ## Active Technologies
 - PostgreSQL 15+ with async operations (positions, orders, account state, EA registry) (001-mt4-integration)
 - Python 3.11+ + FastAPI 0.104.1, SQLAlchemy 2.0.23 (async), Pydantic 2.5.2, asyncpg 0.29.0, Redis 5.0.1, PyZMQ 25.1.2, Structlog 23.2.0, Prometheus-client 0.19.0 (002-fastapi-dashboard-api)
 - PostgreSQL 15+ (async with asyncpg driver), Redis 7+ (pub/sub for real-time updates) (002-fastapi-dashboard-api)
 - Python 3.11+ + Existing RiseTrader stack (SQLAlchemy 2.0+ async, asyncpg, pandas/numpy for metrics), Gymnasium (for RL environment interface), scipy (for statistical tests in A/B comparison) (006-backtesting-engine)
 - PostgreSQL 15+ (existing 13.5M candle database from 001-mt4-integration) (006-backtesting-engine)
+- Python 3.11+ (existing stack) + FastAPI 0.104.1, aioredis 2.0+, SQLAlchemy 2.0+ async, sse-starlette (008-async-optimization-sse)
+- PostgreSQL 15+ (existing), Redis 7+ (existing) (008-async-optimization-sse)
 
 ## Recent Changes
 - 001-mt4-integration: Added Python 3.11+

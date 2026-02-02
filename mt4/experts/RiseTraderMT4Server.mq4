@@ -248,10 +248,41 @@ string processRequest(string requestString)
         string positions = getOpenPositions();
         response = createJsonResponse("OK", "", StringFormat("\"positions\":%s", positions));
     }
+    else if(command == "get_trade_history")
+    {
+        // Get optional parameters
+        string startTimeStr = extractValue(requestString, "start_time");
+        string endTimeStr = extractValue(requestString, "end_time");
+        string ticketStr = extractValue(requestString, "ticket");
+
+        int startTime = (startTimeStr != "") ? StringToInteger(startTimeStr) : 0;
+        int endTime = (endTimeStr != "") ? StringToInteger(endTimeStr) : 0;
+        int ticket = (ticketStr != "") ? StringToInteger(ticketStr) : 0;
+
+        response = getTradeHistory(startTime, endTime, ticket);
+    }
     else if(command == "get_symbols")
     {
         string symbols = getSymbols();
         response = createJsonResponse("OK", "", StringFormat("\"symbols\":%s", symbols));
+    }
+    else if(command == "get_symbol_info")
+    {
+        string symbol = extractValue(requestString, "symbol");
+        if(symbol == "")
+        {
+            response = createJsonResponse("ERROR", "Symbol parameter required");
+        }
+        else
+        {
+            string info = getSymbolInfo(symbol);
+            response = createJsonResponse("OK", "", StringFormat("\"symbol_info\":%s", info));
+        }
+    }
+    else if(command == "get_all_symbols_info")
+    {
+        string allInfo = getAllSymbolsInfo();
+        response = createJsonResponse("OK", "", StringFormat("\"symbols\":%s", allInfo));
     }
     else if(command == "create_instant_order")
     {
@@ -450,16 +481,27 @@ string getOpenPositions()
                 continue;
                 
             string orderTypeStr;
+            double currentPrice;
+
             switch(orderType)
             {
-                case OP_BUY: orderTypeStr = "BUY"; break;
-                case OP_SELL: orderTypeStr = "SELL"; break;
-                default: orderTypeStr = "OTHER"; break;
+                case OP_BUY:
+                    orderTypeStr = "BUY";
+                    currentPrice = MarketInfo(OrderSymbol(), MODE_BID);  // BUY closes at Bid
+                    break;
+                case OP_SELL:
+                    orderTypeStr = "SELL";
+                    currentPrice = MarketInfo(OrderSymbol(), MODE_ASK);  // SELL closes at Ask
+                    break;
+                default:
+                    orderTypeStr = "OTHER";
+                    currentPrice = 0.0;
+                    break;
             }
 
             string position = StringFormat(
                 "{\"ticket\":%d,\"symbol\":\"%s\",\"type\":\"%s\",\"lots\":%.2f,\"openPrice\":%.5f,\"curPrice\":%.5f,\"sl\":%.5f,\"tp\":%.5f}",
-                OrderTicket(), OrderSymbol(), orderTypeStr, OrderLots(), OrderOpenPrice(), OrderClosePrice(), OrderStopLoss(), OrderTakeProfit()
+                OrderTicket(), OrderSymbol(), orderTypeStr, OrderLots(), OrderOpenPrice(), currentPrice, OrderStopLoss(), OrderTakeProfit()
             );
 
             if(positions != "") positions += ",";
@@ -467,6 +509,62 @@ string getOpenPositions()
         }
     }
     return "[" + positions + "]";
+}
+
+//+------------------------------------------------------------------+
+//| Get trade history for closed positions                           |
+//+------------------------------------------------------------------+
+string getTradeHistory(int startTime = 0, int endTime = 0, int specificTicket = 0)
+{
+    string result = "{\"status\":\"OK\",\"message\":\"\",\"trades\":[";
+    int total = OrdersHistoryTotal();
+    bool firstTrade = true;
+
+    for(int i = 0; i < total; i++)
+    {
+        if(!OrderSelect(i, SELECT_BY_POS, MODE_HISTORY))
+            continue;
+
+        // Filter by time range if specified
+        if(startTime > 0 && OrderCloseTime() < startTime)
+            continue;
+        if(endTime > 0 && OrderCloseTime() > endTime)
+            continue;
+
+        // Filter by ticket if specified
+        if(specificTicket > 0 && OrderTicket() != specificTicket)
+            continue;
+
+        // Only include market orders (BUY=0, SELL=1)
+        if(OrderType() != OP_BUY && OrderType() != OP_SELL)
+            continue;
+
+        if(!firstTrade)
+            result += ",";
+        firstTrade = false;
+
+        string orderType = (OrderType() == OP_BUY) ? "BUY" : "SELL";
+
+        result += "{";
+        result += "\"ticket\":" + IntegerToString(OrderTicket()) + ",";
+        result += "\"symbol\":\"" + OrderSymbol() + "\",";
+        result += "\"type\":\"" + orderType + "\",";
+        result += "\"lots\":" + DoubleToString(OrderLots(), 2) + ",";
+        result += "\"openPrice\":" + DoubleToString(OrderOpenPrice(), 5) + ",";
+        result += "\"closePrice\":" + DoubleToString(OrderClosePrice(), 5) + ",";
+        result += "\"openTime\":" + IntegerToString(OrderOpenTime()) + ",";
+        result += "\"closeTime\":" + IntegerToString(OrderCloseTime()) + ",";
+        result += "\"sl\":" + DoubleToString(OrderStopLoss(), 5) + ",";
+        result += "\"tp\":" + DoubleToString(OrderTakeProfit(), 5) + ",";
+        result += "\"profit\":" + DoubleToString(OrderProfit(), 2) + ",";
+        result += "\"commission\":" + DoubleToString(OrderCommission(), 2) + ",";
+        result += "\"swap\":" + DoubleToString(OrderSwap(), 2) + ",";
+        result += "\"magicNumber\":" + IntegerToString(OrderMagicNumber());
+        result += "}";
+    }
+
+    result += "]}";
+    return result;
 }
 
 //+------------------------------------------------------------------+
@@ -527,6 +625,125 @@ string getSymbols()
     string result = "[" + symbols + "]";
     Print("Symbols result: ", result);
     return result;
+}
+
+//+------------------------------------------------------------------+
+//| Function to get detailed symbol specifications                    |
+//| Returns leverage, margin, swap rates, trading hours, etc.        |
+//+------------------------------------------------------------------+
+string getSymbolInfo(string symbol)
+{
+    // Check if symbol exists
+    if(!SymbolSelect(symbol, true))
+    {
+        return StringFormat("{\"error\":\"Symbol %s not found\"}", symbol);
+    }
+
+    // Get all symbol specifications using MarketInfo()
+    double bid = MarketInfo(symbol, MODE_BID);
+    double ask = MarketInfo(symbol, MODE_ASK);
+    double point = MarketInfo(symbol, MODE_POINT);
+    int digits = (int)MarketInfo(symbol, MODE_DIGITS);
+    double spread = MarketInfo(symbol, MODE_SPREAD);
+    double stopLevel = MarketInfo(symbol, MODE_STOPLEVEL);
+    double lotSize = MarketInfo(symbol, MODE_LOTSIZE);
+    double tickValue = MarketInfo(symbol, MODE_TICKVALUE);
+    double tickSize = MarketInfo(symbol, MODE_TICKSIZE);
+    double minLot = MarketInfo(symbol, MODE_MINLOT);
+    double maxLot = MarketInfo(symbol, MODE_MAXLOT);
+    double lotStep = MarketInfo(symbol, MODE_LOTSTEP);
+    double swapLong = MarketInfo(symbol, MODE_SWAPLONG);
+    double swapShort = MarketInfo(symbol, MODE_SWAPSHORT);
+    int swapType = (int)MarketInfo(symbol, MODE_SWAPTYPE);
+    double marginInit = MarketInfo(symbol, MODE_MARGININIT);
+    double marginMaint = MarketInfo(symbol, MODE_MARGINMAINTENANCE);
+    double marginRequired = MarketInfo(symbol, MODE_MARGINREQUIRED);
+    int tradeAllowed = (int)MarketInfo(symbol, MODE_TRADEALLOWED);
+    int freezeLevel = (int)MarketInfo(symbol, MODE_FREEZELEVEL);
+
+    // Calculate leverage from margin required
+    // Leverage = Contract Size / (Margin Required per lot)
+    double leverage = 0;
+    if(marginRequired > 0)
+    {
+        leverage = (lotSize * bid) / marginRequired;
+    }
+
+    // Calculate margin percentage
+    double marginPct = 0;
+    if(lotSize > 0 && bid > 0)
+    {
+        marginPct = (marginRequired / (lotSize * bid)) * 100;
+    }
+
+    // Swap type description
+    string swapTypeStr = "";
+    switch(swapType)
+    {
+        case 0: swapTypeStr = "points"; break;
+        case 1: swapTypeStr = "base_currency"; break;
+        case 2: swapTypeStr = "interest"; break;
+        case 3: swapTypeStr = "margin_currency"; break;
+        default: swapTypeStr = "unknown"; break;
+    }
+
+    // Build JSON response
+    string json = StringFormat(
+        "{\"symbol\":\"%s\","
+        "\"bid\":%.5f,"
+        "\"ask\":%.5f,"
+        "\"spread\":%.1f,"
+        "\"digits\":%d,"
+        "\"point\":%.6f,"
+        "\"contract_size\":%.2f,"
+        "\"tick_value\":%.4f,"
+        "\"tick_size\":%.6f,"
+        "\"min_lot\":%.2f,"
+        "\"max_lot\":%.2f,"
+        "\"lot_step\":%.2f,"
+        "\"swap_long\":%.2f,"
+        "\"swap_short\":%.2f,"
+        "\"swap_type\":\"%s\","
+        "\"margin_required\":%.2f,"
+        "\"margin_init\":%.2f,"
+        "\"margin_maintenance\":%.2f,"
+        "\"margin_pct\":%.4f,"
+        "\"leverage\":%.1f,"
+        "\"stop_level\":%.0f,"
+        "\"freeze_level\":%d,"
+        "\"trade_allowed\":%s}",
+        symbol, bid, ask, spread, digits, point,
+        lotSize, tickValue, tickSize,
+        minLot, maxLot, lotStep,
+        swapLong, swapShort, swapTypeStr,
+        marginRequired, marginInit, marginMaint,
+        marginPct, leverage,
+        stopLevel, freezeLevel,
+        tradeAllowed ? "true" : "false"
+    );
+
+    Print("Symbol info for ", symbol, ": ", json);
+    return json;
+}
+
+//+------------------------------------------------------------------+
+//| Function to get info for all available symbols                    |
+//+------------------------------------------------------------------+
+string getAllSymbolsInfo()
+{
+    string symbols = "";
+    int totalSymbols = SymbolsTotal(true);
+
+    for(int i = 0; i < totalSymbols; i++)
+    {
+        string symbol = SymbolName(i, true);
+        string info = getSymbolInfo(symbol);
+
+        if(symbols != "") symbols += ",";
+        symbols += info;
+    }
+
+    return "[" + symbols + "]";
 }
 
 //+------------------------------------------------------------------+
