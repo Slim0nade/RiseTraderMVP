@@ -340,7 +340,8 @@ class MockMT4EA:
 
     def _handle_close_position(self, command: dict) -> str:
         """Handle close_position command."""
-        ticket = command.get("ticket_number")
+        # Support both 'ticket' and 'ticket_number' for backwards compatibility
+        ticket = command.get("ticket") or command.get("ticket_number")
 
         if ticket in self.positions:
             position = self.positions.pop(ticket)

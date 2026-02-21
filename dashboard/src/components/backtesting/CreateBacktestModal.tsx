@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { X, Plus, Calendar, DollarSign, Settings, Sparkles } from 'lucide-react';
-import { backtestApi } from '@/api/endpoints';
+import { backtestApi, marketDataApi } from '@/api/endpoints';
 import { IntelligentDatePicker } from './IntelligentDatePicker';
 import type { ExecutionMode } from '@/types';
 
@@ -24,14 +25,6 @@ interface BacktestFormData {
   slippagePct: string;
   commissionPct: string;
 }
-
-const SYMBOLS = [
-  { value: 'CrudeOIL', label: 'Crude Oil' },
-  { value: 'Gold', label: 'Gold' },
-  { value: 'EURUSD', label: 'EUR/USD' },
-  { value: 'GBPUSD', label: 'GBP/USD' },
-  { value: 'USDJPY', label: 'USD/JPY' },
-];
 
 const MODELS = [
   // Open-Source Models (Free - Local/Ollama)
@@ -75,6 +68,13 @@ export const CreateBacktestModal: React.FC<CreateBacktestModalProps> = ({
   onSuccess,
   initialConfig,
 }) => {
+  // Fetch all available symbols dynamically
+  const { data: allSymbols = [] } = useQuery({
+    queryKey: ['symbols-list'],
+    queryFn: () => marketDataApi.getSymbols(),
+    staleTime: 60000,
+  });
+
   const [formData, setFormData] = useState<BacktestFormData>({
     name: '',
     symbol: 'CrudeOIL',
@@ -110,7 +110,7 @@ export const CreateBacktestModal: React.FC<CreateBacktestModalProps> = ({
 
   // Auto-generate backtest name based on configuration
   const generateBacktestName = (data: BacktestFormData): string => {
-    const symbolLabel = SYMBOLS.find(s => s.value === data.symbol)?.label || data.symbol;
+    const symbolLabel = data.symbol;
     const startMonth = new Date(data.startDate).toLocaleDateString('en-US', { month: 'short' });
     const endMonth = new Date(data.endDate).toLocaleDateString('en-US', { month: 'short' });
     const startYear = new Date(data.startDate).getFullYear();
@@ -360,9 +360,9 @@ export const CreateBacktestModal: React.FC<CreateBacktestModalProps> = ({
                   className="w-full bg-dark-800 border border-dark-600 rounded-lg px-4 py-2.5 text-dark-50 focus:outline-none focus:border-primary-500 transition-colors"
                   disabled={isSubmitting}
                 >
-                  {SYMBOLS.map((sym) => (
-                    <option key={sym.value} value={sym.value}>
-                      {sym.label}
+                  {allSymbols.map(({ symbol }) => (
+                    <option key={symbol} value={symbol}>
+                      {symbol}
                     </option>
                   ))}
                 </select>

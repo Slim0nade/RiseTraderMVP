@@ -1,0 +1,836 @@
+openapi: 3.0.3
+info:
+  title: RiseTrader Backtesting API
+  description: |
+    Internal API for backtesting multi-agent trading decisions against historical market data.
+    Supports full agent pipeline mode and synthetic fast mode for hyperparameter optimization.
+  version: 1.0.0
+  contact:
+    name: RiseTrader Development Team
+
+servers:
+  - url: http://localhost:8003/api/v1
+    description: Local development server
+  - url: http://localhost:8003/api/v1
+    description: Docker containerized environment
+
+tags:
+  - name: Configurations
+    description: Backtest configuration management
+  - name: Runs
+    description: Backtest execution and results
+  - name: Optimization
+    description: Parameter grid search and optimization
+
+paths:
+  /backtesting/configurations:
+    get:
+      tags: [Configurations]
+      summary: List all backtest configurations
+      operationId: listConfigurations
+      parameters:
+        - name: symbol
+          in: query
+          schema:
+            type: string
+          description: Filter by trading symbol
+        - name: execution_mode
+          in: query
+          schema:
+            type: string
+            enum: [full_pipeline, synthetic_fast]
+          description: Filter by execution mode
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        '200':
+          description: List of configurations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  configurations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BacktestConfiguration'
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+
+    post:
+      tags: [Configurations]
+      summary: Create new backtest configuration
+      operationId: createConfiguration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateConfigurationRequest'
+      responses:
+        '201':
+          description: Configuration created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BacktestConfiguration'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /backtesting/configurations/{config_id}:
+    get:
+      tags: [Configurations]
+      summary: Get configuration by ID
+      operationId: getConfiguration
+      parameters:
+        - name: config_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Configuration details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BacktestConfiguration'
+        '404':
+          description: Configuration not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      tags: [Configurations]
+      summary: Update configuration
+      operationId: updateConfiguration
+      parameters:
+        - name: config_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateConfigurationRequest'
+      responses:
+        '200':
+          description: Configuration updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BacktestConfiguration'
+        '404':
+          description: Configuration not found
+
+    delete:
+      tags: [Configurations]
+      summary: Delete configuration
+      operationId: deleteConfiguration
+      parameters:
+        - name: config_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Configuration deleted
+        '404':
+          description: Configuration not found
+        '409':
+          description: Cannot delete (has associated runs)
+
+  /backtesting/runs:
+    post:
+      tags: [Runs]
+      summary: Start a new backtest run
+      operationId: startBacktestRun
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartRunRequest'
+      responses:
+        '202':
+          description: Backtest started (async)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BacktestRun'
+        '400':
+          description: Invalid configuration or data gaps
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /backtesting/runs/{run_id}:
+    get:
+      tags: [Runs]
+      summary: Get backtest run status and results
+      operationId: getBacktestRun
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Run details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BacktestRun'
+        '404':
+          description: Run not found
+
+  /backtesting/runs/{run_id}/trades:
+    get:
+      tags: [Runs]
+      summary: Get trade log for a run
+      operationId: getRunTrades
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Trade list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  trades:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SimulatedTrade'
+                  total:
+                    type: integer
+
+  /backtesting/runs/{run_id}/equity-curve:
+    get:
+      tags: [Runs]
+      summary: Get equity curve data
+      operationId: getEquityCurve
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Equity curve data points
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data_points:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        timestamp:
+                          type: string
+                          format: date-time
+                        total_value:
+                          type: number
+                          format: double
+
+  /backtesting/runs/{run_id}/agent-decisions:
+    get:
+      tags: [Runs]
+      summary: Get agent decision logs (full pipeline mode only)
+      operationId: getAgentDecisions
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: agent_identifier
+          in: query
+          schema:
+            type: string
+          description: Filter by specific agent
+        - name: decision_type
+          in: query
+          schema:
+            type: string
+            enum: [signal, risk, execution, other]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+      responses:
+        '200':
+          description: Decision log entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  decisions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AgentDecisionLog'
+
+  /backtesting/optimization/grids:
+    post:
+      tags: [Optimization]
+      summary: Create parameter grid for batch optimization
+      operationId: createParameterGrid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateParameterGridRequest'
+      responses:
+        '201':
+          description: Grid created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ParameterGrid'
+        '400':
+          description: Invalid parameter specification
+
+  /backtesting/optimization/grids/{grid_id}/execute:
+    post:
+      tags: [Optimization]
+      summary: Execute all combinations in parameter grid
+      operationId: executeParameterGrid
+      parameters:
+        - name: grid_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                parallel_workers:
+                  type: integer
+                  default: 4
+                  minimum: 1
+                  maximum: 16
+      responses:
+        '202':
+          description: Grid execution started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  grid_id:
+                    type: string
+                    format: uuid
+                  total_combinations:
+                    type: integer
+                  estimated_completion_time:
+                    type: string
+                    description: ISO 8601 duration
+
+  /backtesting/optimization/grids/{grid_id}/results:
+    get:
+      tags: [Optimization]
+      summary: Get ranked results for parameter grid
+      operationId: getGridResults
+      parameters:
+        - name: grid_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: rank_by
+          in: query
+          schema:
+            type: string
+            enum: [sharpe, return, drawdown]
+            default: sharpe
+        - name: top_n
+          in: query
+          schema:
+            type: integer
+            default: 10
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: Ranked results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/GridSearchResult'
+                  grid_id:
+                    type: string
+                    format: uuid
+
+  /backtesting/comparison:
+    post:
+      tags: [Runs]
+      summary: A/B comparison of multiple backtest runs
+      operationId: compareBacktests
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                run_ids:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                  minItems: 2
+                  maxItems: 10
+      responses:
+        '200':
+          description: Comparison results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComparisonResult'
+
+components:
+  schemas:
+    BacktestConfiguration:
+      type: object
+      required:
+        - id
+        - name
+        - symbol
+        - start_date
+        - end_date
+        - initial_capital
+        - execution_mode
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          maxLength: 255
+        symbol:
+          type: string
+          maxLength: 50
+        start_date:
+          type: string
+          format: date-time
+        end_date:
+          type: string
+          format: date-time
+        initial_capital:
+          type: number
+          format: double
+          minimum: 0
+          exclusiveMinimum: true
+        execution_mode:
+          type: string
+          enum: [full_pipeline, synthetic_fast]
+        agent_config_ref:
+          type: string
+          nullable: true
+        slippage_pct:
+          type: number
+          format: double
+          default: 0.001
+        commission_pct:
+          type: number
+          format: double
+          default: 0.0005
+        commission_fixed:
+          type: number
+          format: double
+          default: 0.0
+        max_leverage:
+          type: number
+          format: double
+          default: 1.0
+        allow_short_selling:
+          type: boolean
+          default: false
+        config_params:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateConfigurationRequest:
+      type: object
+      required:
+        - name
+        - symbol
+        - start_date
+        - end_date
+        - initial_capital
+        - execution_mode
+      properties:
+        name:
+          type: string
+        symbol:
+          type: string
+        start_date:
+          type: string
+          format: date-time
+        end_date:
+          type: string
+          format: date-time
+        initial_capital:
+          type: number
+          format: double
+        execution_mode:
+          type: string
+          enum: [full_pipeline, synthetic_fast]
+        agent_config_ref:
+          type: string
+          nullable: true
+        slippage_pct:
+          type: number
+          format: double
+        commission_pct:
+          type: number
+          format: double
+        max_leverage:
+          type: number
+          format: double
+        allow_short_selling:
+          type: boolean
+        config_params:
+          type: object
+
+    UpdateConfigurationRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        slippage_pct:
+          type: number
+        commission_pct:
+          type: number
+        config_params:
+          type: object
+
+    BacktestRun:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        config_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [running, completed, failed, timeout]
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+          nullable: true
+        random_seed:
+          type: integer
+          nullable: true
+        total_return_pct:
+          type: number
+          format: double
+          nullable: true
+        sharpe_ratio:
+          type: number
+          format: double
+          nullable: true
+        max_drawdown_pct:
+          type: number
+          format: double
+          nullable: true
+        max_drawdown_duration_days:
+          type: integer
+          nullable: true
+        win_rate:
+          type: number
+          format: double
+          nullable: true
+        total_trades:
+          type: integer
+        avg_trade_duration_hours:
+          type: number
+          format: double
+          nullable: true
+        profit_factor:
+          type: number
+          format: double
+          nullable: true
+        final_capital:
+          type: number
+          format: double
+          nullable: true
+        candles_processed:
+          type: integer
+        agent_decisions_count:
+          type: integer
+        error_message:
+          type: string
+          nullable: true
+
+    StartRunRequest:
+      type: object
+      required:
+        - config_id
+      properties:
+        config_id:
+          type: string
+          format: uuid
+        random_seed:
+          type: integer
+          nullable: true
+        validate_data:
+          type: boolean
+          default: true
+          description: Check for data gaps before starting
+
+    SimulatedTrade:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        backtest_run_id:
+          type: string
+          format: uuid
+        symbol:
+          type: string
+        action:
+          type: string
+          enum: [buy, sell, close_long, close_short]
+        entry_timestamp:
+          type: string
+          format: date-time
+        entry_price:
+          type: number
+          format: double
+        quantity:
+          type: number
+          format: double
+        exit_timestamp:
+          type: string
+          format: date-time
+          nullable: true
+        exit_price:
+          type: number
+          format: double
+          nullable: true
+        gross_pnl:
+          type: number
+          format: double
+          nullable: true
+        fees_paid:
+          type: number
+          format: double
+        net_pnl:
+          type: number
+          format: double
+          nullable: true
+        holding_duration_seconds:
+          type: integer
+          nullable: true
+        decision_context:
+          type: object
+          nullable: true
+
+    AgentDecisionLog:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        backtest_run_id:
+          type: string
+          format: uuid
+        timestamp:
+          type: string
+          format: date-time
+        agent_identifier:
+          type: string
+        decision_type:
+          type: string
+          enum: [signal, risk, execution, other]
+        input_data:
+          type: object
+        output_decision:
+          type: object
+        execution_outcome:
+          type: string
+          nullable: true
+        processing_time_ms:
+          type: integer
+          nullable: true
+
+    ParameterGrid:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        base_config_id:
+          type: string
+          format: uuid
+        parameters:
+          type: object
+          description: "Map of parameter names to arrays of values"
+        total_combinations:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+
+    CreateParameterGridRequest:
+      type: object
+      required:
+        - name
+        - base_config_id
+        - parameters
+      properties:
+        name:
+          type: string
+        base_config_id:
+          type: string
+          format: uuid
+        parameters:
+          type: object
+          example:
+            ma_short: [5, 10, 15, 20]
+            ma_long: [30, 50, 100]
+            rsi_oversold: [20, 25, 30]
+
+    GridSearchResult:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        grid_id:
+          type: string
+          format: uuid
+        backtest_run_id:
+          type: string
+          format: uuid
+        parameter_values:
+          type: object
+        rank_by_sharpe:
+          type: integer
+          nullable: true
+        rank_by_return:
+          type: integer
+          nullable: true
+        rank_by_drawdown:
+          type: integer
+          nullable: true
+        is_statistically_significant:
+          type: boolean
+        run_metrics:
+          $ref: '#/components/schemas/BacktestRun'
+
+    ComparisonResult:
+      type: object
+      properties:
+        runs:
+          type: array
+          items:
+            $ref: '#/components/schemas/BacktestRun'
+        statistical_tests:
+          type: object
+          properties:
+            return_ttest_pvalue:
+              type: number
+              format: double
+              description: "P-value for returns difference (< 0.05 = significant)"
+            sharpe_ttest_pvalue:
+              type: number
+              format: double
+        side_by_side_metrics:
+          type: object
+          additionalProperties:
+            type: object
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          nullable: true

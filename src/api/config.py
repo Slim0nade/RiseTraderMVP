@@ -90,7 +90,7 @@ class APISettings(BaseSettings):
     enable_strategy_optimization: bool = True
 
     # MT4 Configuration
-    mt4_host: str = "75.154.254.186"
+    mt4_host: str = "75.154.254.174"
     mt4_command_port: int = 5555
     mt4_stream_port: int = 5556
     mt4_timeout: int = 10

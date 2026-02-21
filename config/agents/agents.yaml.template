@@ -34,14 +34,14 @@ llm:
   quick_think:
     provider: "ollama"
     model: "qwen2.5:14b"
-    api_base: "http://localhost:11434/v1"
+    api_base: "http://75.154.254.174:11434/v1"
     temperature: 0.1
     max_tokens: 500
 
   deep_think:
     provider: "ollama"
     model: "deepseek-r1:14b"
-    api_base: "http://localhost:11434/v1"
+    api_base: "http://75.154.254.174:11434/v1"
     temperature: 0.7
     max_tokens: 2000
 

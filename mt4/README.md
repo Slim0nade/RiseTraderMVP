@@ -198,7 +198,7 @@ import json
 
 context = zmq.Context()
 socket = context.socket(zmq.REQ)
-socket.connect('tcp://75.154.254.186:5555')  # Your MT4 server IP
+socket.connect('tcp://75.154.254.174:5555')  # Your MT4 server IP
 
 # If encryption is enabled, configure keys:
 # socket.curve_secretkey = b'YOUR_CLIENT_SECRET_KEY'

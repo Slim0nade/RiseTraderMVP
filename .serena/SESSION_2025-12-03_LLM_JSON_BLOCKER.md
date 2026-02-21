@@ -10,7 +10,7 @@ Successfully fixed Ollama networking and database logging issues, but BLOCKED by
 - **Problem**: Ollama connection hardcoded to office IP `192.168.0.123`
 - **Solution**:
   - Updated `src/agents/base/base_agent.py` to use environment variable
-  - Updated `docker-compose.yml` OLLAMA_BASE_URL to public IP `75.154.254.186:11434`
+  - Updated `docker-compose.yml` OLLAMA_BASE_URL to public IP `75.154.254.174:11434`
 - **Status**: ✅ LLM connection working - confirmed 22-91 second response times
 
 ### 2. Database Logging Fix - COMPLETE

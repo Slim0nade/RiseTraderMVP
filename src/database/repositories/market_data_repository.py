@@ -393,6 +393,7 @@ class MarketDataRepository(BaseRepository[MarketData]):
         timeframe: str,
         limit: int = 500,
         cursor: Optional[str] = None,
+        source: Optional[str] = None,
     ) -> tuple[List[MarketData], Optional[str]]:
         """
         Get latest market data for symbol and timeframe with pagination (T027).
@@ -404,6 +405,7 @@ class MarketDataRepository(BaseRepository[MarketData]):
             timeframe: Timeframe (M1, M5, M15, M30, H1, H4, D1, W1, MN1)
             limit: Number of most recent records to retrieve (default 500)
             cursor: Optional cursor for pagination (format: "timestamp_id")
+            source: Optional data source filter (e.g., "MT4", "CSV", "DUKASCOPY")
 
         Returns:
             Tuple of (list of MarketData records, next_cursor)
@@ -411,6 +413,8 @@ class MarketDataRepository(BaseRepository[MarketData]):
         Example:
             # Get latest 500 candlesticks for CrudeOIL M5
             data, cursor = await repo.get_latest_by_symbol("CrudeOIL", "M5", 500)
+            # Get only MT4-sourced data
+            data, cursor = await repo.get_latest_by_symbol("CrudeOIL", "M5", 500, source="MT4")
         """
         query = (
             select(MarketData)
@@ -421,6 +425,9 @@ class MarketDataRepository(BaseRepository[MarketData]):
                 )
             )
         )
+
+        if source:
+            query = query.where(cast(MarketData.source, Text) == source)
 
         # Apply keyset pagination if cursor provided
         if cursor:

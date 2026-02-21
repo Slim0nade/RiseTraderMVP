@@ -114,7 +114,7 @@ class BaseAgent(ABC):
         """
         # Get Ollama host from config or use default
         ollama_host = self.config.config_overrides.get(
-            "ollama_host", os.getenv("OLLAMA_BASE_URL", "http://75.154.254.186:11434")
+            "ollama_host", os.getenv("OLLAMA_BASE_URL", "http://75.154.254.174:11434")
         )
 
         # Default models per tier

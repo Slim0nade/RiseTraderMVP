@@ -171,10 +171,10 @@ def demo_t110_logging():
     MT4RequestLogger.log_connection_event(
         event_type="CONNECT",
         magic_number=100001,
-        host="75.154.254.186",
+        host="75.154.254.174",
         port=5555,
         encrypted=False,
-        details={"endpoint": "tcp://75.154.254.186:5555"}
+        details={"endpoint": "tcp://75.154.254.174:5555"}
     )
     print(f"   ✅ Connection event logged!")
 

@@ -1,0 +1,248 @@
+# OpenAPI 3.0 Contract: Price Alerts Endpoint
+# Feature: 008-async-optimization-sse
+
+openapi: 3.0.3
+info:
+  title: RiseTrader Price Alerts API
+  version: 1.0.0
+  description: Price level monitoring for open positions
+
+paths:
+  /api/alerts:
+    get:
+      operationId: listPriceAlerts
+      summary: List all active price alerts
+      tags: [Alerts]
+      parameters:
+        - name: ticket
+          in: query
+          description: Filter by position ticket
+          schema:
+            type: integer
+        - name: triggered
+          in: query
+          description: Filter by triggered status
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: List of alerts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PriceAlert'
+
+    post:
+      operationId: createPriceAlert
+      summary: Create a new price alert
+      tags: [Alerts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAlertRequest'
+      responses:
+        '201':
+          description: Alert created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PriceAlert'
+        '400':
+          description: Invalid parameters
+        '409':
+          description: Duplicate alert exists
+
+  /api/alerts/batch:
+    post:
+      operationId: createBatchAlerts
+      summary: Create multiple price alerts for a position
+      description: |
+        Set multiple alert levels for a position at once.
+        Useful for setting liquidity sweep, breakeven, and key levels together.
+      tags: [Alerts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchAlertRequest'
+      responses:
+        '201':
+          description: Alerts created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  created:
+                    type: integer
+                  alerts:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PriceAlert'
+        '400':
+          description: Invalid parameters
+
+  /api/alerts/{alert_id}:
+    get:
+      operationId: getPriceAlert
+      summary: Get a specific alert
+      tags: [Alerts]
+      parameters:
+        - name: alert_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Alert details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PriceAlert'
+        '404':
+          description: Alert not found
+
+    delete:
+      operationId: deletePriceAlert
+      summary: Delete an alert
+      tags: [Alerts]
+      parameters:
+        - name: alert_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Alert deleted
+        '404':
+          description: Alert not found
+
+  /api/alerts/position/{ticket}:
+    get:
+      operationId: getPositionAlerts
+      summary: Get all alerts for a position
+      tags: [Alerts]
+      parameters:
+        - name: ticket
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Position alerts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PriceAlert'
+
+    delete:
+      operationId: deletePositionAlerts
+      summary: Delete all alerts for a position
+      tags: [Alerts]
+      parameters:
+        - name: ticket
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Alerts deleted
+
+components:
+  schemas:
+    PriceAlert:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        ticket:
+          type: integer
+        alert_type:
+          type: string
+          enum: [liquidity_sweep, breakeven, key_level, custom]
+        price_level:
+          type: number
+        direction:
+          type: string
+          enum: [above, below]
+        triggered:
+          type: boolean
+        triggered_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          nullable: true
+
+    CreateAlertRequest:
+      type: object
+      required:
+        - ticket
+        - alert_type
+        - price_level
+        - direction
+      properties:
+        ticket:
+          type: integer
+          description: MT4 position ticket
+        alert_type:
+          type: string
+          enum: [liquidity_sweep, breakeven, key_level, custom]
+        price_level:
+          type: number
+          description: Price level to monitor
+        direction:
+          type: string
+          enum: [above, below]
+          description: Trigger when price crosses above or below
+        metadata:
+          type: object
+          description: Additional data (e.g., description)
+
+    BatchAlertRequest:
+      type: object
+      required:
+        - ticket
+      properties:
+        ticket:
+          type: integer
+          description: MT4 position ticket
+        liquidity_sweep_price:
+          type: number
+          nullable: true
+          description: Price level for liquidity sweep alert
+        breakeven_price:
+          type: number
+          nullable: true
+          description: Price level for breakeven alert
+        key_levels:
+          type: array
+          items:
+            type: object
+            properties:
+              price:
+                type: number
+              direction:
+                type: string
+                enum: [above, below]
+              label:
+                type: string
+          description: Additional key levels to monitor

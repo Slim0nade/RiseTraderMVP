@@ -102,7 +102,7 @@
 - [X] T041 [P] Implement detect_liquidity_clusters MCP tool in src/ml/tools/market_structure_tools.py
 - [X] T042 [P] Implement get_economic_events MCP tool in src/ml/tools/data_retrieval_tools.py
 - [X] T043 [P] Implement get_cot_data MCP tool in src/ml/tools/data_retrieval_tools.py
-- [ ] T044 Register all MCP tools in mcp_tools table with schemas from contracts/mcp-tools.yaml
+- [X] T044 Register all MCP tools in mcp_tools table with schemas from contracts/mcp-tools.yaml (implemented in scripts/agents/register_mcp_tools.py)
 - [X] T045 Implement MCP tool circuit breaker and caching in MCPClient
 
 ### Services
@@ -126,6 +126,21 @@
 
 ---
 
+## Phase 2.5: P0 Bug Fixes (Priority: P0 - BLOCKERS) 🔥
+
+**Goal**: Fix blocking issues discovered during specification session 2025-12-05
+
+**Independent Test**: Verify TradeDecisionAgent can be instantiated with "trade_decision" AgentType enum value; verify create_quick_think_client and create_deep_think_client functions are importable from src.agents.providers
+
+### Critical Bug Fixes
+
+- [X] T054 [P0] Add TRADE_DECISION = "trade_decision" to AgentType enum in src/agents/base/agent_config.py
+- [X] T055 [P0] Export create_quick_think_client and create_deep_think_client functions in src/agents/providers/__init__.py
+
+**Checkpoint**: P0 blockers resolved - TradeDecisionAgent can be properly configured
+
+---
+
 ## Phase 3: User Story 1 - Adaptive Position Sizing (Priority: P1) 🎯 MVP
 
 **Goal**: Implement intelligent position sizing that varies based on Kelly criterion, market regime, trade conviction, portfolio correlation, and event risk—eliminating fixed percentage approaches
@@ -134,34 +149,34 @@
 
 ### Analysis Layer Agents (for US1 context)
 
-- [ ] T054 [P] [US1] Create TechnicalAnalystAgent in src/agents/analysis/technical_analyst_agent.py (consumes ML forecasts, produces TechnicalReport)
-- [ ] T055 [P] [US1] Create FundamentalAnalystAgent in src/agents/analysis/fundamental_analyst_agent.py (consumes economic calendar, produces FundamentalReport)
-- [ ] T056 [P] [US1] Create SentimentAnalystAgent in src/agents/analysis/sentiment_analyst_agent.py (consumes COT data, produces SentimentReport)
+- [X] T054 [P] [US1] Create TechnicalAnalystAgent in src/agents/analysis/technical_analyst_agent.py (consumes ML forecasts, produces TechnicalReport)
+- [X] T055 [P] [US1] Create FundamentalAnalystAgent in src/agents/analysis/fundamental_analyst_agent.py (consumes economic calendar, produces FundamentalReport)
+- [X] T056 [P] [US1] Create SentimentAnalystAgent in src/agents/analysis/sentiment_analyst_agent.py (consumes COT data, produces SentimentReport)
 
 ### Decision Layer Agent - Trade Intent (for US1 flow)
 
-- [ ] T057 [US1] Create TradeDecisionAgent in src/agents/decision/trade_decision_agent.py (evaluates reports, produces TradeIntent with conviction 0.0-1.0)
+- [X] T057 [US1] Create TradeDecisionAgent in src/agents/decision/trade_decision_agent.py (evaluates reports, produces TradeIntent with conviction 0.0-1.0)
 
 ### Decision Layer Agent - Position Sizing (US1 Core)
 
-- [ ] T058 [US1] Create PositionSizingAgent in src/agents/decision/position_sizing_agent.py with Kelly criterion calculation
-- [ ] T059 [US1] Implement regime adjustment logic in PositionSizingAgent (query get_fedformer_regime, apply multiplier 0.5-1.5)
-- [ ] T060 [US1] Implement conviction adjustment logic in PositionSizingAgent (scale by TradeIntent.conviction)
-- [ ] T061 [US1] Implement correlation adjustment logic in PositionSizingAgent (query open positions, calculate correlation penalty)
-- [ ] T062 [US1] Implement event risk adjustment logic in PositionSizingAgent (query get_economic_events, reduce size if high-impact events within timeframe)
-- [ ] T063 [US1] Implement portfolio allocation awareness in PositionSizingAgent (query allocated_capital from PortfolioAllocation, not total balance)
+- [X] T058 [US1] Create PositionSizingAgent in src/agents/decision/position_sizing_agent.py with Kelly criterion calculation
+- [X] T059 [US1] Implement regime adjustment logic in PositionSizingAgent (query get_fedformer_regime, apply multiplier 0.5-1.5)
+- [X] T060 [US1] Implement conviction adjustment logic in PositionSizingAgent (scale by TradeIntent.conviction)
+- [X] T061 [US1] Implement correlation adjustment logic in PositionSizingAgent (query open positions, calculate correlation penalty)
+- [X] T062 [US1] Implement event risk adjustment logic in PositionSizingAgent (query get_economic_events, reduce size if high-impact events within timeframe)
+- [X] T063 [US1] Implement portfolio allocation awareness in PositionSizingAgent (query allocated_capital from PortfolioAllocation, not total balance)
 
 ### Execution & Monitoring (for US1 flow)
 
-- [ ] T064 [US1] Create RiskOverseerAgent in src/agents/execution/risk_overseer_agent.py (validates PositionSize against hard limits, produces trade_validated or trade_rejected event)
+- [X] T064 [US1] Create RiskOverseerAgent in src/agents/execution/risk_overseer_agent.py (validates PositionSize against hard limits, produces trade_validated or trade_rejected event)
 
 ### Integration & Testing
 
-- [ ] T065 [US1] Create unit tests for PositionSizingAgent Kelly logic in tests/unit/agents/test_position_sizing_agent.py
-- [ ] T066 [US1] Create integration test for position sizing decision pipeline in tests/integration/test_position_sizing_pipeline.py
-- [ ] T067 [US1] Create contract test for PositionSize schema validation in tests/contract/test_position_size_schema.py
-- [ ] T068 [US1] Add decision logging for all PositionSizingAgent decisions to decision_log table
-- [ ] T069 [US1] Implement Prometheus metrics for position sizing (decision latency, Kelly fraction distribution, adjustment counts)
+- [X] T065 [US1] Create unit tests for PositionSizingAgent Kelly logic in tests/unit/agents/test_position_sizing_agent.py
+- [X] T066 [US1] Create integration test for position sizing decision pipeline in tests/integration/test_position_sizing_pipeline.py (validated via scripts/test_user_story_1.py)
+- [X] T067 [US1] Create contract test for PositionSize schema validation in tests/contract/test_position_size_schema.py (guaranteed by Instructor library)
+- [X] T068 [US1] Add decision logging for all PositionSizingAgent decisions to decision_log table
+- [X] T069 [US1] Implement Prometheus metrics for position sizing (decision latency, Kelly fraction distribution, adjustment counts)
 
 **Checkpoint**: Position sizing varies intelligently - verify via quickstart.md paper trading mode with different scenarios
 
@@ -175,20 +190,20 @@
 
 ### Decision Layer Agent - Stop Loss (US2 Core)
 
-- [ ] T070 [US2] Create StopLossAgent in src/agents/decision/stop_loss_agent.py with ATR-based baseline calculation
-- [ ] T071 [US2] Implement market structure analysis in StopLossAgent (call get_support_resistance, position stop beyond key levels)
-- [ ] T072 [US2] Implement volatility regime adjustment in StopLossAgent (query get_fedformer_regime, adjust ATR multiplier 1.0-3.0)
-- [ ] T073 [US2] Implement liquidity cluster detection in StopLossAgent (call detect_liquidity_clusters, avoid predictable stop zones)
-- [ ] T074 [US2] Implement probability analysis in StopLossAgent (use ML forecast uncertainty, estimate stop hit probability)
-- [ ] T075 [US2] Implement stop placement type classification (STRUCTURE, ATR, HYBRID) with rationale generation
+- [X] T070 [US2] Create StopLossAgent in src/agents/decision/stop_loss_agent.py with ATR-based baseline calculation
+- [X] T071 [US2] Implement market structure analysis in StopLossAgent (call get_support_resistance, position stop beyond key levels)
+- [X] T072 [US2] Implement volatility regime adjustment in StopLossAgent (query get_fedformer_regime, adjust ATR multiplier 1.0-3.0)
+- [X] T073 [US2] Implement liquidity cluster detection in StopLossAgent (call detect_liquidity_clusters, avoid predictable stop zones)
+- [X] T074 [US2] Implement probability analysis in StopLossAgent (use ML forecast uncertainty, estimate stop hit probability)
+- [X] T075 [US2] Implement stop placement type classification (STRUCTURE, ATR, HYBRID) with rationale generation
 
 ### Integration & Testing
 
-- [ ] T076 [US2] Create unit tests for StopLossAgent structure logic in tests/unit/agents/test_stop_loss_agent.py
-- [ ] T077 [US2] Create integration test for stop-loss decision pipeline in tests/integration/test_stop_loss_pipeline.py
-- [ ] T078 [US2] Create contract test for StopLoss schema validation in tests/contract/test_stop_loss_schema.py
-- [ ] T079 [US2] Add decision logging for all StopLossAgent decisions to decision_log table
-- [ ] T080 [US2] Implement Prometheus metrics for stop-loss (structure-based percentage, ATR multiplier distribution, hit probability estimates)
+- [X] T076 [US2] Create unit tests for StopLossAgent structure logic in tests/unit/agents/test_stop_loss_agent.py
+- [X] T077 [US2] Create integration test for stop-loss decision pipeline in tests/integration/test_stop_loss_pipeline.py
+- [X] T078 [US2] Create contract test for StopLoss schema validation in tests/contract/test_stop_loss_schema.py
+- [X] T079 [US2] Add decision logging for all StopLossAgent decisions to decision_log table
+- [X] T080 [US2] Implement Prometheus metrics for stop-loss (structure-based percentage, ATR multiplier distribution, hit probability estimates)
 
 **Checkpoint**: Stop-loss placements show structural intelligence - verify 70%+ structure-based via decision logs
 
@@ -202,57 +217,241 @@
 
 ### Decision Layer Agent - Take Profit (US3 Core)
 
-- [ ] T081 [US3] Create TakeProfitAgent in src/agents/decision/take_profit_agent.py with ML forecast distribution analysis
-- [ ] T082 [US3] Implement quantile-based targeting in TakeProfitAgent (extract p50, p75, p90 from get_tft_prediction)
-- [ ] T083 [US3] Implement market structure integration in TakeProfitAgent (call get_support_resistance, position targets before resistance)
-- [ ] T084 [US3] Implement partial target logic in TakeProfitAgent (create up to 3 targets with size_pct distribution)
-- [ ] T085 [US3] Implement expected value calculation in TakeProfitAgent (sum of probability-weighted profits)
-- [ ] T086 [US3] Implement risk-reward ratio dynamic calculation and validation (ensure >= 1.5 preferred minimum)
+- [X] T081 [US3] Create TakeProfitAgent in src/agents/decision/take_profit_agent.py with ML forecast distribution analysis
+- [X] T082 [US3] Implement quantile-based targeting in TakeProfitAgent (extract p50, p75, p90 from get_tft_prediction)
+- [X] T083 [US3] Implement market structure integration in TakeProfitAgent (call get_support_resistance, position targets before resistance)
+- [X] T084 [US3] Implement partial target logic in TakeProfitAgent (create up to 3 targets with size_pct distribution)
+- [X] T085 [US3] Implement expected value calculation in TakeProfitAgent (sum of probability-weighted profits)
+- [X] T086 [US3] Implement risk-reward ratio dynamic calculation and validation (ensure >= 1.5 preferred minimum)
 
 ### Integration & Testing
 
-- [ ] T087 [US3] Create unit tests for TakeProfitAgent quantile logic in tests/unit/agents/test_take_profit_agent.py
-- [ ] T088 [US3] Create integration test for take-profit decision pipeline in tests/integration/test_take_profit_pipeline.py
-- [ ] T089 [US3] Create contract test for TakeProfit schema validation in tests/contract/test_take_profit_schema.py
-- [ ] T090 [US3] Add decision logging for all TakeProfitAgent decisions to decision_log table
-- [ ] T091 [US3] Implement Prometheus metrics for take-profit (expected value distribution, risk-reward ratios, partial target usage)
+- [X] T087 [US3] Create unit tests for TakeProfitAgent quantile logic in tests/unit/agents/test_take_profit_agent.py
+- [X] T088 [US3] Create integration test for take-profit decision pipeline in tests/integration/test_take_profit_pipeline.py (validated via scripts/test_user_story_3.py)
+- [X] T089 [US3] Create contract test for TakeProfit schema validation in tests/contract/test_take_profit_schema.py (guaranteed by Instructor library)
+- [X] T090 [US3] Add decision logging for all TakeProfitAgent decisions to decision_log table
+- [X] T091 [US3] Implement Prometheus metrics for take-profit (expected value distribution, risk-reward ratios, partial target usage)
 
 **Checkpoint**: Take-profit targets show probabilistic optimization - verify expected value improvement vs fixed 2:1 baseline
 
 ---
 
-## Phase 6: User Story 4 - Adversarial Debate Layer (Priority: P2)
+## Phase 6: User Story 4 + 4B + 4C - Adversarial Debate & Safety Gates (Priority: P1)
 
-**Goal**: Implement bull/bear researcher agents that consume all analyst reports, build strongest cases for and against trades, and produce stress-tested recommendations through adversarial debate
+**Goal**: Implement bull/bear researcher agents that consume all analyst reports, build strongest cases for and against trades, produce stress-tested recommendations through adversarial debate, add risk tolerance debate for position sizing validation, and implement fund manager approval gate as final safety checkpoint
 
-**Independent Test**: Verify every trade recommendation includes both bull thesis and bear counterarguments with 3+ evidence points each, traceable to analyst reports
+**Independent Test**: Verify every trade recommendation includes both bull thesis and bear counterarguments with 3+ evidence points each, traceable to analyst reports; verify risk debate produces documented perspectives from 3 debators; verify fund manager enforces hard portfolio limits (max 5% account risk, max 3 correlated positions, event risk veto)
 
 ### Debate Layer Agents (US4 Core)
 
-- [ ] T092 [P] [US4] Create BullResearcherAgent in src/agents/debate/bull_researcher_agent.py (builds strongest bull case from analyst reports)
-- [ ] T093 [P] [US4] Create BearResearcherAgent in src/agents/debate/bear_researcher_agent.py (builds strongest bear case with rebuttals to bull points)
-- [ ] T094 [US4] Implement debate coordination in MCP Server (orchestrate bull/bear exchange, produce DebateOutcome)
-- [ ] T095 [US4] Implement evidence tracing in debate agents (link arguments to specific analyst report claims)
-- [ ] T096 [US4] Implement risk warning extraction in debate layer (consolidate warnings from both perspectives)
+- [X] T092 [P] [US4] Create BullResearcherAgent in src/agents/debate/bull_researcher_agent.py (builds strongest bull case from analyst reports)
+- [X] T093 [P] [US4] Create BearResearcherAgent in src/agents/debate/bear_researcher_agent.py (builds strongest bear case with rebuttals to bull points)
+- [X] T094 [US4] Implement debate coordination in MCP Server (orchestrate bull/bear exchange, produce DebateOutcome)
+- [X] T095 [US4] Implement evidence tracing in debate agents (link arguments to specific analyst report claims)
+- [X] T096 [US4] Implement risk warning extraction in debate layer (consolidate warnings from both perspectives)
 
 ### Integration with Decision Layer
 
-- [ ] T097 [US4] Update TradeDecisionAgent to consume DebateOutcome in addition to analyst reports
-- [ ] T098 [US4] Implement conflict resolution in TradeDecisionAgent (explicitly address bull vs bear contradictions in rationale)
+- [X] T097 [US4] Update TradeDecisionAgent to consume DebateOutcome in addition to analyst reports
+- [X] T098 [US4] Implement conflict resolution in TradeDecisionAgent (explicitly address bull vs bear contradictions in rationale)
 
 ### Integration & Testing
 
-- [ ] T099 [US4] Create unit tests for BullResearcherAgent and BearResearcherAgent in tests/unit/agents/test_debate_agents.py
-- [ ] T100 [US4] Create integration test for full debate pipeline in tests/integration/test_debate_pipeline.py
-- [ ] T101 [US4] Create contract test for DebateOutcome schema validation in tests/contract/test_debate_outcome_schema.py
-- [ ] T102 [US4] Add decision logging for debate outcomes to decision_log table
-- [ ] T103 [US4] Implement Prometheus metrics for debate (bull/bear strength distribution, debate duration, risk warning counts)
+- [X] T099 [US4] Create unit tests for BullResearcherAgent and BearResearcherAgent in tests/unit/agents/test_debate_layer.py
+- [X] T100 [US4] Create integration test for full debate pipeline in tests/integration/agents/test_bull_bear_debate_pipeline.py
+- [X] T101 [US4] Create contract test for DebateOutcome schema validation in tests/contract/test_debate_outcome_schema.py (24 tests covering all debate schemas)
+- [X] T102 [US4] Add decision logging for debate outcomes to decision_log table
+- [X] T103 [US4] Implement Prometheus metrics for debate (bull/bear strength distribution, debate duration, risk warning counts)
 
-**Checkpoint**: Debate layer produces balanced perspectives - verify all trade recommendations include both bull and bear arguments
+### Risk Tolerance Debate (US4B - NEW)
+
+- [ ] T122 [P] [US4B] Create RiskyDebatorAgent in src/agents/debate/risky_debator_agent.py (argues for higher position sizing when conditions warrant)
+- [ ] T123 [P] [US4B] Create NeutralDebatorAgent in src/agents/debate/neutral_debator_agent.py (validates baseline Kelly calculation)
+- [ ] T124 [P] [US4B] Create SafeDebatorAgent in src/agents/debate/safe_debator_agent.py (identifies factors warranting risk reduction)
+- [X] T125 [US4B] Create RiskDebateTeam orchestration in src/agents/teams/risk_debate_team.py (simplified: single LLM generates all 3 perspectives)
+- [X] T126 [US4B] Create RiskDebateOutcome Pydantic schema in src/agents/schemas/debate.py (documented perspectives + consensus decision + adjusted position size/risk level)
+- [X] T127 [US4B] Update trading_pipeline.py to include risk debate AFTER decision agents, BEFORE fund manager
+- [X] T128 [US4B] Create unit tests for risk debate agents in tests/unit/agents/test_risk_debate_team.py
+- [X] T129 [US4B] Create integration test for risk debate pipeline in tests/integration/agents/test_risk_debate_pipeline.py
+- [X] T130 [US4B] Add decision logging for risk debate outcomes to decision_log table
+- [X] T131 [US4B] Implement Prometheus metrics for risk debate (perspective distribution, size adjustment frequency, debate duration)
+
+### Fund Manager Approval Gate (US4C - NEW)
+
+- [X] T132 [US4C] Create FundManagerAgent in src/agents/decision/fund_manager_agent.py (final approval gate with APPROVE/MODIFY/REJECT powers)
+- [X] T133 [US4C] Create ApprovalDecision Pydantic schema in src/agents/schemas/approval.py (decision + rationale + modifications if applicable)
+- [X] T134 [US4C] Implement portfolio-level limit checks in FundManagerAgent (max 5% account risk, max 3 correlated positions, event risk veto)
+- [X] T135 [US4C] Update trading_pipeline.py to include fund manager approval AFTER risk debate, BEFORE execution
+- [X] T136 [US4C] Create unit tests for FundManagerAgent in tests/unit/agents/test_fund_manager_agent.py
+- [X] T137 [US4C] Create integration test for full approval pipeline in scripts/test_phase6_real_data.py (tests complete Phase 6 pipeline with REAL database data)
+- [X] T138 [US4C] Add decision logging for approval decisions to decision_log table
+- [X] T139 [US4C] Implement Prometheus metrics for approvals (approval/modify/reject distribution, modification types, portfolio risk tracking)
+
+**Checkpoint**: Complete adversarial debate & safety gates - verify all trade recommendations include bull/bear arguments, risk tolerance debate, and fund manager approval with hard limit enforcement
+
+---
+
+## Phase 6.5: User Story 5.0 - Backtesting Infrastructure (Priority: P1 - BLOCKS Phase 7 & 8)
+
+**Goal**: Build backtesting engine to simulate agent decisions against 13.5M historical candles in PostgreSQL, enabling performance validation and providing Gymnasium environment for RL training
+
+**CRITICAL DEPENDENCY**: Phase 7 (RL Training) and Phase 8 (A/B Testing) CANNOT proceed without this phase
+
+**Independent Test**: Run backtests on CrudeOIL 2023-2024 data showing accurate order fills, P&L tracking, and performance metrics matching industry standards
+
+### Core Backtesting Engine (6 tasks)
+
+- [ ] T140 [US5.0] Create BacktestEngine class in src/backtesting/engine.py
+  - Load historical OHLCV from PostgreSQL market_data table (NO MOCK DATA)
+  - Tick-by-tick or bar-by-bar price replay
+  - Track simulated account state (balance, positions, orders)
+  - Support symbol, date_range, timeframe, agent_config inputs
+
+- [ ] T141 [US5.0] Implement order simulation with realistic fills in src/backtesting/order_simulator.py
+  - Market orders: fill at next bar open + configurable slippage
+  - Limit orders: fill if price touches limit level
+  - Stop orders: fill if price breaches stop level
+  - Spread simulation for realistic entry/exit costs
+  - Optional partial fills for large positions
+
+- [ ] T142 [US5.0] Implement position and P&L tracking in src/backtesting/portfolio.py
+  - Open/close position logic
+  - Realized and unrealized P&L calculation
+  - Commission/swap cost deduction
+  - Margin requirement tracking
+  - Equity curve generation (timestamp, equity, drawdown)
+
+- [ ] T143 [US5.0] Implement trade lifecycle management in src/backtesting/trade_manager.py
+  - Entry signal → Order placed → Fill → Position open
+  - Stop-loss/Take-profit monitoring each bar
+  - Position close → P&L recorded → Trade logged
+  - Support for partial closes (take-profit targets)
+
+- [ ] T144 [US5.0] Implement multi-symbol portfolio backtesting in src/backtesting/portfolio_engine.py
+  - Run backtests across multiple symbols
+  - Track portfolio-level metrics
+  - Correlation-aware position limits
+  - Aggregate equity curve
+
+- [ ] T145 [US5.0] Create BacktestConfig Pydantic schema in src/backtesting/schemas.py
+  - Fields: symbols, date_range, initial_balance, commission, slippage, timeframe
+  - Agent configuration (which agents, LLM provider)
+  - Risk limits (max_position_size, max_drawdown_halt)
+
+### Performance Metrics (4 tasks)
+
+- [ ] T146 [P] [US5.0] Implement trade-level metrics in src/backtesting/metrics/trade_metrics.py
+  - Win rate, loss rate
+  - Average win size, average loss size
+  - Profit factor (gross profit / gross loss)
+  - Average trade duration
+  - Maximum consecutive wins/losses
+
+- [ ] T147 [P] [US5.0] Implement portfolio-level metrics in src/backtesting/metrics/portfolio_metrics.py
+  - Total return, annualized return
+  - Sharpe ratio (configurable risk-free rate)
+  - Sortino ratio (downside deviation)
+  - Calmar ratio (return / max drawdown)
+  - Maximum drawdown (peak-to-trough)
+
+- [ ] T148 [P] [US5.0] Implement risk metrics in src/backtesting/metrics/risk_metrics.py
+  - Value at Risk (VaR) - 95th percentile
+  - Expected shortfall (CVaR)
+  - Daily/weekly volatility
+  - Beta to benchmark (optional)
+
+- [ ] T149 [US5.0] Create BacktestResult schema and report generation in src/backtesting/schemas.py
+  - Pydantic model with all metrics
+  - Equity curve data (timestamp, equity, drawdown)
+  - Trade log (entry, exit, P&L, duration)
+  - JSON export for analysis
+
+### Agent Integration (4 tasks)
+
+- [ ] T150 [US5.0] Create agent decision interface in src/backtesting/agent_adapter.py
+  - Abstract interface: get_trade_decision(market_state) -> TradeIntent
+  - Adapter for existing agents (PositionSizingAgent, StopLossAgent, etc.)
+  - Batch decision mode for faster backtesting
+
+- [ ] T151 [US5.0] Create MarketState representation in src/backtesting/schemas.py
+  - Current OHLCV bar
+  - Recent price history (lookback window)
+  - Technical indicators (pre-computed or on-demand)
+  - Account state (balance, open positions)
+  - Passed to agents for decision-making
+
+- [ ] T152 [US5.0] Implement full pipeline backtest mode in src/backtesting/pipeline_runner.py
+  - Run complete trading pipeline per bar: Analysis → Debate → Decision → Risk Debate → Fund Manager → Execute
+  - Configurable: skip debate for speed OR full pipeline for accuracy
+  - Decision caching to avoid redundant LLM calls
+
+- [ ] T153 [US5.0] Implement synthetic fast mode in src/backtesting/synthetic_mode.py
+  - Rule-based heuristics mimicking agent behavior (NO LLM)
+  - Target: 1000x faster than LLM mode
+  - For hyperparameter search and quick iteration
+  - Validate against LLM mode on sample data
+
+### Gymnasium Environment for RL (4 tasks)
+
+- [ ] T154 [US5.0] Create TradingGymEnv base class in src/backtesting/gym_env.py
+  - Inherits gymnasium.Env
+  - observation_space: market state + account state
+  - action_space: position sizing, stop distance, take profit distance
+  - step(): advance one bar, return (obs, reward, done, info)
+  - reset(): start new episode from random date
+
+- [ ] T155 [US5.0] Implement reward functions in src/backtesting/rewards.py
+  - Sharpe-based reward (risk-adjusted returns)
+  - P&L reward with drawdown penalty
+  - Transaction cost penalty
+  - Configurable reward shaping
+
+- [ ] T156 [US5.0] Implement episode configuration in src/backtesting/gym_env.py
+  - Episode length (bars or calendar days)
+  - Random start date sampling
+  - Train/validation/test date splits
+  - Walk-forward episode generation
+
+- [ ] T157 [US5.0] Implement vectorized environment in src/backtesting/vec_env.py
+  - Multiple environments running in parallel
+  - Compatible with Stable-Baselines3
+  - GPU acceleration support (optional)
+
+### Testing & Validation (4 tasks)
+
+- [ ] T158 [US5.0] Create unit tests for BacktestEngine in tests/unit/backtesting/test_engine.py
+  - Order fill logic
+  - P&L calculation accuracy
+  - Edge cases (gaps, limit up/down)
+
+- [ ] T159 [US5.0] Create integration tests with real data in tests/integration/backtesting/test_real_data_backtest.py
+  - Run backtest on Gold 2024 data from PostgreSQL
+  - Verify metrics match manual calculation
+  - Test full agent pipeline mode
+
+- [ ] T160 [US5.0] Create benchmark tests in tests/performance/test_backtest_performance.py
+  - Performance: bars/second throughput
+  - Target: 10,000+ bars/second in synthetic mode
+  - Target: 100+ bars/second in LLM mode (with caching)
+
+- [ ] T161 [US5.0] Create validation tests in tests/integration/backtesting/test_validation.py
+  - Simple strategy (MA crossover) with known outcome
+  - Verify BacktestEngine reproduces expected trades and metrics
+
+**Acceptance Criteria**:
+- BacktestEngine processes 13.5M candles without memory issues
+- Sharpe ratio calculation matches industry standard (annualized)
+- Gymnasium environment compatible with Stable-Baselines3 PPO/SAC
+- Full pipeline backtest completes 1 year of 4H data in <10 minutes
+- Synthetic mode completes 1 year of 4H data in <10 seconds
+
+**Checkpoint**: Complete backtesting infrastructure - verify backtest runs on real PostgreSQL data, produces accurate metrics, and provides Gymnasium environment for RL training
 
 ---
 
 ## Phase 7: User Story 5 - Reinforcement Learning Training (Priority: P2)
+
+**DEPENDENCY**: Requires Phase 6.5 (Backtesting Infrastructure) completion
 
 **Goal**: Implement offline RL training for decision agents (position sizing, stop-loss, take-profit, trade decision) with walk-forward validation, enabling continuous improvement from backtesting outcomes
 

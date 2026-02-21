@@ -19,7 +19,7 @@ from typing import Dict, List
 from pydantic import BaseModel, Field
 
 # IMPORTANT: Set OLLAMA_HOST before importing ollama library
-os.environ['OLLAMA_HOST'] = os.getenv("OLLAMA_BASE_URL", "http://75.154.254.186:11434")
+os.environ['OLLAMA_HOST'] = os.getenv("OLLAMA_BASE_URL", "http://75.154.254.174:11434")
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
@@ -112,7 +112,7 @@ def test_model_with_instructor(model_name: str, scenarios: List[TestScenario]) -
         # Use the new instructor client with /v1 endpoint
         client = InstructorOllamaClient(
             model=model_name,
-            base_url=os.getenv("OLLAMA_BASE_URL", "http://75.154.254.186:11434"),
+            base_url=os.getenv("OLLAMA_BASE_URL", "http://75.154.254.174:11434"),
             default_max_retries=3,
             default_timeout=120.0,
         )

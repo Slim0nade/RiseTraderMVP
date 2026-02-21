@@ -85,7 +85,7 @@ Complete checklist for deploying RiseTrader to production. Follow this step-by-s
 
 - [ ] **MT4 connection configured**
   ```bash
-  MT4_HOST=75.154.254.186
+  MT4_HOST=75.154.254.174
   MT4_COMMAND_PORT=5555
   MT4_STREAM_PORT=5556
   ```

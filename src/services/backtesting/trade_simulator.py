@@ -226,6 +226,7 @@ class TradeSimulator:
         symbol: str,
         exit_price: Decimal,
         timestamp: datetime,
+        position_id: Optional[UUID] = None,
     ) -> tuple[TradeResult, Decimal, Decimal]:
         """
         Execute a position exit (close existing position).
@@ -235,6 +236,7 @@ class TradeSimulator:
             symbol: Trading symbol
             exit_price: Market price (before slippage)
             timestamp: Exit timestamp
+            position_id: Optional specific position to close (FIFO if not provided)
 
         Returns:
             Tuple of (TradeResult, gross_pnl, net_pnl)
@@ -245,7 +247,7 @@ class TradeSimulator:
         if not portfolio.has_position(symbol):
             raise ValueError(f"No open position for {symbol}")
 
-        position = portfolio.get_position(symbol)
+        position = portfolio.get_position(symbol, position_id)
 
         # Determine exit action (opposite of entry)
         exit_action = "close_long" if position.action == "buy" else "close_short"
@@ -260,7 +262,7 @@ class TradeSimulator:
 
         # Close position in portfolio
         closed_position, gross_pnl, capital_return = portfolio.close_position(
-            symbol, execution_price
+            symbol, execution_price, position_id
         )
 
         # Deduct fees from cash

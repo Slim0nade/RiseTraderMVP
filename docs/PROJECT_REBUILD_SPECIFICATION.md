@@ -445,7 +445,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@postgres:5432/risetrader
       REDIS_URL: redis://redis:6379
-      MT4_HOST: ${MT4_HOST:-75.154.254.186}
+      MT4_HOST: ${MT4_HOST:-75.154.254.174}
       MT4_PORT: ${MT4_PORT:-5555}
     volumes:
       - ./src:/app/src
@@ -687,7 +687,7 @@ def run_migrations_online():
 ### MT4 Server Configuration
 
 ```
-MT4 Server IP: 75.154.254.186
+MT4 Server IP: 75.154.254.174
 ZMQ Ports: 5555 (commands), 5556 (data stream)
 Protocol: JSON over ZMQ REQ/REP and PUB/SUB
 ```
@@ -697,7 +697,7 @@ Protocol: JSON over ZMQ REQ/REP and PUB/SUB
 ```yaml
 # config/environments/production.yaml
 mt4:
-  host: "75.154.254.186"
+  host: "75.154.254.174"
   command_port: 5555
   stream_port: 5556
   timeout_ms: 5000
@@ -719,7 +719,7 @@ services:
   api:
     network_mode: "host"  # Or use bridge with explicit ports
     environment:
-      MT4_HOST: "75.154.254.186"
+      MT4_HOST: "75.154.254.174"
       MT4_COMMAND_PORT: "5555"
       MT4_STREAM_PORT: "5556"
 ```
@@ -1207,7 +1207,7 @@ class MT4Connection:
 ```
 
 **MT4 Configuration:**
-- Host: 75.154.254.186
+- Host: 75.154.254.174
 - Command Port: 5555
 - Stream Port: 5556
 - Timeout: 5000ms
@@ -1273,7 +1273,7 @@ DATABASE_URL=postgresql+asyncpg://postgres:password@postgres:5432/risetrader
 REDIS_URL=redis://redis:6379
 
 # MT4
-MT4_HOST=75.154.254.186
+MT4_HOST=75.154.254.174
 MT4_COMMAND_PORT=5555
 MT4_STREAM_PORT=5556
 
@@ -1705,7 +1705,7 @@ jobs:
 ## Notes for Claude/Codex
 
 1. **Database**: Use the existing RiseTrader PostgreSQL backup for initial data
-2. **MT4 Server**: External server at 75.154.254.186:5555/5556
+2. **MT4 Server**: External server at 75.154.254.174:5555/5556
 3. **Code Quality**: Follow PEP 8, use type hints, write docstrings
 4. **Testing**: Write tests for all critical components
 5. **Documentation**: Document all major functions and classes

@@ -28,7 +28,7 @@ ollama>=0.1.7
 
 Complete `run()` method override that:
 - Imports `from ollama import chat`
-- Gets Ollama host from environment (`OLLAMA_BASE_URL` or fallback to `75.154.254.186:11434`)
+- Gets Ollama host from environment (`OLLAMA_BASE_URL` or fallback to `75.154.254.174:11434`)
 - Sets `OLLAMA_HOST` environment variable for ollama library
 - Calls Ollama directly with **structured output**:
   ```python
@@ -155,7 +155,7 @@ The LLM WAS responding (proven by 25-91 second execution times), but AutoGen was
 
 ## Previous Session Fixes (Already Applied)
 
-1. ✅ **Ollama Networking**: Changed from `192.168.0.123:11434` to `75.154.254.186:11434` (public IP)
+1. ✅ **Ollama Networking**: Changed from `192.168.0.123:11434` to `75.154.254.174:11434` (public IP)
 2. ✅ **Database Logging**: Fixed `execution_time_ms` → `decision_latency_ms` parameter mismatch
 3. ✅ **Model Selection**: Switched to `qwen3:14b` for better JSON support
 
@@ -168,7 +168,7 @@ The LLM WAS responding (proven by 25-91 second execution times), but AutoGen was
 **Environment Variable Setup**:
 ```python
 ollama_host = self.config.config_overrides.get(
-    "ollama_host", os.getenv("OLLAMA_BASE_URL", "http://75.154.254.186:11434")
+    "ollama_host", os.getenv("OLLAMA_BASE_URL", "http://75.154.254.174:11434")
 )
 os.environ['OLLAMA_HOST'] = ollama_host
 ```

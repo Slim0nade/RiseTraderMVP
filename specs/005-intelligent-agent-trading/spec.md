@@ -2,10 +2,24 @@
 
 **Feature Branch**: `005-intelligent-agent-trading`
 **Created**: 2025-12-01
-**Status**: Draft
+**Last Updated**: 2025-12-05 (Added User Stories 4B & 4C, Bug Fixes)
+**Status**: Updated
 **Input**: User description: "RiseTraderMVP: Intelligent Multi-Agent Trading System - Build an autonomous AI trading system where ALL decisions—including position sizing, stop-loss placement, and take-profit targets—are made by intelligent agents that learn and adapt from data. No hardcoded formulas. Every parameter is either learned through reinforcement learning or dynamically reasoned by agents with full context."
 
 ## Clarifications
+
+### Session 2025-12-05 - Enhancement & Bug Fixes
+
+**Enhancement Requests** (Added User Stories 4B and 4C - P1 Critical Safety):
+- Added Risk Tolerance Debate (User Story 4B): Three-way debate (Risky/Neutral/Safe) evaluates position sizing AFTER initial decision but BEFORE execution, providing essential risk checks and balances separate from directional (bull/bear) debate.
+- Added Fund Manager Approval Gate (User Story 4C): Final approval agent with APPROVE/MODIFY/REJECT powers enforcing hard portfolio limits (max 5% risk, max 3 correlated positions, event risk veto) before execution.
+- Updated trading pipeline flow: Analysis Team → Bull/Bear Debate → TradeDecisionAgent → Decision Agents → Risk Debate (3-way) → Fund Manager → Execution
+- Phase 6 priority elevated from P2 to P1 (Critical Safety) because it now includes essential risk controls, not just debate enhancements.
+- Phase 9 (Execution) now explicitly depends on Phase 6 completion.
+
+**Bug Fixes Required** (P0 - Blockers):
+- Add `TRADE_DECISION = "trade_decision"` to AgentType enum in `src/agents/base/agent_config.py` (missing enum value)
+- Export `create_quick_think_client` and `create_deep_think_client` functions in `src/agents/providers/__init__.py` for agent initialization
 
 ### Session 2025-12-01
 
@@ -81,11 +95,11 @@ As a trader, I want the system to set take-profit targets based on probability d
 
 ---
 
-### User Story 4 - Multi-Perspective Analysis Through Agent Debate (Priority: P2)
+### User Story 4 - Multi-Perspective Analysis Through Agent Debate (Priority: P1)
 
 As a trader, I want to receive trade recommendations that have been stress-tested through adversarial debate between bull and bear perspectives—consuming analysis from technical, fundamental, and sentiment agents—so that I avoid confirmation bias and understand both the case for and against each trade.
 
-**Why this priority**: Single-perspective analysis leads to confirmation bias. Having specialized agents build the strongest bull case and the strongest bear case (including rebuttals) produces more robust trade decisions. This is critical for risk management but can operate independently of the execution system.
+**Why this priority**: Single-perspective analysis leads to confirmation bias. Having specialized agents build the strongest bull case and the strongest bear case (including rebuttals) produces more robust trade decisions. This is NOW P1 (Critical Safety) because it includes essential risk controls (risk tolerance debate and fund manager approval gate) that must be in place before execution.
 
 **Independent Test**: Can be fully tested by verifying that every trade recommendation includes both a bull thesis and a bear counterargument, with each perspective supported by specific evidence from technical, fundamental, and sentiment analysis.
 
@@ -98,6 +112,77 @@ As a trader, I want to receive trade recommendations that have been stress-teste
 3. **Given** fundamental analysis shows deteriorating macro conditions while technical analysis shows bullish patterns, **When** the debate process runs, **Then** both perspectives must be represented with weighted importance, and the trade decision agent must explicitly address the conflict in its reasoning.
 
 4. **Given** sentiment analysis shows extreme crowded positioning in one direction, **When** the bear researcher builds the contrarian case, **Then** this positioning data must be prominently featured in the bear argument with specific metrics (e.g., "90% of retail traders long, smart money reducing positions").
+
+---
+
+### User Story 4B - Risk Tolerance Debate (Priority: P1 - Critical Safety)
+
+As a trader, I want every trade proposal to be evaluated by agents with different risk tolerances (risky, neutral, safe) who debate the appropriate position size and risk level—AFTER the initial sizing decision but BEFORE execution—so that I have a balanced risk assessment that prevents both excessive conservatism and dangerous over-leveraging.
+
+**Why this priority**: The initial position sizing agent makes a single-perspective decision. A three-way debate between risk-seeking, risk-neutral, and risk-averse agents provides essential checks and balances, ensuring the final position size reflects a consensus view of appropriate risk—not just one algorithm's output. This is a critical safety control that operates independently from directional (bull/bear) debate.
+
+**Independent Test**: Can be fully tested by executing trades through the risk debate layer and verifying that: (a) all three risk perspectives are represented with specific reasoning, (b) the final position size/risk level represents a consensus or clearly documents why one perspective was favored, (c) extreme risk proposals trigger appropriate warnings or modifications.
+
+**Acceptance Scenarios**:
+
+1. **Given** the PositionSizingAgent recommends 2.5% account risk for a trade, **When** the risk debate team evaluates this proposal, **Then** the RiskyDebator should argue for potentially higher sizing if conditions warrant (citing high conviction, favorable regime), NeutralDebator should validate the baseline calculation, and SafeDebator should identify any factors warranting reduction (correlation risk, drawdown state, event risk), with the final RiskDebateOutcome documenting all perspectives and the consensus decision.
+
+2. **Given** a trade proposal with 1.5% risk during a 15% account drawdown, **When** the risk debate runs, **Then** the SafeDebator must explicitly flag the drawdown state and argue for conservative sizing, the debate outcome must document this concern, and the final approved risk level should be reduced from the initial proposal if the concern is valid.
+
+3. **Given** a trade with high correlation to existing positions (>0.7 correlation), **When** the risk debate evaluates the proposal, **Then** at least one debator (typically SafeDebator) must identify the correlation exposure and argue for size reduction, with the final outcome documenting the correlation penalty applied or rationale if not applied.
+
+4. **Given** conflicting risk perspectives where RiskyDebator wants 3% risk but SafeDebator wants 0.5% risk, **When** the debate concludes, **Then** the system must either: (a) adopt the NeutralDebator's middle-ground position, or (b) default to the more conservative view with clear documentation of why consensus could not be reached, preventing execution of extremely aggressive proposals without consensus.
+
+---
+
+### User Story 4C - Fund Manager Approval Gate (Priority: P1 - Critical Safety)
+
+As a trader, I want a final "Fund Manager" agent to review and approve/modify/reject every trade proposal—with full context of the trade intent, all decision parameters, and debate outcomes—before execution, so that I have a last line of defense against trades that violate portfolio-level risk limits, correlation constraints, or event risk policies.
+
+**Why this priority**: This is the ultimate safety gate. Even if all previous agents agree on a trade, the Fund Manager enforces hard portfolio-level limits that prevent catastrophic risk scenarios. This agent has veto power and can modify trades to ensure they fit within the overall portfolio risk framework. This is a mandatory control before any execution.
+
+**Independent Test**: Can be fully tested by submitting trade proposals that: (a) comply with all limits (should be approved), (b) exceed single limits (should be modified or rejected with specific reason), (c) violate multiple limits (should be rejected), and verifying that the Fund Manager correctly identifies violations and takes appropriate action.
+
+**Acceptance Scenarios**:
+
+1. **Given** a trade proposal with 4% account risk when the maximum allowed is 5%, **When** the Fund Manager reviews the proposal, **Then** the trade should be approved with documentation noting it's within limits but approaching the maximum threshold.
+
+2. **Given** a trade proposal with 6% account risk when the maximum allowed is 5%, **When** the Fund Manager reviews the proposal, **Then** the trade must be either: (a) MODIFIED with position size reduced to achieve 5% max risk, or (b) REJECTED if modification is not feasible, with clear documentation of the limit violation and action taken.
+
+3. **Given** a new trade proposal when the portfolio already has 3 highly correlated positions (correlation >0.7) and the limit is 3 correlated positions, **When** the Fund Manager evaluates the proposal, **Then** the trade must be REJECTED with clear documentation citing the correlation limit violation and listing the existing correlated positions.
+
+4. **Given** a trade proposal for a position to be held over a major economic event (e.g., FOMC meeting, NFP release), **When** the Fund Manager reviews the proposal, **Then** the agent should either: (a) approve with reduced size if the event risk is acceptable, or (b) exercise event risk veto and reject the trade with documentation explaining the event risk concern and veto decision.
+
+5. **Given** a trade proposal that passes all individual checks but would push total portfolio risk above acceptable levels, **When** the Fund Manager performs portfolio-level risk aggregation, **Then** the trade must be MODIFIED (reduced sizing) or REJECTED to keep total portfolio risk within bounds, with documentation showing the portfolio risk calculation and limit enforcement.
+
+---
+
+### User Story 5.0 - Backtesting Infrastructure (Priority: P1 - BLOCKS RL & A/B Testing)
+
+As a trader and system operator, I want to simulate agent trading decisions against historical market data to validate strategy performance, calculate realistic metrics, and provide a training environment for reinforcement learning—so that I can confidently deploy strategies that have been thoroughly tested on real market conditions before risking capital.
+
+**Why this priority**: CRITICAL BLOCKER for Phase 7 (RL Training) and Phase 8 (A/B Testing). RL agents require a backtesting simulation environment to calculate rewards and learn optimal strategies. A/B testing requires historical performance comparison to determine which model configurations perform better. Without backtesting infrastructure, neither RL training nor A/B testing can proceed.
+
+**Dependency Chain**:
+- Phase 7 (RL Training) requires backtesting to provide Gymnasium environment and reward calculation
+- Phase 8 (A/B Testing) requires backtesting to compare model performance on historical data
+- Uses existing 13.5M candle PostgreSQL database (market_data table) - NO MOCK DATA
+
+**Independent Test**: Can be fully tested by running backtests on known historical periods (e.g., Gold 2024, CrudeOIL 2023-2024), verifying order fills match expected behavior, P&L calculations are accurate, and performance metrics (Sharpe, drawdown, win rate) match industry-standard calculation methods.
+
+**Acceptance Scenarios**:
+
+1. **Given** a backtest configuration for CrudeOIL with 1 year of 4H bar data from the PostgreSQL market_data table, **When** the BacktestEngine executes with a simple moving average crossover strategy, **Then** the backtest should complete processing all bars, generate an equity curve, and produce performance metrics (Sharpe ratio, max drawdown, win rate) that match manual verification, with all trades logged to a trade history.
+
+2. **Given** a backtest running the full agent trading pipeline (Analysis → Debate → Decision → Risk Debate → Fund Manager → Execute), **When** processing 6 months of 4H data, **Then** the backtest should complete in under 10 minutes, with all agent decisions logged, realistic order fills simulated (including slippage and spreads), and final performance metrics calculated correctly.
+
+3. **Given** a position opened at $75.00 with a stop-loss at $74.00 and take-profit at $77.00, **When** historical price data shows the bar reaching $77.50 high before closing at $76.80, **Then** the BacktestEngine should correctly simulate the take-profit fill at $77.00, close the position, calculate realized P&L including commissions, and update the equity curve.
+
+4. **Given** a TradingGymEnv Gymnasium environment configured for RL training on CrudeOIL data, **When** an RL agent calls env.step() with a position sizing action, **Then** the environment should advance one time step, calculate reward based on P&L and risk-adjusted metrics, return the next observation state, and signal episode termination when the date range is exhausted.
+
+5. **Given** a backtest running in "synthetic fast mode" without LLM calls using rule-based heuristics, **When** processing 1 year of 4H data (2,190 bars), **Then** the backtest should complete in under 10 seconds (>200 bars/second throughput) and produce results that qualitatively match LLM-based agent behavior for validation purposes.
+
+6. **Given** a multi-symbol portfolio backtest running simultaneously on Gold and CrudeOIL, **When** both symbols have open positions with correlation above 0.7, **Then** the BacktestEngine should enforce portfolio-level correlation limits, track aggregate portfolio metrics (total equity, portfolio Sharpe, combined drawdown), and generate consolidated reporting.
 
 ---
 
@@ -188,6 +273,10 @@ across strategies based on their recent performance and current market regime...
 #### Debate Layer
 
 - **FR-008**: System MUST generate adversarial perspectives through bull and bear researcher agents that consume all analyst reports, build the strongest case for and against each trade, and produce structured arguments with thesis, supporting evidence, scenarios (upside/downside), and explicit rebuttals to the opposing view—ensuring decisions are stress-tested rather than confirmation-biased.
+
+- **FR-008A**: System MUST evaluate risk tolerance through a three-way debate (RiskyDebator, NeutralDebator, SafeDebator) that occurs AFTER initial position sizing but BEFORE execution. Each debator must provide perspective on the proposed position size and risk level, with RiskyDebator arguing for potentially higher sizing given favorable conditions, NeutralDebator validating baseline calculations, and SafeDebator identifying factors warranting reduction (correlation, drawdown, event risk). The debate must produce a RiskDebateOutcome with documented perspectives, consensus decision or rationale for divergence, and adjusted position size/risk level if modifications are warranted.
+
+- **FR-008B**: System MUST enforce final approval through a Fund Manager agent that reviews complete trade proposals (TradeIntent + all decision parameters + debate outcomes) and has powers to APPROVE, MODIFY (reduce size/tighten stops), or REJECT trades. The Fund Manager MUST enforce hard portfolio-level limits including: maximum 5% account risk per trade, maximum 3 correlated positions (correlation >0.7), event risk veto for positions held over major economic events, and portfolio-level risk aggregation preventing total portfolio risk from exceeding bounds. All decisions must include clear documentation of limit checks performed and rationale for approval/modification/rejection.
 
 #### Execution & Monitoring Layer
 

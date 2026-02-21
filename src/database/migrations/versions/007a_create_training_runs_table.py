@@ -1,7 +1,7 @@
 """Create training_runs table.
 
-Revision ID: 007
-Revises: 006
+Revision ID: 007a
+Revises: 007
 Create Date: 2025-11-29
 """
 
@@ -10,8 +10,8 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB, ENUM
 
 
-revision = '007'
-down_revision = '006'
+revision = '007a'
+down_revision = '007'
 branch_labels = None
 depends_on = None
 

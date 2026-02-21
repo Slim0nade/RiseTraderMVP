@@ -1,7 +1,7 @@
 """Create forecasts table.
 
-Revision ID: 006
-Revises: 005
+Revision ID: 006a
+Revises: 006
 Create Date: 2025-11-29
 """
 
@@ -10,8 +10,8 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
 
 
-revision = '006'
-down_revision = '005'
+revision = '006a'
+down_revision = '006'
 branch_labels = None
 depends_on = None
 

@@ -400,7 +400,7 @@ components:
           enum: [ACTIVE, INACTIVE, ERROR, RECONNECTING]
         mt4_server_host:
           type: string
-          example: "75.154.254.186"
+          example: "75.154.254.174"
         encryption_enabled:
           type: boolean
         last_heartbeat:
@@ -428,8 +428,8 @@ components:
           example: "CrudeOIL"
         mt4_server_host:
           type: string
-          example: "75.154.254.186"
-          default: "75.154.254.186"
+          example: "75.154.254.174"
+          default: "75.154.254.174"
         encryption_enabled:
           type: boolean
           default: true

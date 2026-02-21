@@ -35,7 +35,36 @@ class PositionResponse(BaseModel):
     lots: float
     current_price: float
     breakeven_triggered: bool
+    trailing_activated: bool
+    disaster_stop_set: bool
+    profit_highwater: float
     last_trail_price: Optional[float]
+
+
+class ProtectionStatsResponse(BaseModel):
+    """Response model for protection statistics."""
+    total_positions: int
+    disaster_stops_set: int
+    trailing_activated: int
+    breakeven_triggered: int
+
+
+class AlertResponse(BaseModel):
+    """Response model for an alert."""
+    type: str
+    ticket: Optional[int]
+    message: str
+    severity: str
+    timestamp: str
+
+
+class FeatureFlagsResponse(BaseModel):
+    """Response model for feature flags."""
+    enable_disaster_stops: bool
+    enable_profit_erosion: bool
+    enable_early_breakeven: bool
+    enable_institutional_pricing: bool
+    enable_alerts: bool
 
 
 class StatusResponse(BaseModel):
@@ -94,10 +123,10 @@ async def get_status():
 async def get_positions():
     """Get all monitored positions."""
     manager = get_stealth_stop_manager()
-    
+
     if not manager:
         raise HTTPException(status_code=503, detail="Stealth Stop Manager is not running")
-    
+
     positions = []
     for pos in manager._monitored_positions.values():
         positions.append(PositionResponse(
@@ -110,9 +139,12 @@ async def get_positions():
             lots=pos.lots,
             current_price=pos.current_price,
             breakeven_triggered=pos.breakeven_triggered,
+            trailing_activated=pos.trailing_activated,
+            disaster_stop_set=pos.disaster_stop_set,
+            profit_highwater=pos.profit_highwater,
             last_trail_price=pos.last_trail_price
         ))
-    
+
     return positions
 
 
@@ -190,3 +222,151 @@ async def update_config(request: UpdateConfigRequest):
             pip_value=manager.config.pip_value
         )
     }
+
+
+# ============================================================================
+# Protection Stats Endpoints
+# ============================================================================
+
+@router.get("/stats", response_model=ProtectionStatsResponse)
+async def get_protection_stats():
+    """Get protection statistics."""
+    manager = get_stealth_stop_manager()
+
+    if not manager:
+        raise HTTPException(status_code=503, detail="Stealth Stop Manager is not running")
+
+    stats = manager.get_protection_stats()
+
+    return ProtectionStatsResponse(
+        total_positions=stats["total_positions"],
+        disaster_stops_set=stats["disaster_stops_set"],
+        trailing_activated=stats["trailing_activated"],
+        breakeven_triggered=stats["breakeven_triggered"]
+    )
+
+
+# ============================================================================
+# Alert Endpoints
+# ============================================================================
+
+@router.get("/alerts", response_model=List[AlertResponse])
+async def get_alerts(
+    ticket: Optional[int] = None,
+    severity: Optional[str] = None,
+    minutes: Optional[int] = None
+):
+    """
+    Get alerts from the stealth stop manager.
+
+    Optional filters:
+    - ticket: Filter by position ticket
+    - severity: Filter by minimum severity (debug, info, warning, error, critical)
+    - minutes: Only get alerts from last N minutes
+    """
+    manager = get_stealth_stop_manager()
+
+    if not manager:
+        raise HTTPException(status_code=503, detail="Stealth Stop Manager is not running")
+
+    # Get alerts based on filters
+    if ticket is not None:
+        alerts = manager.get_alerts_by_ticket(ticket)
+    elif severity is not None:
+        alerts = manager.get_alerts_by_severity(severity)
+    elif minutes is not None:
+        alerts = manager.get_recent_alerts(minutes)
+    else:
+        alerts = manager.get_alert_history()
+
+    return [
+        AlertResponse(
+            type=a["type"],
+            ticket=a.get("ticket"),
+            message=a.get("message", ""),
+            severity=a["severity"],
+            timestamp=a["timestamp"].isoformat() if hasattr(a.get("timestamp"), "isoformat") else str(a.get("timestamp", ""))
+        )
+        for a in alerts
+    ]
+
+
+# ============================================================================
+# Feature Flags Endpoints
+# ============================================================================
+
+@router.get("/features", response_model=FeatureFlagsResponse)
+async def get_features():
+    """Get current feature flags."""
+    manager = get_stealth_stop_manager()
+
+    if not manager:
+        raise HTTPException(status_code=503, detail="Stealth Stop Manager is not running")
+
+    return FeatureFlagsResponse(
+        enable_disaster_stops=manager.features_enabled.get("enable_disaster_stops", True),
+        enable_profit_erosion=manager.features_enabled.get("enable_profit_erosion", True),
+        enable_early_breakeven=manager.features_enabled.get("enable_early_breakeven", True),
+        enable_institutional_pricing=manager.features_enabled.get("enable_institutional_pricing", True),
+        enable_alerts=manager.features_enabled.get("enable_alerts", True)
+    )
+
+
+class UpdateFeaturesRequest(BaseModel):
+    """Request model for updating feature flags."""
+    enable_disaster_stops: Optional[bool] = None
+    enable_profit_erosion: Optional[bool] = None
+    enable_early_breakeven: Optional[bool] = None
+    enable_institutional_pricing: Optional[bool] = None
+    enable_alerts: Optional[bool] = None
+
+
+@router.patch("/features")
+async def update_features(request: UpdateFeaturesRequest):
+    """Update feature flags dynamically."""
+    manager = get_stealth_stop_manager()
+
+    if not manager:
+        raise HTTPException(status_code=503, detail="Stealth Stop Manager is not running")
+
+    if request.enable_disaster_stops is not None:
+        manager.features_enabled["enable_disaster_stops"] = request.enable_disaster_stops
+    if request.enable_profit_erosion is not None:
+        manager.features_enabled["enable_profit_erosion"] = request.enable_profit_erosion
+    if request.enable_early_breakeven is not None:
+        manager.features_enabled["enable_early_breakeven"] = request.enable_early_breakeven
+    if request.enable_institutional_pricing is not None:
+        manager.features_enabled["enable_institutional_pricing"] = request.enable_institutional_pricing
+    if request.enable_alerts is not None:
+        manager.features_enabled["enable_alerts"] = request.enable_alerts
+
+    return {
+        "success": True,
+        "features": FeatureFlagsResponse(
+            enable_disaster_stops=manager.features_enabled.get("enable_disaster_stops", True),
+            enable_profit_erosion=manager.features_enabled.get("enable_profit_erosion", True),
+            enable_early_breakeven=manager.features_enabled.get("enable_early_breakeven", True),
+            enable_institutional_pricing=manager.features_enabled.get("enable_institutional_pricing", True),
+            enable_alerts=manager.features_enabled.get("enable_alerts", True)
+        )
+    }
+
+
+# ============================================================================
+# Position Summary Endpoint
+# ============================================================================
+
+@router.get("/positions/{ticket}/summary")
+async def get_position_summary(ticket: int):
+    """Get detailed summary for a specific position."""
+    manager = get_stealth_stop_manager()
+
+    if not manager:
+        raise HTTPException(status_code=503, detail="Stealth Stop Manager is not running")
+
+    summary = manager.get_position_summary(ticket)
+
+    if summary is None:
+        raise HTTPException(status_code=404, detail=f"Position {ticket} not found")
+
+    return summary

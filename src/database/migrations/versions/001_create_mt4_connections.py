@@ -41,7 +41,7 @@ def upgrade() -> None:
             'mt4_server_host',
             sa.String(length=100),
             nullable=False,
-            server_default='75.154.254.186'
+            server_default='75.154.254.174'
         ),
         sa.Column('encryption_enabled', sa.Boolean(), nullable=False, server_default='true'),
         sa.Column('client_public_key', sa.String(length=64), nullable=True),

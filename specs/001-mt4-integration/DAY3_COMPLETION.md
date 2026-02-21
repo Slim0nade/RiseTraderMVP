@@ -10,7 +10,7 @@
 
 **User Story 1 (Send Market Orders to MT4) is now fully implemented and ready for integration testing.**
 
-All core components have been built, tested individually, and successfully validated against the real MT4 EA at `75.154.254.186:5555`.
+All core components have been built, tested individually, and successfully validated against the real MT4 EA at `75.154.254.174:5555`.
 
 ---
 
@@ -207,7 +207,7 @@ python3 scripts/test_mt4_integration_service.py
 ```
 
 **Components Verified**:
-1. ✅ ZMQ connection to MT4 EA (tcp://75.154.254.186:5555)
+1. ✅ ZMQ connection to MT4 EA (tcp://75.154.254.174:5555)
 2. ✅ Symbol loading (168 symbols including CrudeOIL)
 3. ✅ Symbol validation (CrudeOIL=True, INVALID_SYMBOL=False)
 4. ✅ Volume validation (0.001-100.0 lots)
@@ -301,8 +301,8 @@ python3 scripts/test_mt4_integration_service.py
         ┌────────▼──────────────────────────────────────────┐
         │              MT4 Expert Advisor                    │
         │         (RiseTraderMT4Server.mq4)                 │
-        │      tcp://75.154.254.186:5555 (REP)              │
-        │      tcp://75.154.254.186:5556 (PUB)              │
+        │      tcp://75.154.254.174:5555 (REP)              │
+        │      tcp://75.154.254.174:5556 (PUB)              │
         └───────────────────────────────────────────────────┘
 ```
 
@@ -398,7 +398,7 @@ MT4 EA PUB Socket
        ea_id, magic_number, mt4_server_host,
        rep_port, pub_port, status, encryption_enabled
    ) VALUES (
-       'ea_test_001', 100001, '75.154.254.186',
+       'ea_test_001', 100001, '75.154.254.174',
        5555, 5556, 'ACTIVE', false
    );
    ```
@@ -514,7 +514,7 @@ I've successfully implemented the complete **MT4IntegrationService** which orche
    - Complete error handling
 
 2. **Integration Test** ran successfully:
-   - ✅ Connected to MT4 EA at 75.154.254.186:5555
+   - ✅ Connected to MT4 EA at 75.154.254.174:5555
    - ✅ Loaded 168 symbols (including CrudeOIL)
    - ✅ Validated symbol/volume/direction logic
    - ✅ Queried account info ($12,867.15 balance)

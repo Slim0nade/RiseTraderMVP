@@ -151,7 +151,7 @@ This will:
 
 **CRITICAL - Must implement before production:**
 
-1. **MT4 Encryption** - 75.154.254.186 currently exposed
+1. **MT4 Encryption** - 75.154.254.174 currently exposed
    - Implement ZMQ CurveZMQ encryption OR VPN tunnel
 
 2. **API Authentication** - No auth currently

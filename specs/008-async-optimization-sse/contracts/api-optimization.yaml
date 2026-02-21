@@ -1,0 +1,432 @@
+# OpenAPI 3.0 Contract: Optimization Endpoints
+# Feature: 008-async-optimization-sse
+
+openapi: 3.0.3
+info:
+  title: RiseTrader Async Optimization API
+  version: 1.0.0
+  description: Async job queue for strategy optimization with SSE notifications
+
+paths:
+  /api/optimizer/jobs:
+    post:
+      operationId: submitOptimizationJob
+      summary: Submit async optimization job
+      description: |
+        Starts a new optimization job asynchronously.
+        Returns immediately with job_id for tracking.
+      tags: [Optimization]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OptimizationRequest'
+      responses:
+        '202':
+          description: Job accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobSubmittedResponse'
+        '400':
+          description: Invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Grid too large (>10000 combinations)
+
+    get:
+      operationId: listOptimizationJobs
+      summary: List optimization jobs
+      tags: [Optimization]
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, running, completed, failed, cancelled]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: List of jobs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/JobSummary'
+
+  /api/optimizer/jobs/{job_id}:
+    get:
+      operationId: getOptimizationJob
+      summary: Get job status and details
+      tags: [Optimization]
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Job details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobDetails'
+        '404':
+          description: Job not found
+
+    delete:
+      operationId: cancelOptimizationJob
+      summary: Cancel a running job
+      tags: [Optimization]
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Job cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobCancelledResponse'
+        '404':
+          description: Job not found
+        '409':
+          description: Job already completed/failed
+
+  /api/optimizer/jobs/{job_id}/results:
+    get:
+      operationId: getOptimizationResults
+      summary: Get full optimization results
+      description: Only available for completed jobs
+      tags: [Optimization]
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Full results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OptimizationResults'
+        '404':
+          description: Job not found
+        '409':
+          description: Job not yet completed
+
+  /api/optimizer/history:
+    get:
+      operationId: listOptimizationHistory
+      summary: List past optimization runs from database
+      tags: [Optimization]
+      parameters:
+        - name: strategy
+          in: query
+          schema:
+            type: string
+        - name: symbol
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: List of past runs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OptimizationRunSummary'
+
+  /api/optimizer/history/{run_id}:
+    get:
+      operationId: getOptimizationRun
+      summary: Get specific optimization run from database
+      tags: [Optimization]
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Run details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OptimizationRunDetails'
+        '404':
+          description: Run not found
+
+components:
+  schemas:
+    OptimizationRequest:
+      type: object
+      required:
+        - strategy
+        - symbol
+        - timeframe
+        - start_date
+        - end_date
+      properties:
+        strategy:
+          type: string
+          example: crude_oil_v3
+        symbol:
+          type: string
+          example: CrudeOIL
+        timeframe:
+          type: string
+          enum: [M1, M5, M15, H1, H4, D1]
+        start_date:
+          type: string
+          format: date
+          example: "2024-01-01"
+        end_date:
+          type: string
+          format: date
+          example: "2024-12-31"
+        param_grid:
+          type: object
+          additionalProperties:
+            type: array
+          example:
+            fast_period: [5, 10, 15]
+            slow_period: [20, 30, 40]
+        optimization_target:
+          type: string
+          enum: [sharpe_ratio, total_return_pct, profit_factor, risk_adjusted_return]
+          default: sharpe_ratio
+        initial_capital:
+          type: number
+          default: 10000
+
+    JobSubmittedResponse:
+      type: object
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          example: pending
+        total_combinations:
+          type: integer
+        estimated_duration_minutes:
+          type: number
+          nullable: true
+
+    JobSummary:
+      type: object
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        strategy:
+          type: string
+        symbol:
+          type: string
+        status:
+          type: string
+        progress_pct:
+          type: number
+        created_at:
+          type: string
+          format: date-time
+
+    JobDetails:
+      type: object
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        strategy:
+          type: string
+        symbol:
+          type: string
+        timeframe:
+          type: string
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        status:
+          type: string
+        progress_pct:
+          type: number
+        combinations_tested:
+          type: integer
+        total_combinations:
+          type: integer
+        best_params:
+          type: object
+          nullable: true
+        best_metric_value:
+          type: number
+          nullable: true
+        current_params:
+          type: object
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        error_message:
+          type: string
+          nullable: true
+
+    JobCancelledResponse:
+      type: object
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          example: cancelled
+        combinations_tested:
+          type: integer
+
+    OptimizationResults:
+      type: object
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        best_params:
+          type: object
+        best_metric_value:
+          type: number
+        all_results:
+          type: array
+          items:
+            type: object
+            properties:
+              params:
+                type: object
+              sharpe_ratio:
+                type: number
+              total_return_pct:
+                type: number
+              max_drawdown_pct:
+                type: number
+              total_trades:
+                type: integer
+        summary:
+          type: object
+          properties:
+            total_combinations:
+              type: integer
+            duration_seconds:
+              type: number
+            strategy:
+              type: string
+            symbol:
+              type: string
+
+    OptimizationRunSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        strategy:
+          type: string
+        symbol:
+          type: string
+        timeframe:
+          type: string
+        status:
+          type: string
+        total_combinations:
+          type: integer
+        best_metric_value:
+          type: number
+          nullable: true
+        optimization_target:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    OptimizationRunDetails:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        job_id:
+          type: string
+        strategy:
+          type: string
+        symbol:
+          type: string
+        timeframe:
+          type: string
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        param_grid:
+          type: object
+        results:
+          type: object
+          nullable: true
+        status:
+          type: string
+        best_params:
+          type: object
+          nullable: true
+        best_metric_value:
+          type: number
+          nullable: true
+        optimization_target:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        detail:
+          type: string

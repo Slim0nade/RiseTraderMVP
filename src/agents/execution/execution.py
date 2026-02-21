@@ -49,7 +49,7 @@ class ExecutionAgent(BaseAgent):
         )
 
         # MT4 Configuration
-        self.mt4_host = config.get("mt4_host", "75.154.254.186")
+        self.mt4_host = config.get("mt4_host", "75.154.254.174")
         self.mt4_command_port = config.get("mt4_command_port", 5555)
         self.mt4_stream_port = config.get("mt4_stream_port", 5556)
         self.use_encryption = config.get("use_encryption", False)

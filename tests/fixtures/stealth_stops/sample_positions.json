@@ -1,0 +1,145 @@
+{
+  "description": "Sample positions for unit testing stealth stop manager",
+
+  "positions": {
+    "short_crude_oil_profitable": {
+      "ticket": 12345,
+      "symbol": "CrudeOIL",
+      "direction": "short",
+      "entry_price": 60.00,
+      "current_stop": 0.0,
+      "current_tp": 55.00,
+      "lots": 1.0,
+      "current_price": 59.25,
+      "profit": 0.75,
+      "atr": 0.75,
+      "notes": "Basic profitable short position"
+    },
+
+    "long_gold_profitable": {
+      "ticket": 12346,
+      "symbol": "XAUUSD",
+      "direction": "long",
+      "entry_price": 2650.00,
+      "current_stop": 0.0,
+      "current_tp": 2700.00,
+      "lots": 0.5,
+      "current_price": 2665.00,
+      "profit": 15.00,
+      "atr": 12.50,
+      "notes": "Basic profitable long position"
+    },
+
+    "short_crude_no_stop": {
+      "ticket": 12347,
+      "symbol": "CrudeOIL",
+      "direction": "short",
+      "entry_price": 58.00,
+      "current_stop": 0.0,
+      "current_tp": 54.00,
+      "lots": 1.0,
+      "current_price": 58.00,
+      "profit": 0.0,
+      "atr": 0.75,
+      "notes": "Position without initial stop - disaster stop should be set"
+    },
+
+    "short_crude_with_stop": {
+      "ticket": 12348,
+      "symbol": "CrudeOIL",
+      "direction": "short",
+      "entry_price": 59.00,
+      "current_stop": 61.25,
+      "current_tp": 55.00,
+      "lots": 1.0,
+      "current_price": 58.50,
+      "profit": 0.50,
+      "atr": 0.75,
+      "notes": "Position with existing stop - should not override"
+    },
+
+    "long_forex_minimal_profit": {
+      "ticket": 12349,
+      "symbol": "EURUSD",
+      "direction": "long",
+      "entry_price": 1.0850,
+      "current_stop": 0.0,
+      "current_tp": 1.0950,
+      "lots": 0.1,
+      "current_price": 1.0860,
+      "profit": 0.0010,
+      "atr": 0.0025,
+      "notes": "Forex position with small profit - test pip value handling"
+    }
+  },
+
+  "scenarios": {
+    "disaster_stop_short": {
+      "position": "short_crude_no_stop",
+      "atr": 0.75,
+      "multiplier": 3.0,
+      "expected_stop": 60.25,
+      "notes": "58.00 + (3.0 × 0.75) = 60.25 for short"
+    },
+
+    "disaster_stop_long": {
+      "position": "long_gold_profitable",
+      "atr": 12.50,
+      "multiplier": 3.0,
+      "expected_stop": 2612.50,
+      "notes": "2650.00 - (3.0 × 12.50) = 2612.50 for long"
+    },
+
+    "trail_trigger_reached": {
+      "position": "short_crude_oil_profitable",
+      "atr": 0.75,
+      "trail_trigger_atr": 0.5,
+      "required_profit_atr": 0.375,
+      "actual_profit": 0.75,
+      "should_trail": true,
+      "notes": "Profit $0.75 > 0.5 × ATR($0.75) = $0.375"
+    },
+
+    "trail_trigger_not_reached": {
+      "position": "long_forex_minimal_profit",
+      "atr": 0.0025,
+      "trail_trigger_atr": 0.5,
+      "required_profit_atr": 0.00125,
+      "actual_profit": 0.0010,
+      "should_trail": false,
+      "notes": "Profit $0.0010 < 0.5 × ATR($0.0025) = $0.00125"
+    }
+  },
+
+  "erosion_scenarios": {
+    "minor_erosion": {
+      "highwater_profit": 100.00,
+      "current_profit": 90.00,
+      "erosion": 10.00,
+      "atr": 0.75,
+      "erosion_atr_ratio": 0.013,
+      "expected_action": "none",
+      "notes": "Erosion 0.013× ATR < alert threshold (0.3×)"
+    },
+
+    "alert_threshold_erosion": {
+      "highwater_profit": 600.00,
+      "current_profit": 375.00,
+      "erosion": 225.00,
+      "atr": 0.75,
+      "erosion_atr_ratio": 0.30,
+      "expected_action": "log_alert",
+      "notes": "Erosion 0.3× ATR = alert threshold"
+    },
+
+    "protection_threshold_erosion": {
+      "highwater_profit": 600.00,
+      "current_profit": 225.00,
+      "erosion": 375.00,
+      "atr": 0.75,
+      "erosion_atr_ratio": 0.50,
+      "expected_action": "tighten_stop",
+      "notes": "Erosion 0.5× ATR = protection threshold"
+    }
+  }
+}

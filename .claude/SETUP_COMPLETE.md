@@ -171,7 +171,7 @@ ls -la .claude/agents/
 
 All subagents know about:
 - ✅ 10 RiseTrader agents (Signal, Risk, Execution, etc.)
-- ✅ MT4 connection at 75.154.254.186
+- ✅ MT4 connection at 75.154.254.174
 - ✅ PostgreSQL + Redis stack
 - ✅ FastAPI + React architecture
 - ✅ MLflow for experiment tracking

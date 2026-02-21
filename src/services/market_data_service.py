@@ -52,6 +52,7 @@ class MarketDataService:
         timeframe: str,
         limit: int = 50,
         cursor: Optional[str] = None,
+        source: Optional[str] = None,
     ) -> Tuple[List[MarketData], Optional[str], int]:
         """
         Get latest market data for symbol with caching.
@@ -66,17 +67,19 @@ class MarketDataService:
             timeframe: Timeframe (e.g., "M5", "H1")
             limit: Maximum number of records to return
             cursor: Optional cursor for keyset pagination
+            source: Optional data source filter (e.g., "MT4", "CSV", "DUKASCOPY")
 
         Returns:
             Tuple of (data_list, next_cursor, total_count)
         """
-        # If using cursor pagination, skip cache and go direct to DB
-        if cursor:
+        # If using cursor pagination or source filter, skip cache and go direct to DB
+        if cursor or source:
             data, next_cursor = await self.repository.get_latest_by_symbol(
                 symbol=symbol,
                 timeframe=timeframe,
                 limit=limit,
                 cursor=cursor,
+                source=source,
             )
             total = await self.repository.count_by_symbol(symbol, timeframe)
             return data, next_cursor, total

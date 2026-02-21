@@ -8,7 +8,7 @@ import structlog
 from datetime import datetime, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select, func, and_, distinct
+from sqlalchemy import select, func, and_, distinct, cast, Text
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.database.models.market_data import MarketData
 
@@ -126,6 +126,111 @@ async def get_symbols(
         )
 
 
+@router.get("/timeframes/available", responses={
+    200: {"description": "Available timeframes per symbol"},
+})
+async def get_available_timeframes(
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get available timeframes for each symbol.
+
+    Returns a mapping of symbol names to their available timeframes.
+    Useful for UI to disable timeframe buttons when data doesn't exist.
+
+    Example:
+        GET /api/market-data/timeframes/available
+
+    Response:
+        {
+            "CrudeOIL": ["M1", "M5", "H1"],
+            "DXY": ["M1"],
+            "VIX": ["M1"]
+        }
+    """
+    try:
+        # Query distinct symbol/timeframe combinations
+        query = select(
+            distinct(MarketData.symbol),
+            MarketData.timeframe
+        ).order_by(MarketData.symbol, MarketData.timeframe)
+
+        result = await db.execute(query)
+        rows = result.all()
+
+        # Build dictionary of symbol -> [timeframes]
+        timeframes_by_symbol = {}
+        for symbol, timeframe in rows:
+            if symbol not in timeframes_by_symbol:
+                timeframes_by_symbol[symbol] = []
+            timeframes_by_symbol[symbol].append(timeframe)
+
+        logger.info(
+            "get_available_timeframes_success",
+            symbols=list(timeframes_by_symbol.keys()),
+        )
+
+        return timeframes_by_symbol
+
+    except Exception as e:
+        logger.error(
+            "get_available_timeframes_failed",
+            error=str(e),
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve available timeframes: {str(e)}",
+        )
+
+
+@router.get("/sources/{symbol}", responses={
+    200: {"description": "Available data sources for this symbol"},
+})
+async def get_sources_for_symbol(
+    symbol: str,
+    timeframe: Optional[str] = Query(None, description="Optional timeframe filter"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get available data sources for a symbol (e.g., MT4, CSV, DUKASCOPY).
+
+    Useful for source comparison UI - shows which sources have data for this symbol.
+
+    Returns:
+        List of source objects with metadata (name, data_points, latest_time).
+    """
+    try:
+        conditions = [MarketData.symbol == symbol]
+        if timeframe:
+            conditions.append(cast(MarketData.timeframe, Text) == timeframe)
+
+        query = select(
+            cast(MarketData.source, Text).label("source"),
+            func.count(MarketData.id).label("data_points"),
+            func.max(MarketData.time).label("latest_time"),
+            func.min(MarketData.time).label("first_time"),
+        ).where(and_(*conditions)).group_by(cast(MarketData.source, Text))
+
+        result = await db.execute(query)
+        rows = result.all()
+
+        sources = []
+        for row in rows:
+            sources.append({
+                "source": row.source,
+                "data_points": row.data_points,
+                "latest_time": row.latest_time.isoformat() if row.latest_time else None,
+                "first_time": row.first_time.isoformat() if row.first_time else None,
+            })
+
+        return {"symbol": symbol, "sources": sources, "total": len(sources)}
+
+    except Exception as e:
+        logger.error("get_sources_failed", symbol=symbol, error=str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get sources: {str(e)}")
+
+
 @router.get("/{symbol}", response_model=MarketDataListResponse, responses={
     404: {"model": ErrorResponse, "description": "Symbol not found"},
     400: {"model": ErrorResponse, "description": "Invalid timeframe"},
@@ -135,6 +240,7 @@ async def get_market_data(
     timeframe: str = Query(..., description="Timeframe (M1, M5, M15, M30, H1, H4, D1, W1, MN1)"),
     limit: int = Query(50, ge=1, le=500, description="Maximum records to return"),
     cursor: Optional[str] = Query(None, description="Cursor for keyset pagination"),
+    source: Optional[str] = Query(None, description="Data source filter (MT4, CSV, DUKASCOPY, BARCHART, etc.)"),
     service: MarketDataService = Depends(get_market_data_service),
 ) -> MarketDataListResponse:
     """
@@ -180,6 +286,7 @@ async def get_market_data(
             timeframe=timeframe,
             limit=limit,
             cursor=cursor,
+            source=source,
         )
 
         # Check if symbol has data

@@ -111,7 +111,7 @@ risk_per_trade: 0.02  # 2%
 
 **Configuration:**
 ```yaml
-mt4_host: "75.154.254.186"
+mt4_host: "75.154.254.174"
 mt4_command_port: 5555
 max_retry: 3
 retry_delay: 1.0

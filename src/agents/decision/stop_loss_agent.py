@@ -138,7 +138,7 @@ class StopLossAgent(BaseAgent):
 
         # Get Ollama host
         ollama_host = self.config.config_overrides.get(
-            "ollama_host", os.getenv("OLLAMA_BASE_URL", "http://75.154.254.186:11434")
+            "ollama_host", os.getenv("OLLAMA_BASE_URL", "http://75.154.254.174:11434")
         )
 
         # Model settings - use qwen3:14b with explicit JSON prompting
@@ -202,7 +202,7 @@ class StopLossAgent(BaseAgent):
                 # Use local Ollama model with INSTRUCTOR for guaranteed JSON schema
                 from src.agents.providers.instructor_client import InstructorOllamaClient
 
-                ollama_host = os.getenv("OLLAMA_BASE_URL", "http://75.154.254.186:11434")
+                ollama_host = os.getenv("OLLAMA_BASE_URL", "http://75.154.254.174:11434")
 
                 # Default to mistral:7b-instruct (best speed + JSON reliability)
                 model = os.getenv("OLLAMA_MODEL", "mistral:7b-instruct")

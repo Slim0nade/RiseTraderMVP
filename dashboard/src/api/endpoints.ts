@@ -25,17 +25,30 @@ export const marketDataApi = {
   getLatestTick: (symbol: string) =>
     apiClient.get<MarketData>(`/api/market-data/${symbol}/latest`),
 
-  getHistoricalData: async (symbol: string, timeframe: string, limit?: number) => {
-    const response = await apiClient.get<{ data: MarketData[] }>(`/api/market-data/${symbol}`, {
+  getHistoricalData: async (symbol: string, timeframe: string, limit?: number, source?: string) => {
+    const params: Record<string, any> = {
       timeframe,
       limit: limit || 500,
-    });
+    };
+    if (source) params.source = source;
+    const response = await apiClient.get<{ data: MarketData[] }>(`/api/market-data/${symbol}`, params);
     return response.data;
   },
 
   getSymbols: async () => {
-    const response = await apiClient.get<{ symbols: Array<{ symbol: string }> }>('/api/market-data/symbols');
-    return response.symbols.map(s => s.symbol);
+    const response = await apiClient.get<{ symbols: Array<{ symbol: string; data_points_count: number; latest_time?: string }> }>('/api/market-data/symbols');
+    return response.symbols;
+  },
+
+  getSourcesForSymbol: async (symbol: string, timeframe?: string) => {
+    const params: Record<string, any> = {};
+    if (timeframe) params.timeframe = timeframe;
+    const response = await apiClient.get<{
+      symbol: string;
+      sources: Array<{ source: string; data_points: number; latest_time: string | null; first_time: string | null }>;
+      total: number;
+    }>(`/api/market-data/sources/${symbol}`, params);
+    return response.sources;
   },
 
   getAvailableTimeframes: () =>

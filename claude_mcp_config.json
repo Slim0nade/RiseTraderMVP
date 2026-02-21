@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "risetrader": {
+      "command": "docker",
+      "args": [
+        "exec",
+        "-i",
+        "-e", "RISETRADER_API_URL=http://localhost:8000",
+        "-e", "MT4_HOST=192.168.0.123",
+        "-e", "MT4_PORT=5555",
+        "risetrader-api",
+        "python",
+        "-m",
+        "src.mcp.server"
+      ]
+    }
+  }
+}

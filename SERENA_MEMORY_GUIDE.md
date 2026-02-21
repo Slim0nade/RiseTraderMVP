@@ -461,7 +461,7 @@ custom_instructions: |
   - 10 autonomous agents coordinated via MCP
   - FastAPI backend with async/await
   - PostgreSQL + TimescaleDB for market data
-  - MT4 integration at 75.154.254.186
+  - MT4 integration at 75.154.254.174
   
   Always use:
   - Async operations for I/O

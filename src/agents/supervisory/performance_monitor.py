@@ -48,7 +48,7 @@ class PerformanceMonitorAgent(BaseAgent):
         )
 
         # Configuration
-        self.metrics = config.get("metrics", [
+        self.tracked_metrics = config.get("metrics", [
             "pnl",
             "sharpe_ratio",
             "max_drawdown",
@@ -113,7 +113,7 @@ class PerformanceMonitorAgent(BaseAgent):
 
             self.logger.info(
                 "performance_monitor_initialized",
-                metrics=self.metrics,
+                metrics=self.tracked_metrics,
                 starting_balance=self.starting_balance,
                 current_balance=self.current_balance,
             )

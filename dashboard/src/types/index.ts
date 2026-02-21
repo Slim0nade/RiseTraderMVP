@@ -39,6 +39,8 @@ export interface MarketData {
   volume: number | string;
   tick_volume?: number;
   spread?: number;
+  source?: string;  // Data source (MT4, CSV, DUKASCOPY, BARCHART, etc.)
+  import_symbol?: string;
 }
 
 // Agent Types

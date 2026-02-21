@@ -52,7 +52,7 @@ Redis: 6379 (not started yet)
 1. Review backend-architect.md for MCP server design
 2. Use agent-developer.md to implement BaseAgent class
 3. Build SignalGeneratorAgent as first working agent
-4. Implement ZMQ bridge to MT4 (IP: 75.154.254.186)
+4. Implement ZMQ bridge to MT4 (IP: 75.154.254.174)
 ```
 
 ### 5. Key Files to Reference

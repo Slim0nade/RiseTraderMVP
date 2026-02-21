@@ -15,7 +15,7 @@ result=TaskResult(messages=[TextMessage(source='user', models_usage=None, conten
 
 ### What's Working
 
-1. ✅ Ollama connection (75.154.254.186:11434)
+1. ✅ Ollama connection (75.154.254.174:11434)
 2. ✅ LLM responding (25-second response times)
 3. ✅ MCP tools executing successfully
 4. ✅ Database logging functional

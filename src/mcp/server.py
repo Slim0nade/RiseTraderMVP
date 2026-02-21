@@ -86,8 +86,7 @@ class RiseTraderMCP:
                 pub_port=self.mt4_port + 1,
                 magic_number=123456,
                 encryption_manager=encryption_manager,
-                timeout_ms=10000,
-                enable_circuit_breaker=False
+                timeout_ms=10000
             )
             await self._mt4_client.connect()
             logger.info("MT4 Client connected via ZMQ")
@@ -943,6 +942,18 @@ class RiseTraderMCP:
                     result = await self._sensitivity_analysis(**arguments)
                 elif name == "monte_carlo_validate":
                     result = await self._monte_carlo_validate(**arguments)
+
+                # Async optimization job tools
+                elif name == "submit_optimization_job":
+                    result = await self._submit_optimization_job(**arguments)
+                elif name == "get_optimization_job_status":
+                    result = await self._get_optimization_job_status(**arguments)
+                elif name == "cancel_optimization_job":
+                    result = await self._cancel_optimization_job(**arguments)
+                elif name == "list_optimization_jobs":
+                    result = await self._list_optimization_jobs(**arguments)
+                elif name == "get_optimization_job_results":
+                    result = await self._get_optimization_job_results(**arguments)
                 else:
                     result = {"error": f"Unknown tool: {name}"}
 
@@ -1163,7 +1174,7 @@ class RiseTraderMCP:
                 "source": "MT4 (direct ZMQ connection)"
             }
         except Exception as e:
-            self.logger.error(f"Error getting positions from MT4: {e}")
+            logger.error(f"Error getting positions from MT4: {e}")
             return {
                 "positions": [],
                 "total": 0,
@@ -1177,17 +1188,20 @@ class RiseTraderMCP:
             mt4_client = await self._get_mt4_client()
             result = await mt4_client.get_account_info()
 
-            if result.get("success", False):
+            is_success = result.get("success", False) or result.get("status") == "OK"
+            if is_success:
+                # Account data may be nested under "account_info" key
+                acct = result.get("account_info", result)
                 return {
-                    "account_number": result.get("account_number"),
-                    "balance": result.get("balance"),
-                    "equity": result.get("equity"),
-                    "margin": result.get("margin"),
-                    "free_margin": result.get("free_margin"),
-                    "margin_level": result.get("margin_level"),
-                    "profit": result.get("profit"),
-                    "currency": result.get("currency", "USD"),
-                    "leverage": result.get("leverage"),
+                    "account_number": acct.get("account_number"),
+                    "balance": acct.get("balance"),
+                    "equity": acct.get("equity"),
+                    "margin": acct.get("margin"),
+                    "free_margin": acct.get("free_margin") or acct.get("freeMargin"),
+                    "margin_level": acct.get("margin_level") or acct.get("marginLevel"),
+                    "profit": acct.get("profit"),
+                    "currency": acct.get("currency", "USD"),
+                    "leverage": acct.get("leverage"),
                     "source": "MT4 (direct ZMQ connection)"
                 }
             else:
@@ -1196,7 +1210,7 @@ class RiseTraderMCP:
                     "source": "MT4"
                 }
         except Exception as e:
-            self.logger.error(f"Error getting account info from MT4: {e}")
+            logger.error(f"Error getting account info from MT4: {e}")
             return {
                 "error": f"Could not fetch account info from MT4: {str(e)}",
                 "note": "MT4 connection failed - ensure EA is running"
@@ -1231,7 +1245,7 @@ class RiseTraderMCP:
                 "source": "MT4 (direct ZMQ connection)"
             }
         except Exception as e:
-            self.logger.warning(f"Failed to fetch symbols from MT4: {e}")
+            logger.warning(f"Failed to fetch symbols from MT4: {e}")
             return {
                 "symbols": [],
                 "error": f"Could not fetch symbols from MT4: {str(e)}",
@@ -1258,7 +1272,7 @@ class RiseTraderMCP:
                     "symbol": symbol
                 }
         except Exception as e:
-            self.logger.warning(f"Failed to fetch symbol info from MT4: {e}")
+            logger.warning(f"Failed to fetch symbol info from MT4: {e}")
             return {
                 "success": False,
                 "error": f"Could not fetch symbol info from MT4: {str(e)}",
@@ -1328,7 +1342,7 @@ class RiseTraderMCP:
                     "error": result.get("error_message", "Failed to get symbols info")
                 }
         except Exception as e:
-            self.logger.warning(f"Failed to fetch all symbols info from MT4: {e}")
+            logger.warning(f"Failed to fetch all symbols info from MT4: {e}")
             return {
                 "success": False,
                 "error": f"Could not fetch symbols info from MT4: {str(e)}",
@@ -1879,7 +1893,7 @@ class RiseTraderMCP:
                 "source": "SyntheticEngine (dynamic)"
             }
         except Exception as e:
-            self.logger.error(f"Error listing strategies: {e}")
+            logger.error(f"Error listing strategies: {e}")
             return {
                 "strategies": [],
                 "error": str(e)
@@ -2788,6 +2802,117 @@ class RiseTraderMCP:
             
         except Exception as e:
             logger.error(f"Monte Carlo validation failed: {e}", exc_info=True)
+            return {"success": False, "error": str(e)}
+
+    # =========================================================================
+    # Async Optimization Job Tools
+    # =========================================================================
+
+    async def _submit_optimization_job(
+        self,
+        symbol: str,
+        timeframe: str,
+        start_date: str,
+        end_date: str,
+        strategy: str,
+        param_grid: Dict[str, Any],
+        optimization_target: str = "sharpe_ratio",
+        initial_capital: float = 10000
+    ) -> Dict[str, Any]:
+        """Submit an async optimization job. Returns immediately with job_id."""
+        try:
+            payload = {
+                "symbol": symbol,
+                "timeframe": timeframe,
+                "start_date": start_date,
+                "end_date": end_date,
+                "strategy": strategy,
+                "param_grid": param_grid,
+                "optimization_target": optimization_target,
+                "initial_capital": initial_capital,
+            }
+            result = await self._api_call(
+                "POST",
+                "/api/optimizer/jobs",
+                json=payload,
+                timeout=30  # Should return immediately
+            )
+            return {
+                "success": True,
+                "job_id": result.get("job_id"),
+                "status": result.get("status", "submitted"),
+                "message": f"Optimization job submitted. Use get_optimization_job_status with job_id='{result.get('job_id')}' to check progress."
+            }
+        except Exception as e:
+            logger.error(f"Submit optimization job failed: {e}", exc_info=True)
+            return {"success": False, "error": str(e)}
+
+    async def _get_optimization_job_status(
+        self,
+        job_id: str
+    ) -> Dict[str, Any]:
+        """Get the current status and progress of an optimization job."""
+        try:
+            result = await self._api_call(
+                "GET",
+                f"/api/optimizer/jobs/{job_id}",
+                timeout=15
+            )
+            return result
+        except Exception as e:
+            logger.error(f"Get job status failed: {e}", exc_info=True)
+            return {"success": False, "error": str(e)}
+
+    async def _cancel_optimization_job(
+        self,
+        job_id: str
+    ) -> Dict[str, Any]:
+        """Cancel a running optimization job."""
+        try:
+            result = await self._api_call(
+                "DELETE",
+                f"/api/optimizer/jobs/{job_id}",
+                timeout=15
+            )
+            return result
+        except Exception as e:
+            logger.error(f"Cancel job failed: {e}", exc_info=True)
+            return {"success": False, "error": str(e)}
+
+    async def _list_optimization_jobs(
+        self,
+        status_filter: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """List all active optimization jobs with their status."""
+        try:
+            params = {}
+            if status_filter:
+                params["status_filter"] = status_filter
+            result = await self._api_call(
+                "GET",
+                "/api/optimizer/jobs",
+                params=params,
+                timeout=15
+            )
+            return result
+        except Exception as e:
+            logger.error(f"List jobs failed: {e}", exc_info=True)
+            return {"success": False, "error": str(e)}
+
+    async def _get_optimization_job_results(
+        self,
+        job_id: str
+    ) -> Dict[str, Any]:
+        """Get full results for a completed optimization job."""
+        try:
+            result = await self._api_call(
+                "GET",
+                f"/api/optimizer/jobs/{job_id}/results",
+                timeout=30
+            )
+            return result
+        except Exception as e:
+            logger.error(f"Get job results failed: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
 
     # =========================================================================

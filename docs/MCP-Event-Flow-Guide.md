@@ -291,7 +291,7 @@ Event Bus ──"strategy_optimized"──> SignalGeneratorAgent
         # Event-specific payload
     },
     "priority": 1,  # 0=CRITICAL, 1=HIGH, 2=NORMAL, 3=LOW
-    "timestamp": 1700000000.123,
+    "timestamp": 1700000000.124,
     "correlation_id": "uuid-v4-optional",  # Links related events
     "metadata": {
         # Optional additional context
@@ -309,7 +309,7 @@ Event Bus ──"strategy_optimized"──> SignalGeneratorAgent
         "symbol": "CrudeOIL",
         "bid": 75.50,
         "ask": 75.52,
-        "timestamp": 1700000000.123,
+        "timestamp": 1700000000.124,
         "volume": 1000
     },
     "priority": 2  # NORMAL
@@ -374,7 +374,7 @@ Event Bus ──"strategy_optimized"──> SignalGeneratorAgent
         "stop_loss": 74.00,
         "take_profit": 77.00,
         "execution_time_ms": 250,
-        "mt4_timestamp": 1700000000.123
+        "mt4_timestamp": 1700000000.124
     },
     "priority": 1  # HIGH
 }
@@ -454,7 +454,7 @@ dead_letter_events = await event_bus.dead_letter_queue.get()
     "event": {...},  # Original event
     "agent_id": "risk_manager",
     "error": "KeyError: 'position_size'",
-    "timestamp": 1700000000.123,
+    "timestamp": 1700000000.124,
     "attempts": 3
 }
 ```

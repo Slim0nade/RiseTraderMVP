@@ -90,7 +90,7 @@
 │  [ ] Design MCP server architecture                                          │
 │  [ ] Implement BaseAgent class                                               │
 │  [ ] Build SignalGeneratorAgent (first working agent)                        │
-│  [ ] Create ZMQ bridge for MT4 connection (IP: 75.154.254.186)              │
+│  [ ] Create ZMQ bridge for MT4 connection (IP: 75.154.254.174)              │
 │  [ ] Write unit tests                                                        │
 │                                                                               │
 │ CRITICAL SECURITY (Week 3-4):                                                │

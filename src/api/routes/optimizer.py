@@ -2,11 +2,12 @@
 Optimizer API Routes
 
 Endpoints for running strategy optimization similar to MetaTrader.
+Includes both synchronous endpoints and async job queue endpoints.
 """
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status, BackgroundTasks
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,6 +16,8 @@ from src.services.backtesting.optimizer import (
     StrategyOptimizer,
     OptimizationSummary,
 )
+from src.services.optimization_job_service import OptimizationJobService
+from src.utils.grid_search import GridSizeExceededError
 
 import structlog
 
@@ -371,6 +374,273 @@ def _calculate_combinations(param_grid: Dict[str, List]) -> int:
 
 
 # =============================================================================
+# Async Job Queue Endpoints (Feature 008)
+# =============================================================================
+
+class AsyncOptimizationRequest(BaseModel):
+    """Request to submit async optimization job."""
+
+    strategy: str = Field(..., description="Strategy name")
+    symbol: str = Field(..., description="Trading symbol")
+    timeframe: str = Field(..., description="Candle timeframe")
+    start_date: str = Field(..., description="Start date (YYYY-MM-DD)")
+    end_date: str = Field(..., description="End date (YYYY-MM-DD)")
+    param_grid: Optional[Dict[str, List[Any]]] = Field(
+        default=None,
+        description="Parameter grid to search (None = use defaults)"
+    )
+    optimization_target: str = Field(
+        default="sharpe_ratio",
+        description="Metric to optimize"
+    )
+    initial_capital: float = Field(default=10000.0)
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "strategy": "crude_oil_v3",
+                "symbol": "CrudeOIL",
+                "timeframe": "H1",
+                "start_date": "2024-01-01",
+                "end_date": "2024-12-31",
+                "param_grid": {
+                    "ema_fast": [5, 10, 15],
+                    "ema_slow": [20, 30, 40],
+                },
+                "optimization_target": "sharpe_ratio",
+            }
+        }
+
+
+class JobSubmittedResponse(BaseModel):
+    """Response when job is submitted."""
+
+    job_id: str
+    status: str
+    total_combinations: int
+    estimated_duration_minutes: Optional[float] = None
+
+
+class JobStatusResponse(BaseModel):
+    """Response for job status query."""
+
+    job_id: str
+    status: str
+    strategy: Optional[str] = None
+    symbol: Optional[str] = None
+    timeframe: Optional[str] = None
+    progress_pct: float = 0
+    combinations_tested: int = 0
+    total_combinations: int = 0
+    best_params: Optional[Dict[str, Any]] = None
+    best_metric_value: Optional[float] = None
+    current_params: Optional[Dict[str, Any]] = None
+    created_at: Optional[str] = None
+    started_at: Optional[str] = None
+    error_message: Optional[str] = None
+
+
+class JobCancelledResponse(BaseModel):
+    """Response when job is cancelled."""
+
+    job_id: str
+    status: str
+    combinations_tested: int
+
+
+@router.post(
+    "/jobs",
+    response_model=JobSubmittedResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Submit async optimization job",
+    description="""
+    Starts a new optimization job asynchronously.
+
+    Returns immediately with job_id for tracking.
+    Use GET /jobs/{job_id} to poll for progress.
+    Use SSE /events/stream for real-time updates.
+
+    **Max Grid Size:** 10,000 combinations
+    """,
+)
+async def submit_optimization_job(
+    request: AsyncOptimizationRequest,
+    db: AsyncSession = Depends(get_db),
+) -> JobSubmittedResponse:
+    """Submit a new async optimization job."""
+    try:
+        # Parse dates
+        start_date = datetime.strptime(request.start_date, "%Y-%m-%d")
+        end_date = datetime.strptime(request.end_date, "%Y-%m-%d")
+
+        # Get param grid (use defaults if not provided)
+        param_grid = request.param_grid
+        if param_grid is None:
+            grids = StrategyOptimizer.DEFAULT_PARAM_GRIDS
+            if request.strategy not in grids:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Unknown strategy: {request.strategy}"
+                )
+            param_grid = grids[request.strategy]
+
+        # Submit job
+        job_service = OptimizationJobService(db)
+        result = await job_service.submit_job(
+            strategy=request.strategy,
+            symbol=request.symbol,
+            timeframe=request.timeframe,
+            start_date=start_date,
+            end_date=end_date,
+            param_grid=param_grid,
+            optimization_target=request.optimization_target,
+            initial_capital=request.initial_capital,
+        )
+
+        return JobSubmittedResponse(**result)
+
+    except GridSizeExceededError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"Job submission failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+
+@router.get(
+    "/jobs",
+    summary="List optimization jobs",
+    description="List all active and recent optimization jobs.",
+)
+async def list_optimization_jobs(
+    status_filter: Optional[str] = None,
+    limit: int = 20,
+    db: AsyncSession = Depends(get_db),
+) -> List[Dict[str, Any]]:
+    """List all active jobs."""
+    try:
+        job_service = OptimizationJobService(db)
+        jobs = await job_service.list_active_jobs(status_filter=status_filter)
+        return jobs[:limit]
+    except Exception as e:
+        logger.error(f"List jobs failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+
+@router.get(
+    "/jobs/{job_id}",
+    response_model=JobStatusResponse,
+    summary="Get job status",
+    description="Get current status and progress of an optimization job.",
+)
+async def get_optimization_job(
+    job_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> JobStatusResponse:
+    """Get job status and details."""
+    try:
+        job_service = OptimizationJobService(db)
+        status_data = await job_service.get_job_status(job_id)
+
+        if not status_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Job not found: {job_id}"
+            )
+
+        return JobStatusResponse(**status_data)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get job status failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+
+@router.delete(
+    "/jobs/{job_id}",
+    response_model=JobCancelledResponse,
+    summary="Cancel optimization job",
+    description="Cancel a running or pending optimization job.",
+)
+async def cancel_optimization_job(
+    job_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> JobCancelledResponse:
+    """Cancel a running job."""
+    try:
+        job_service = OptimizationJobService(db)
+        result = await job_service.cancel_job(job_id)
+        return JobCancelledResponse(**result)
+
+    except ValueError as e:
+        if "not found" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=str(e)
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(e)
+            )
+    except Exception as e:
+        logger.error(f"Cancel job failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+
+@router.get(
+    "/jobs/{job_id}/results",
+    summary="Get optimization results",
+    description="Get full results for a completed optimization job.",
+)
+async def get_optimization_results(
+    job_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> Dict[str, Any]:
+    """Get full results for a completed job."""
+    try:
+        job_service = OptimizationJobService(db)
+        results = await job_service.get_job_results(job_id)
+
+        if results is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Job not found: {job_id}"
+            )
+
+        return results
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(e)
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get results failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+
+# =============================================================================
 # Enhanced Optimization Endpoints
 # =============================================================================
 
@@ -628,6 +898,126 @@ async def monte_carlo_validation(
         
     except Exception as e:
         logger.error(f"Monte Carlo validation failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+
+# =============================================================================
+# HISTORY ENDPOINTS (User Story 3)
+# =============================================================================
+
+
+class HistoryListResponse(BaseModel):
+    """Response model for listing optimization history."""
+    runs: List[Dict[str, Any]]
+    total: int
+    page: int
+    per_page: int
+
+
+@router.get(
+    "/history",
+    summary="List optimization history",
+    description="""
+    List all saved optimization runs from the database.
+    
+    **Filters:**
+    - `strategy`: Filter by strategy name
+    - `symbol`: Filter by trading symbol
+    - `status`: Filter by status (completed, failed, cancelled)
+    
+    **Pagination:**
+    - `page`: Page number (1-indexed)
+    - `per_page`: Items per page (max 100)
+    """,
+)
+async def list_optimization_history(
+    strategy: Optional[str] = Query(None, description="Filter by strategy"),
+    symbol: Optional[str] = Query(None, description="Filter by symbol"),
+    status: Optional[str] = Query(None, description="Filter by status"),
+    page: int = Query(1, ge=1, description="Page number"),
+    per_page: int = Query(20, ge=1, le=100, description="Items per page"),
+    db: AsyncSession = Depends(get_db),
+) -> Dict[str, Any]:
+    """List optimization history from database."""
+    try:
+        from src.database.repositories.optimization_repository import OptimizationRepository
+        
+        repo = OptimizationRepository(db)
+        offset = (page - 1) * per_page
+        
+        runs = await repo.list_runs(
+            strategy=strategy,
+            symbol=symbol,
+            status=status,
+            limit=per_page,
+            offset=offset,
+        )
+        
+        return {
+            "runs": [run.to_dict() for run in runs],
+            "total": len(runs),  # TODO: Add count query for proper pagination
+            "page": page,
+            "per_page": per_page,
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to list optimization history: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+
+@router.get(
+    "/history/{run_id}",
+    summary="Get optimization run details",
+    description="""
+    Get full details for a specific optimization run.
+    
+    Includes:
+    - Configuration (strategy, symbol, timeframe, dates)
+    - Parameter grid used
+    - All tested combinations with results
+    - Best parameters and metrics
+    """,
+)
+async def get_optimization_run(
+    run_id: str = Path(..., description="Optimization run UUID"),
+    db: AsyncSession = Depends(get_db),
+) -> Dict[str, Any]:
+    """Get optimization run details by ID."""
+    try:
+        from uuid import UUID
+        from src.database.repositories.optimization_repository import OptimizationRepository
+        
+        repo = OptimizationRepository(db)
+        run = await repo.get_run_with_results(UUID(run_id))
+        
+        if not run:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Optimization run not found: {run_id}"
+            )
+        
+        result = run.to_dict()
+        # Include full results if available
+        if run.results:
+            result["all_results"] = run.results.get("all_results", [])
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid UUID format: {run_id}"
+        )
+    except Exception as e:
+        logger.error(f"Failed to get optimization run: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)

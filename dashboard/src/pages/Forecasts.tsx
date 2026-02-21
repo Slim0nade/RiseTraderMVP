@@ -1,16 +1,21 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Brain, TrendingUp, Target } from 'lucide-react';
-import { forecastsApi } from '@/api/endpoints';
+import { forecastsApi, marketDataApi } from '@/api/endpoints';
 import { useFormatters } from '@/hooks/useFormatters';
 import { cn } from '@/utils/cn';
 import type { Forecast } from '@/types';
 
-const SYMBOLS = ['CrudeOIL', 'DXY', 'VIX'];
-
 export const Forecasts: React.FC = () => {
   const formatters = useFormatters();
   const [selectedSymbol, setSelectedSymbol] = useState<string | undefined>(undefined);
+
+  // Fetch all available symbols dynamically
+  const { data: allSymbols = [] } = useQuery({
+    queryKey: ['symbols-list'],
+    queryFn: () => marketDataApi.getSymbols(),
+    staleTime: 60000,
+  });
 
   // Fetch latest forecasts
   const { data: forecasts, isLoading } = useQuery({
@@ -50,7 +55,7 @@ export const Forecasts: React.FC = () => {
           >
             All
           </button>
-          {SYMBOLS.map((symbol) => (
+          {allSymbols.map(({ symbol }) => (
             <button
               key={symbol}
               onClick={() => setSelectedSymbol(symbol)}

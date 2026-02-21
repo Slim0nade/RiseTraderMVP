@@ -424,7 +424,7 @@ async def emergency_close_all():
 
 **From Codebase:**
 ```python
-MT4_HOST = "75.154.254.186"  # External server
+MT4_HOST = "75.154.254.174"  # External server
 COMMAND_PORT = 5555
 STREAM_PORT = 5556
 Protocol: JSON over ZMQ REQ/REP and PUB/SUB
@@ -451,14 +451,14 @@ services:
   api:
     network_mode: "host"  # Or bridge with ports
     environment:
-      MT4_HOST: "75.154.254.186"
+      MT4_HOST: "75.154.254.174"
       MT4_COMMAND_PORT: "5555"
       MT4_STREAM_PORT: "5556"
 ```
 
 **Security Concerns:**
 ```
-⚠️ MT4 server exposed to internet at 75.154.254.186
+⚠️ MT4 server exposed to internet at 75.154.254.174
 ⚠️ No mention of encryption/VPN
 ⚠️ Plain JSON over ZMQ
 ```
@@ -575,7 +575,7 @@ DATABASE_URL=postgresql+asyncpg://...
 REDIS_URL=redis://redis:6379
 
 # MT4
-MT4_HOST=75.154.254.186
+MT4_HOST=75.154.254.174
 MT4_COMMAND_PORT=5555
 MT4_STREAM_PORT=5556
 

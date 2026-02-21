@@ -39,6 +39,7 @@ dependencies = [
     # MCP & Agent System
     "pyzmq>=25.1.0",
     "msgpack>=1.0.7",
+    "mcp>=1.0.0",
 
     # ML & Data Science
     "torch>=2.1.0",
@@ -47,6 +48,11 @@ dependencies = [
     "pandas>=2.1.0",
     "numpy>=1.24.0",
     "optuna>=3.4.0",
+
+    # Backtesting & RL
+    "gymnasium>=0.29.1",
+    "scipy>=1.11.4",
+    "hypothesis>=6.92.0",
 
     # MLflow & Experiment Tracking
     "mlflow>=2.8.0",
@@ -72,6 +78,7 @@ dependencies = [
     "httpx>=0.25.0",
     "aiofiles>=23.2.1",
     "python-dateutil>=2.8.2",
+    "pyyaml>=6.0.0",
 ]
 
 [project.optional-dependencies]
@@ -106,6 +113,9 @@ docs = [
 Homepage = "https://github.com/risetrader/risetrader"
 Documentation = "https://docs.risetrader.com"
 Repository = "https://github.com/risetrader/risetrader"
+
+[project.scripts]
+risetrader-mcp = "src.mcp.server:main_sync"
 
 [tool.setuptools.packages.find]
 where = ["src"]

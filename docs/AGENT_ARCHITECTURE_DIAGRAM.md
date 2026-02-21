@@ -77,7 +77,7 @@
 │  │  ┌────────────────────────────────────────────────────────┐  │  │
 │  │  │ MT4 Connection:                                        │  │  │
 │  │  │  • ZMQ REQ socket                                      │  │  │
-│  │  │  • Host: 75.154.254.186:5555                          │  │  │
+│  │  │  • Host: 75.154.254.174:5555                          │  │  │
 │  │  │  • Retry: 3 attempts with exponential backoff         │  │  │
 │  │  │  • Timeout: 5 seconds                                  │  │  │
 │  │  │  • Slippage tolerance: 2 pips                          │  │  │

@@ -160,7 +160,7 @@ class TakeProfitAgent(BaseAgent):
             if llm_provider == "ollama":
                 from src.agents.providers.instructor_client import InstructorOllamaClient
 
-                ollama_host = os.getenv("OLLAMA_BASE_URL", "http://75.154.254.186:11434")
+                ollama_host = os.getenv("OLLAMA_BASE_URL", "http://75.154.254.174:11434")
                 model = os.getenv("OLLAMA_MODEL", "mistral:7b-instruct")
                 timeout = float(os.getenv("OLLAMA_TIMEOUT", "60.0"))
                 max_retries = int(os.getenv("OLLAMA_MAX_RETRIES", "3"))

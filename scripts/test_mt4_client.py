@@ -27,7 +27,7 @@ async def main():
     print()
 
     # Configuration
-    host = "75.154.254.186"  # Your MT4 server
+    host = "75.154.254.174"  # Your MT4 server
     rep_port = 5555
     pub_port = 5556
     magic_number = 100001

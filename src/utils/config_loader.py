@@ -9,7 +9,6 @@ Loads and validates YAML configuration with:
 """
 
 import os
-import yaml
 import json
 import logging
 import threading
@@ -17,6 +16,13 @@ from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Dict, Any, Optional, Callable, List
 from datetime import datetime
+
+try:
+    import yaml
+    YAML_AVAILABLE = True
+except ImportError:
+    YAML_AVAILABLE = False
+    logging.warning("pyyaml not installed, YAML config loading disabled")
 
 try:
     import jsonschema
@@ -207,6 +213,11 @@ class ConfigLoader:
                     self._config = StealthStopConfig()
                     return
 
+                if not YAML_AVAILABLE:
+                    logger.warning("pyyaml not available, using default configuration")
+                    self._config = StealthStopConfig()
+                    return
+
                 with open(config_file, 'r') as f:
                     raw_config = yaml.safe_load(f)
 
@@ -233,6 +244,10 @@ class ConfigLoader:
 
     def _validate_schema(self, raw_config: Dict[str, Any]) -> None:
         """Validate configuration against JSON schema."""
+        if not YAML_AVAILABLE:
+            logger.warning("pyyaml not available, skipping schema validation")
+            return
+
         schema_file = Path(self.schema_path)
 
         if not schema_file.exists():

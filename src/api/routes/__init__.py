@@ -3,7 +3,7 @@ API Routes
 
 All route modules for the RiseTrader API.
 """
-from . import agents, forecasts, market_data, performance, strategies, system, trading, ml_forecasting, agent_pipelines, backtesting, vectorized_backtesting, data_sync, optimizer, stealth_stops
+from . import agents, forecasts, market_data, performance, strategies, system, trading, ml_forecasting, agent_pipelines, backtesting, vectorized_backtesting, data_sync, optimizer, stealth_stops, reversals, eda, events, alerts
 
 __all__ = [
     "agents",
@@ -20,4 +20,8 @@ __all__ = [
     "data_sync",
     "optimizer",
     "stealth_stops",
+    "reversals",
+    "eda",
+    "events",
+    "alerts",
 ]

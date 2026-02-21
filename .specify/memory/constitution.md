@@ -151,7 +151,7 @@ These MUST be implemented before any live trading:
 1. **MT4 Connection Encryption**
    - Implement ZMQ CurveZMQ with `ZMQ_CLIENT_SECRET_KEY`, `ZMQ_CLIENT_PUBLIC_KEY`,
      `ZMQ_SERVER_PUBLIC_KEY`
-   - OR: Establish VPN tunnel to MT4 server at 75.154.254.186
+   - OR: Establish VPN tunnel to MT4 server at 75.154.254.174
    - Current state: EXPOSED - no encryption
 
 2. **API Authentication & Authorization**

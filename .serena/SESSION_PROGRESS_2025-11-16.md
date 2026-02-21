@@ -77,7 +77,7 @@
 - **Week 4:** Integration & Testing
 
 ### 3. Security Implementation (Critical for Week 3-4)
-- Implement ZMQ CurveZMQ encryption for MT4 connection (75.154.254.186)
+- Implement ZMQ CurveZMQ encryption for MT4 connection (75.154.254.174)
 - Add JWT + API key authentication
 - Configure rate limiting
 - Implement circuit breakers
@@ -145,7 +145,7 @@
 
 **Communication:**
 - MCP Protocol for inter-agent communication
-- ZMQ for MT4 bridge (IP: 75.154.254.186)
+- ZMQ for MT4 bridge (IP: 75.154.254.174)
 - WebSocket for real-time frontend updates
 
 ---

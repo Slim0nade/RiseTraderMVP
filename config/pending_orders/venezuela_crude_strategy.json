@@ -1,0 +1,193 @@
+{
+  "strategy_name": "Venezuela_Crude_Spike_Fade",
+  "created_at": "2026-01-04T00:00:00Z",
+  "description": "Trade crude oil spike from Venezuela/Maduro capture, then fade the rally",
+  "market_context": {
+    "event": "US captured Maduro, taking control of Venezuela",
+    "current_price": 57.32,
+    "expected_gap_up": "5-8%",
+    "target_range": {
+      "spike_high": [60.0, 62.5],
+      "fade_target": [53.0, 55.0]
+    },
+    "fundamentals": {
+      "iea_surplus_forecast": "3.8M bpd",
+      "venezuela_production": "1.1M bpd",
+      "market_sentiment": "oversupplied"
+    }
+  },
+  "risk_management": {
+    "max_risk_per_trade_pct": 2.0,
+    "max_total_exposure_pct": 5.0,
+    "max_concurrent_positions": 3,
+    "account_balance_estimate": 10000
+  },
+  "pending_orders": [
+    {
+      "id": "SPIKE_LONG_1",
+      "phase": "CATCH_SPIKE",
+      "order_type": "BUY_STOP",
+      "symbol": "CrudeOIL",
+      "entry_price": 58.50,
+      "stop_loss": 57.00,
+      "take_profit": 61.50,
+      "lot_size": 0.50,
+      "risk_amount": 75,
+      "reward_risk_ratio": 2.0,
+      "notes": "Catch initial gap momentum if market runs",
+      "expiration": "2026-01-05T00:00:00Z",
+      "enabled": true
+    },
+    {
+      "id": "SPIKE_LONG_2",
+      "phase": "CATCH_SPIKE",
+      "order_type": "BUY_STOP",
+      "symbol": "CrudeOIL",
+      "entry_price": 59.00,
+      "stop_loss": 57.50,
+      "take_profit": 62.00,
+      "lot_size": 0.30,
+      "risk_amount": 45,
+      "reward_risk_ratio": 2.0,
+      "notes": "Secondary spike entry",
+      "expiration": "2026-01-05T00:00:00Z",
+      "enabled": true
+    },
+    {
+      "id": "FADE_SHORT_1",
+      "phase": "FADE_RALLY",
+      "order_type": "SELL_LIMIT",
+      "symbol": "CrudeOIL",
+      "entry_price": 60.50,
+      "stop_loss": 62.50,
+      "take_profit": 57.00,
+      "lot_size": 0.75,
+      "risk_amount": 150,
+      "reward_risk_ratio": 1.75,
+      "notes": "Primary fade entry at first resistance",
+      "expiration": "2026-01-10T00:00:00Z",
+      "enabled": true
+    },
+    {
+      "id": "FADE_SHORT_2",
+      "phase": "FADE_RALLY",
+      "order_type": "SELL_LIMIT",
+      "symbol": "CrudeOIL",
+      "entry_price": 61.50,
+      "stop_loss": 63.50,
+      "take_profit": 56.50,
+      "lot_size": 0.75,
+      "risk_amount": 150,
+      "reward_risk_ratio": 2.5,
+      "notes": "Secondary fade at major resistance",
+      "expiration": "2026-01-10T00:00:00Z",
+      "enabled": true
+    },
+    {
+      "id": "FADE_SHORT_3",
+      "phase": "FADE_RALLY",
+      "order_type": "SELL_LIMIT",
+      "symbol": "CrudeOIL",
+      "entry_price": 62.50,
+      "stop_loss": 64.00,
+      "take_profit": 57.50,
+      "lot_size": 0.50,
+      "risk_amount": 75,
+      "reward_risk_ratio": 3.33,
+      "notes": "Top of expected range fade",
+      "expiration": "2026-01-10T00:00:00Z",
+      "enabled": true
+    },
+    {
+      "id": "BREAKDOWN_SHORT_1",
+      "phase": "BREAKDOWN",
+      "order_type": "SELL_STOP",
+      "symbol": "CrudeOIL",
+      "entry_price": 56.50,
+      "stop_loss": 58.50,
+      "take_profit": 53.00,
+      "lot_size": 1.00,
+      "risk_amount": 200,
+      "reward_risk_ratio": 1.75,
+      "notes": "Catch breakdown if no spike occurs",
+      "expiration": "2026-01-15T00:00:00Z",
+      "enabled": true
+    },
+    {
+      "id": "BREAKDOWN_SHORT_2",
+      "phase": "BREAKDOWN",
+      "order_type": "SELL_STOP",
+      "symbol": "CrudeOIL",
+      "entry_price": 55.00,
+      "stop_loss": 57.00,
+      "take_profit": 51.50,
+      "lot_size": 0.75,
+      "risk_amount": 150,
+      "reward_risk_ratio": 1.75,
+      "notes": "Breakdown continuation to Goldman target",
+      "expiration": "2026-01-15T00:00:00Z",
+      "enabled": true
+    },
+    {
+      "id": "MEDIUM_TERM_SHORT",
+      "phase": "TREND_FOLLOW",
+      "order_type": "SELL_LIMIT",
+      "symbol": "CrudeOIL",
+      "entry_price": 59.00,
+      "stop_loss": 62.00,
+      "take_profit": 52.00,
+      "lot_size": 1.50,
+      "risk_amount": 450,
+      "reward_risk_ratio": 2.33,
+      "notes": "Core medium-term short position after volatility settles",
+      "expiration": "2026-01-31T00:00:00Z",
+      "enabled": true
+    }
+  ],
+  "execution_playbook": {
+    "scenario_a_gap_up": {
+      "probability": 70,
+      "description": "Market gaps up to $60+ on Sunday open",
+      "actions": [
+        "BUY_STOP orders trigger, ride to $61-62",
+        "Close longs at TP or exhaustion signs",
+        "SELL_LIMIT orders trigger as price spikes",
+        "Hold shorts, add on bounces",
+        "Target $55-57 within 1-2 weeks"
+      ]
+    },
+    "scenario_b_muted_open": {
+      "probability": 20,
+      "description": "Muted open $57-59",
+      "actions": [
+        "Cancel BUY_STOP orders",
+        "Wait for rally attempt, enter shorts at $59-60",
+        "SELL_STOP orders remain active",
+        "Target $53-55"
+      ]
+    },
+    "scenario_c_gap_down": {
+      "probability": 10,
+      "description": "Market gaps down (risk-off dominates)",
+      "actions": [
+        "Cancel all BUY orders",
+        "SELL_STOP orders trigger",
+        "Add to shorts on bounces",
+        "Target sub-$50"
+      ]
+    }
+  },
+  "key_levels": {
+    "resistance": [60.00, 61.50, 62.50, 65.00],
+    "support": [56.00, 55.00, 53.00, 50.00],
+    "pivot": 57.32
+  },
+  "timeline": {
+    "sunday_6pm_et": "Markets open - watch for gap",
+    "sunday_7pm_et": "Assess gap direction, adjust orders",
+    "monday": "OPEC+ meeting results - key catalyst",
+    "tue_wed": "Spike should exhaust - core short entry",
+    "week_2": "Ride shorts to $55 target",
+    "end_of_january": "Evaluate for $50 push"
+  }
+}

@@ -160,7 +160,7 @@ The trading system needs to connect to and coordinate multiple Expert Advisors (
 
 ## Assumptions
 
-1. **MT4 Server Location**: MT4 server is located at IP address 75.154.254.186 as documented in project files
+1. **MT4 Server Location**: MT4 server is located at IP address 75.154.254.174 as documented in project files
 2. **ZMQ Socket Architecture**: Each EA uses dual ZMQ sockets - REP socket (port 5555 + EA offset) for request/response commands, PUB socket (port 5556 + EA offset) for real-time market data streaming
 3. **Message Format**: JSON-formatted messages for all commands and responses between trading system and MT4 EAs
 4. **MT4 Availability**: Assumes MT4 platform and broker connection are available during configured trading hours (24/5 for forex/commodities with specific session windows)
@@ -177,7 +177,7 @@ The trading system needs to connect to and coordinate multiple Expert Advisors (
 
 - MT4 platform must be installed, configured, and connected to broker account
 - MT4 server must have integration capabilities enabled (likely requires Expert Advisor or custom script running in MT4)
-- Network connectivity must exist between trading system and MT4 server (IP: 75.154.254.186)
+- Network connectivity must exist between trading system and MT4 server (IP: 75.154.254.174)
 - Encryption keys or VPN configuration must be provisioned before production deployment (security requirement)
 
 ## Out of Scope

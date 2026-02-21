@@ -224,7 +224,7 @@ RiskOverseerAgent checks portfolio risk
    ZMQ_SERVER_PUBLIC_KEY=<from_mt4>
    
    # Option B: VPN Tunnel
-   # Setup OpenVPN to 75.154.254.186
+   # Setup OpenVPN to 75.154.254.174
    ```
 
 2. **API Authentication (Week 3-4)**

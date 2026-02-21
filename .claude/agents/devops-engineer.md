@@ -30,7 +30,7 @@ Deploy RiseTrader to production with:
 10. **Jaeger** - Distributed tracing
 
 ## External Integration
-- **MT4 Server** at 75.154.254.186 (encrypted ZMQ connection)
+- **MT4 Server** at 75.154.254.174 (encrypted ZMQ connection)
 
 ## Deployment Target
 - **Development**: Docker Compose
@@ -141,7 +141,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://risetrader:${DB_PASSWORD}@postgres:5432/risetrader
       REDIS_URL: redis://redis:6379
-      MT4_SERVER: ${MT4_SERVER:-75.154.254.186}
+      MT4_SERVER: ${MT4_SERVER:-75.154.254.174}
       MT4_PORT: ${MT4_PORT:-5555}
       SECRET_KEY: ${SECRET_KEY}
     ports:
@@ -266,7 +266,7 @@ type: Opaque
 stringData:
   DATABASE_URL: postgresql+asyncpg://user:pass@postgres:5432/risetrader
   SECRET_KEY: your-secret-key-here
-  MT4_SERVER: "75.154.254.186"
+  MT4_SERVER: "75.154.254.174"
   MT4_ENCRYPTION_KEY: your-encryption-key
 ```
 
@@ -654,7 +654,7 @@ spec:
 ⚠️ **High Availability**: 3+ replicas for backend, StatefulSet for database
 ⚠️ **Secrets Security**: Never commit secrets, use sealed secrets or vault
 ⚠️ **Backup Strategy**: Automated daily backups with point-in-time recovery
-⚠️ **MT4 Connection**: Encrypted connection to 75.154.254.186, firewall rules
+⚠️ **MT4 Connection**: Encrypted connection to 75.154.254.174, firewall rules
 ⚠️ **Resource Limits**: Set CPU/memory limits to prevent resource exhaustion
 
 ---

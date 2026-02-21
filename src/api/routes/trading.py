@@ -496,8 +496,8 @@ async def place_order(
     """
     Place a new trading order (T067).
 
-    Note: This endpoint is currently a placeholder.
-    Full implementation requires ExecutionAgent integration.
+    Supports MARKET orders via direct MT4 integration.
+    Other order types (LIMIT, STOP) require additional implementation.
 
     Args:
         request: Order placement request
@@ -510,26 +510,92 @@ async def place_order(
         POST /api/trading/orders
         Body: {
           "symbol": "CrudeOIL",
-          "order_type": "BUY",
-          "volume": 0.1,
-          "stop_loss": 71.50,
-          "take_profit": 73.00
+          "order_type": "MARKET",
+          "position_type": "BUY",
+          "size": 0.1,
+          "stop_loss": 70.50,
+          "take_profit": 75.00,
+          "mode": "LIVE"
         }
     """
     try:
-        logger.warning(
-            "place_order_not_implemented",
-            symbol=request.symbol,
-            order_type=request.order_type,
-            message="Order placement requires ExecutionAgent integration",
+        # Only MARKET orders are currently supported
+        if request.order_type.value != "MARKET":
+            return OrderResponse(
+                success=False,
+                message=f"Order type {request.order_type.value} not yet implemented. Only MARKET orders are supported.",
+                order_number=None,
+                position_id=None,
+            )
+
+        # Import MT4 client
+        from src.trading.execution.mt4_client import MT4Client
+        from src.trading.execution.mt4_encryption import MT4EncryptionManager
+        import os
+
+        # Get MT4 configuration from environment
+        mt4_host = os.getenv("MT4_HOST", "192.168.0.123")
+        mt4_rep_port = int(os.getenv("MT4_COMMAND_PORT", "5555"))
+        mt4_pub_port = int(os.getenv("MT4_STREAM_PORT", "5556"))
+
+        # Create MT4 client
+        encryption_manager = MT4EncryptionManager(encryption_enabled=False)
+        mt4_client = MT4Client(
+            host=mt4_host,
+            rep_port=mt4_rep_port,
+            pub_port=mt4_pub_port,
+            magic_number=123456,
+            encryption_manager=encryption_manager,
+            timeout_ms=10000,
+            enable_circuit_breaker=False
         )
 
-        return OrderResponse(
-            success=False,
-            message="Order placement not yet implemented - requires ExecutionAgent integration",
-            order_id=None,
-            ticket=None,
-        )
+        # Connect to MT4
+        await mt4_client.connect()
+
+        try:
+            # Place market order
+            result = await mt4_client.create_instant_order(
+                symbol=request.symbol,
+                direction=request.position_type.value,  # BUY or SELL
+                volume=request.size,
+                stop_loss=request.stop_loss,
+                take_profit=request.take_profit,
+                comment=request.comment or "API Market Order"
+            )
+
+            if result.success:
+                logger.info(
+                    "order_placed_successfully",
+                    symbol=request.symbol,
+                    direction=request.position_type.value,
+                    ticket=result.ticket_number,
+                    volume=float(request.size),
+                )
+
+                return OrderResponse(
+                    success=True,
+                    message=f"Market order placed successfully",
+                    order_number=str(result.ticket_number),
+                    position_id=result.ticket_number,
+                )
+            else:
+                logger.error(
+                    "order_placement_failed",
+                    symbol=request.symbol,
+                    error=result.error_message,
+                )
+
+                return OrderResponse(
+                    success=False,
+                    message=result.error_message or "Failed to place market order",
+                    order_number=None,
+                    position_id=None,
+                )
+
+        finally:
+            # Disconnect MT4 client
+            await mt4_client.disconnect()
 
     except Exception as e:
         logger.error(

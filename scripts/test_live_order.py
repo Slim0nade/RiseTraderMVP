@@ -20,7 +20,7 @@ async def main():
     print()
 
     # Configuration
-    host = "75.154.254.186"
+    host = "75.154.254.174"
     rep_port = 5555
     pub_port = 5556
     magic_number = 100001

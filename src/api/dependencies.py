@@ -5,6 +5,7 @@ Provides dependency injection for database sessions, agent coordinator,
 authentication, and rate limiting.
 """
 import time
+from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Optional
 
 from fastapi import Depends, HTTPException, Security, status
@@ -65,6 +66,25 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         @app.get("/items")
         async def get_items(db: AsyncSession = Depends(get_db)):
             ...
+    """
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
+
+
+@asynccontextmanager
+async def get_db_context() -> AsyncGenerator[AsyncSession, None]:
+    """
+    Database session context manager for non-FastAPI use (e.g., background tasks).
+
+    Yields:
+        AsyncSession for database operations
+
+    Example:
+        async with get_db_context() as db:
+            await db.execute(...)
     """
     async with AsyncSessionLocal() as session:
         try:

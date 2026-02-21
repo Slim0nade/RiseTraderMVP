@@ -1,0 +1,23 @@
+{
+  "name": "Crude Oil M1 - LOOSE PARAMS TEST",
+  "symbol": "CrudeOIL",
+  "start_date": "2023-12-01T00:00:00Z",
+  "end_date": "2024-01-15T23:59:59Z",
+  "initial_capital": 100000,
+  "execution_mode": "agent_driven",
+  "agent_config_ref": "crude_oil_v3",
+  "slippage_pct": 0.001,
+  "commission_pct": 0.0005,
+  "commission_fixed": 0.0,
+  "max_leverage": 1.0,
+  "allow_short_selling": true,
+  "config_params": {
+    "momentum_buy_threshold": 95.0,
+    "momentum_sell_threshold": 105.0,
+    "use_adx_filter": false,
+    "use_macd_filter": false,
+    "use_bollinger_filter": false,
+    "use_stochastic_filter": false,
+    "use_volume_filter": false
+  }
+}

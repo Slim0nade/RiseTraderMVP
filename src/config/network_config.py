@@ -20,7 +20,7 @@ NETWORK_LOCATION_FILE = Path("/app/.network_location")
 class NetworkLocation(str, Enum):
     """Network location enum."""
     LOCAL = "local"   # Home network (192.168.0.123)
-    REMOTE = "remote"  # Internet (75.154.254.186)
+    REMOTE = "remote"  # Internet (75.154.254.174)
 
 
 class MT4Endpoints(BaseModel):
@@ -104,12 +104,12 @@ class NetworkLocationManager:
         ),
         NetworkLocation.REMOTE: NetworkConfig(
             mt4=MT4Endpoints(
-                host="75.154.254.186",
+                host="75.154.254.174",
                 command_port=5555,
                 stream_port=5556,
             ),
             ollama=OllamaEndpoints(
-                base_url="http://75.154.254.186:11434",
+                base_url="http://75.154.254.174:11434",
                 timeout=120,  # Longer timeout for remote
                 max_retries=5,  # More retries for remote
             ),

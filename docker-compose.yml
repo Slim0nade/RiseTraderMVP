@@ -104,29 +104,7 @@ services:
   #   # - qwen3:14b
   #   # - deepseek-r1:14b
 
-  # MCP Server for Claude Desktop integration
-  mcp:
-    build:
-      context: .
-      dockerfile: docker/mcp/Dockerfile
-    container_name: risetrader-mcp
-    restart: unless-stopped
-    stdin_open: true
-    tty: true
-    environment:
-      MT4_HOST: ${MT4_HOST:-192.168.0.123}
-      MT4_PORT: ${MT4_COMMAND_PORT:-5555}
-      RISETRADER_API_URL: http://api:8000
-      PYTHONPATH: /app
-    volumes:
-      - ./src:/app/src
-      - ./config:/app/config
-    networks:
-      - risetrader
-    depends_on:
-      - api
-
-  # FastAPI service
+  # FastAPI service (also serves MCP via /mcp endpoint)
   api:
     build:
       context: .

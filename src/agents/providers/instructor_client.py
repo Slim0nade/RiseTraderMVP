@@ -55,7 +55,7 @@ def create_instructor_client(
     
     # Get Ollama host from environment or default
     if base_url is None:
-        base_url = os.getenv("OLLAMA_BASE_URL", "http://75.154.254.186:11434")
+        base_url = os.getenv("OLLAMA_BASE_URL", "http://75.154.254.174:11434")
     
     # Ensure base_url ends with /v1 for OpenAI compatibility
     base_url = base_url.rstrip("/")
@@ -119,7 +119,7 @@ class InstructorOllamaClient:
             default_timeout: Default timeout in seconds
         """
         self.model = model
-        self.base_url = base_url or os.getenv("OLLAMA_BASE_URL", "http://75.154.254.186:11434")
+        self.base_url = base_url or os.getenv("OLLAMA_BASE_URL", "http://75.154.254.174:11434")
         self.mode = mode
         self.default_max_retries = default_max_retries
         self.default_timeout = default_timeout

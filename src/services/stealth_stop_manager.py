@@ -229,8 +229,7 @@ class StealthStopManager:
                 pub_port=self.mt4_port + 1,
                 magic_number=123456,
                 encryption_manager=encryption_manager,
-                timeout_ms=10000,
-                enable_circuit_breaker=False
+                timeout_ms=10000
             )
             await self._mt4_client.connect()
             logger.info(f"Connected to MT4 at {self.mt4_host}:{self.mt4_port}")

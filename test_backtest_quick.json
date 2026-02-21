@@ -1,0 +1,19 @@
+{
+  "name": "CrudeOil V3 - Jan 2024 Test",
+  "symbol": "CrudeOIL",
+  "start_date": "2024-01-01T00:00:00Z",
+  "end_date": "2024-02-01T00:00:00Z",
+  "initial_capital": 10000.00,
+  "execution_mode": "synthetic_fast",
+  "slippage_pct": 0.001,
+  "commission_pct": 0.0005,
+  "config_params": {
+    "strategy": "crude_oil_v3",
+    "strategy_params": {
+      "ema_fast": 8,
+      "ema_slow": 29,
+      "rsi_period": 10,
+      "quantity": 1.0
+    }
+  }
+}

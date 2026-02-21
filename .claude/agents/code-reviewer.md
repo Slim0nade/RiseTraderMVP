@@ -199,13 +199,13 @@ async def execute_trade(signal):
 # ❌ HIGH: Price precision error
 price = 1.23456789
 quantity = 0.1
-total = price * quantity  # 0.12345678900000001
+total = price * quantity  # 0.12445678900000001
 
 # ✅ FIXED: Use Decimal for money
 from decimal import Decimal
 price = Decimal('1.23456789')
 quantity = Decimal('0.1')
-total = price * quantity  # Exact: 0.12345678
+total = price * quantity  # Exact: 0.12445678
 ```
 
 # Review Output Format

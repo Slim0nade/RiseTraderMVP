@@ -35,11 +35,13 @@ logger = logging.getLogger(__name__)
 
 
 # Dukascopy symbol mappings
+# Updated 2026-01: WTI crude changed from USOUSD to LIGHTCMDUSD
 DUKASCOPY_SYMBOLS = {
-    "CrudeOIL": "USOUSD",  # WTI Crude Oil (Light Sweet Crude)
+    "CrudeOIL": "LIGHTCMDUSD",  # WTI Crude Oil (Light Sweet Crude) - was USOUSD
     "GOLD": "XAUUSD",
     "SILVER": "XAGUSD", 
     "SPX500": "USA500IDXUSD",
+    "USA500": "USA500IDXUSD",  # Alias: MT4 uses USA500
     "EURUSD": "EURUSD",
     "GBPUSD": "GBPUSD",
     "USDJPY": "USDJPY",
@@ -52,7 +54,7 @@ DUKASCOPY_SYMBOLS = {
 
 # Point values for price conversion (Dukascopy stores prices as integers)
 POINT_VALUES = {
-    "USOUSD": 0.001,  # Oil: 3 decimals
+    "LIGHTCMDUSD": 0.001,  # WTI Oil: 3 decimals (was USOUSD)
     "XAUUSD": 0.001,  # Gold: 3 decimals
     "XAGUSD": 0.001,  # Silver: 3 decimals
     "USA500IDXUSD": 0.1,  # Index: 1 decimal

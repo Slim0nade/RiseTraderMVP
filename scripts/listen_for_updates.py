@@ -8,7 +8,7 @@ import zmq
 import sys
 
 def main():
-    host = "75.154.254.186"
+    host = "75.154.254.174"
     pub_port = 5556
 
     print(f"Connecting to MT4 PUB socket at tcp://{host}:{pub_port}")

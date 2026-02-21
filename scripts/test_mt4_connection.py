@@ -7,7 +7,7 @@ Works even when markets are closed.
 
 Usage:
     python scripts/test_mt4_connection.py
-    python scripts/test_mt4_connection.py --host 75.154.254.186 --port 5555
+    python scripts/test_mt4_connection.py --host 75.154.254.174 --port 5555
 """
 import argparse
 import json
@@ -200,7 +200,7 @@ def test_streaming_socket(host: str, port: int, duration_seconds: int = 5):
 def main():
     """Main test runner."""
     parser = argparse.ArgumentParser(description="Test MT4 EA connection")
-    parser.add_argument("--host", default="75.154.254.186", help="MT4 server IP")
+    parser.add_argument("--host", default="75.154.254.174", help="MT4 server IP")
     parser.add_argument("--rep-port", type=int, default=5555, help="REP socket port")
     parser.add_argument("--pub-port", type=int, default=5556, help="PUB socket port")
     parser.add_argument("--timeout", type=int, default=5000, help="Command timeout (ms)")

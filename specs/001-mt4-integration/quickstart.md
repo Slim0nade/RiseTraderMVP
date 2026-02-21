@@ -167,7 +167,7 @@ curl -X POST http://localhost:8003/api/v1/mt4/connections \
   -d '{
     "ea_id": "crude_oil_ea_1",
     "symbol": "CrudeOIL",
-    "mt4_server_host": "75.154.254.186"
+    "mt4_server_host": "75.154.254.174"
   }'
 ```
 
@@ -195,7 +195,7 @@ DATABASE_URL=postgresql+asyncpg://postgres:password@localhost:5432/risetrader
 REDIS_URL=redis://localhost:6379/0
 
 # MT4 Connection
-MT4_DEFAULT_HOST=75.154.254.186
+MT4_DEFAULT_HOST=75.154.254.174
 MT4_BASE_REP_PORT=5555
 MT4_BASE_PUB_PORT=5556
 
@@ -357,7 +357,7 @@ async def test_circuit_breaker_opens_on_failures(mt4_client):
 import zmq
 context = zmq.Context()
 socket = context.socket(zmq.REQ)
-socket.connect("tcp://75.154.254.186:5555")
+socket.connect("tcp://75.154.254.174:5555")
 socket.send_json({"command": "test_connection"})
 response = socket.recv_json()
 print(response)
@@ -380,7 +380,7 @@ print(response)
 **Solutions**:
 1. Check network latency to MT4 server:
 ```bash
-ping 75.154.254.186
+ping 75.154.254.174
 ```
 2. Monitor MT4 server load (MT4 terminal may be slow)
 3. Check for pending messages in ZMQ queue

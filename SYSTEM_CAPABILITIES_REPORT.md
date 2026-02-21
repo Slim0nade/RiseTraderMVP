@@ -119,7 +119,7 @@ RiseTrader 2.0 is a **complete, production-ready autonomous algorithmic trading 
 **Function**: Order execution on MT4
 
 **Configuration**:
-- MT4 Host: 75.154.254.186
+- MT4 Host: 75.154.254.174
 - Command Port: Configured
 - Stream Port: Configured
 - Encryption: ZMQ CurveZMQ (ready)
@@ -512,7 +512,7 @@ RiseTrader 2.0 is a **complete, production-ready autonomous algorithmic trading 
 - `REDIS_URL`: Redis connection
 
 **MT4 Connection**:
-- `MT4_HOST`: 75.154.254.186
+- `MT4_HOST`: 75.154.254.174
 - `MT4_COMMAND_PORT`: Configured
 - `MT4_STREAM_PORT`: Configured
 - `ZMQ_*_KEY`: Encryption keys ready

@@ -515,7 +515,7 @@ pyyaml==6.0.1
 ### External Services
 - PostgreSQL 17 (port 5433)
 - Redis 7 (port 6379)
-- MT4 Platform (75.154.254.186:5555/5556)
+- MT4 Platform (75.154.254.174:5555/5556)
 
 ---
 

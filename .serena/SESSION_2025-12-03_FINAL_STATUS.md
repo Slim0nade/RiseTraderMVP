@@ -20,7 +20,7 @@
 - ✅ Bypassed AutoGen TaskResult issues
 - ✅ Implemented direct Ollama library integration
 - ✅ Fixed import order (set OLLAMA_HOST before importing ollama)
-- ✅ Connection to Ollama working (`http://75.154.254.186:11434`)
+- ✅ Connection to Ollama working (`http://75.154.254.174:11434`)
 - ✅ LLM responding (confirmed via curl and test logs)
 
 ### 3. Code Changes Applied
@@ -59,7 +59,7 @@ ollama>=0.1.7
 
 ## Attempted Fixes
 
-1. ✅ **Networking**: Changed to public IP `75.154.254.186:11434`
+1. ✅ **Networking**: Changed to public IP `75.154.254.174:11434`
 2. ✅ **Import Order**: Set OLLAMA_HOST before importing ollama
 3. ✅ **Token Limit**: Increased from 1000 → 2048 → 3000 tokens
 4. ✅ **Response Extraction**: Check both `content` and `thinking` fields
@@ -117,10 +117,10 @@ Document the LLM integration issue and mark US1 as "partially complete" with fal
 1. **Try mistral:7b model**:
    ```bash
    # Check if mistral available
-   curl http://75.154.254.186:11434/api/tags
+   curl http://75.154.254.174:11434/api/tags
 
    # If not, pull it
-   curl http://75.154.254.186:11434/api/pull -d '{"name":"mistral:7b"}'
+   curl http://75.154.254.174:11434/api/pull -d '{"name":"mistral:7b"}'
 
    # Update position_sizing_agent.py line 176
    model='mistral:7b'
@@ -152,7 +152,7 @@ Document the LLM integration issue and mark US1 as "partially complete" with fal
    - JSON extraction: content → thinking → regex
 
 3. **docker-compose.yml** (from previous session)
-   - Line 128: `OLLAMA_BASE_URL: http://75.154.254.186:11434`
+   - Line 128: `OLLAMA_BASE_URL: http://75.154.254.174:11434`
 
 4. **src/agents/base/base_agent.py** (from previous session)
    - Line 117: Added `os.getenv("OLLAMA_BASE_URL")`
@@ -187,7 +187,7 @@ risetrader-redis      Up 3 hours (healthy)
 
 **Ollama**: ✅ Accessible
 ```
-curl http://75.154.254.186:11434/api/version
+curl http://75.154.254.174:11434/api/version
 {"version":"0.13.0"}
 ```
 

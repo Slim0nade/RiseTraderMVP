@@ -11,7 +11,7 @@ async def test_raw_responses():
 
     context = zmq.asyncio.Context()
     socket = context.socket(zmq.REQ)
-    socket.connect("tcp://75.154.254.186:5555")
+    socket.connect("tcp://75.154.254.174:5555")
 
     print("=" * 80)
     print("RAW MT4 RESPONSE DEBUG")

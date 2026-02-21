@@ -170,6 +170,14 @@ class StrategyOptimizer:
             "lookback": [10, 15, 20, 25, 30],
             "std_threshold": [1.5, 2.0, 2.5, 3.0],
         },
+        "value_area": {
+            "lookback_periods": [12, 18, 24, 36, 48],
+            "value_area_percent": [0.65, 0.68, 0.70, 0.72, 0.75],
+            "tpo_resolution": [0.05, 0.10, 0.15],
+            "stop_atr_multiplier": [1.0, 1.5, 2.0, 2.5],
+            "min_penetration_atr": [0.2, 0.3, 0.5],
+            "max_penetration_atr": [1.5, 2.0, 2.5],
+        },
     }
     
     # Optimization targets

@@ -1,0 +1,251 @@
+# JSON Schema for stealth_stops.yaml Configuration
+#
+# This schema validates the YAML configuration file for the Enhanced Stealth Stop Manager.
+# It defines defaults, per-symbol overrides, and feature flags.
+#
+# Usage with Python:
+#   import yaml
+#   import jsonschema
+#
+#   with open('config/stealth_stops.yaml') as f:
+#       config = yaml.safe_load(f)
+#
+#   with open('specs/001-stealth-stop-protection/contracts/stealth_stops.yaml.schema') as f:
+#       schema = yaml.safe_load(f)
+#
+#   jsonschema.validate(config, schema)
+
+$schema: "http://json-schema.org/draft-07/schema#"
+$id: "https://risetrader.com/schemas/stealth-stops-config.json"
+title: "Stealth Stop Manager Configuration"
+description: "Configuration for multi-layer risk protection in the stealth stop manager"
+type: object
+
+required:
+  - defaults
+  - features
+
+properties:
+  defaults:
+    type: object
+    description: "Global default settings applied to all symbols unless overridden"
+    required:
+      - disaster_stop_multiplier
+      - trail_trigger_atr
+      - breakeven_trigger_atr
+      - erosion_threshold_atr
+      - monitoring_cycle_seconds
+    properties:
+      disaster_stop_multiplier:
+        type: number
+        minimum: 1.0
+        maximum: 10.0
+        default: 3.0
+        description: "Initial disaster stop distance in ATR multiples (e.g., 3.0 = 3× ATR from entry)"
+
+      trail_trigger_atr:
+        type: number
+        minimum: 0.1
+        maximum: 5.0
+        default: 0.5
+        description: "Start trailing stops after position reaches N× ATR profit"
+
+      breakeven_trigger_atr:
+        type: number
+        minimum: 0.1
+        maximum: 5.0
+        default: 0.5
+        description: "Move stop to entry price (breakeven) after N× ATR profit"
+
+      erosion_threshold_atr:
+        type: number
+        minimum: 0.1
+        maximum: 5.0
+        default: 0.5
+        description: "Tighten stop when profit erosion exceeds N× ATR from highwater"
+
+      erosion_alert_threshold_atr:
+        type: number
+        minimum: 0.1
+        maximum: 5.0
+        default: 0.3
+        description: "Log warning alert when profit erosion exceeds N× ATR from highwater"
+
+      atr_multiplier_trail:
+        type: number
+        minimum: 0.5
+        maximum: 5.0
+        default: 1.5
+        description: "Trailing stop distance in ATR multiples (distance from current price)"
+
+      trail_step_atr:
+        type: number
+        minimum: 0.1
+        maximum: 2.0
+        default: 0.5
+        description: "Trail stop every N× ATR of additional profit movement"
+
+      breakeven_offset_pips:
+        type: number
+        minimum: 0
+        maximum: 100
+        default: 10
+        description: "Lock N pips profit when moving to breakeven (e.g., 10 pips above entry for long)"
+
+      monitoring_cycle_seconds:
+        type: integer
+        minimum: 10
+        maximum: 300
+        default: 60
+        description: "Position monitoring interval in seconds (min 10, max 300)"
+
+      max_volatility_adjustment:
+        type: number
+        minimum: 0.1
+        maximum: 1.0
+        default: 0.5
+        description: "Maximum stop adjustment per cycle as fraction (0.5 = 50% max change)"
+
+      atr_fallback_percentage:
+        type: number
+        minimum: 0.01
+        maximum: 0.10
+        default: 0.02
+        description: "Fallback disaster stop as percentage of entry when ATR unavailable (0.02 = 2%)"
+
+      manual_override_grace_period:
+        type: integer
+        minimum: 0
+        maximum: 300
+        default: 60
+        description: "Respect manual stop modifications for N seconds before re-evaluating"
+
+      min_offset_pips:
+        type: number
+        minimum: 0
+        maximum: 100
+        default: 5
+        description: "Minimum random offset for institutional pricing (anti-stop-hunting)"
+
+      max_offset_pips:
+        type: number
+        minimum: 0
+        maximum: 100
+        default: 15
+        description: "Maximum random offset for institutional pricing (anti-stop-hunting)"
+
+      pip_value:
+        type: number
+        minimum: 0.0001
+        maximum: 1.0
+        default: 0.01
+        description: "Pip size for symbol (0.01 for commodities, 0.0001 for forex)"
+
+    # Validation: erosion_alert_threshold < erosion_threshold
+    # Validation: trail_trigger <= breakeven_trigger
+    # (These are enforced in Python code, not in schema)
+
+  symbol_overrides:
+    type: object
+    description: "Per-symbol configuration overrides (e.g., CrudeOIL, EURUSD)"
+    patternProperties:
+      "^[A-Z0-9]+$":  # Symbol names must be uppercase alphanumeric
+        type: object
+        description: "Override settings for specific symbol"
+        properties:
+          disaster_stop_multiplier:
+            type: number
+            minimum: 1.0
+            maximum: 10.0
+          trail_trigger_atr:
+            type: number
+            minimum: 0.1
+            maximum: 5.0
+          breakeven_trigger_atr:
+            type: number
+            minimum: 0.1
+            maximum: 5.0
+          erosion_threshold_atr:
+            type: number
+            minimum: 0.1
+            maximum: 5.0
+          erosion_alert_threshold_atr:
+            type: number
+            minimum: 0.1
+            maximum: 5.0
+          atr_multiplier_trail:
+            type: number
+            minimum: 0.5
+            maximum: 5.0
+          trail_step_atr:
+            type: number
+            minimum: 0.1
+            maximum: 2.0
+          pip_value:
+            type: number
+            minimum: 0.0001
+            maximum: 1.0
+        additionalProperties: false
+    additionalProperties: false
+
+  features:
+    type: object
+    description: "Feature flags to enable/disable protection mechanisms"
+    required:
+      - enable_disaster_stops
+      - enable_profit_erosion
+      - enable_early_breakeven
+    properties:
+      enable_disaster_stops:
+        type: boolean
+        default: true
+        description: "Enable automatic disaster stop setting on position detection (FR-002)"
+
+      enable_profit_erosion:
+        type: boolean
+        default: true
+        description: "Enable profit erosion detection and protection (FR-010)"
+
+      enable_early_breakeven:
+        type: boolean
+        default: true
+        description: "Enable soft breakeven trigger at 0.5× ATR (FR-011)"
+
+      enable_audit_trail:
+        type: boolean
+        default: false
+        description: "Enable database logging of all protection events (optional, adds overhead)"
+
+      enable_institutional_pricing:
+        type: boolean
+        default: true
+        description: "Enable random offset for anti-stop-hunting (min/max_offset_pips)"
+    additionalProperties: false
+
+additionalProperties: false
+
+# Example valid configuration:
+#
+# defaults:
+#   disaster_stop_multiplier: 3.0
+#   trail_trigger_atr: 0.5
+#   breakeven_trigger_atr: 0.5
+#   erosion_threshold_atr: 0.5
+#   erosion_alert_threshold_atr: 0.3
+#   monitoring_cycle_seconds: 60
+#   max_volatility_adjustment: 0.5
+#
+# symbol_overrides:
+#   CrudeOIL:
+#     disaster_stop_multiplier: 2.5
+#     trail_trigger_atr: 0.4
+#   EURUSD:
+#     disaster_stop_multiplier: 4.0
+#     trail_trigger_atr: 0.6
+#
+# features:
+#   enable_disaster_stops: true
+#   enable_profit_erosion: true
+#   enable_early_breakeven: true
+#   enable_audit_trail: false
+#   enable_institutional_pricing: true

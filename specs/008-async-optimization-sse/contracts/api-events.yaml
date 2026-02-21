@@ -1,0 +1,221 @@
+# OpenAPI 3.0 Contract: SSE Events Endpoint
+# Feature: 008-async-optimization-sse
+
+openapi: 3.0.3
+info:
+  title: RiseTrader SSE Events API
+  version: 1.0.0
+  description: Server-Sent Events for real-time notifications
+
+paths:
+  /api/events/stream:
+    get:
+      operationId: streamEvents
+      summary: SSE event stream
+      description: |
+        Server-Sent Events stream for real-time notifications.
+        Connect and receive events as they occur.
+        
+        Event types:
+        - job_started: Optimization job began
+        - job_progress: Optimization progress update
+        - job_complete: Optimization finished
+        - job_failed: Optimization failed
+        - job_cancelled: Optimization cancelled
+        - price_alert: Price crossed alert level
+      tags: [Events]
+      parameters:
+        - name: types
+          in: query
+          description: Filter by event types (comma-separated)
+          schema:
+            type: string
+            example: job_progress,job_complete
+      responses:
+        '200':
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/SSEEvent'
+
+  /api/events/since/{timestamp}:
+    get:
+      operationId: getEventsSince
+      summary: Get events since timestamp
+      description: |
+        Retrieve events that occurred after the given timestamp.
+        Use this for missed event recovery after SSE reconnection.
+        Limited to events within the last 24 hours.
+      tags: [Events]
+      parameters:
+        - name: timestamp
+          in: path
+          required: true
+          schema:
+            type: string
+            format: date-time
+          example: "2026-01-17T10:30:00Z"
+        - name: types
+          in: query
+          description: Filter by event types
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+            maximum: 1000
+      responses:
+        '200':
+          description: List of events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SSEEventRecord'
+                  next_sequence:
+                    type: integer
+                    description: Sequence number for next event
+
+components:
+  schemas:
+    SSEEvent:
+      type: object
+      description: |
+        SSE event format:
+        event: {event_type}
+        id: {event_id}
+        data: {json_payload}
+      properties:
+        event:
+          type: string
+          enum:
+            - job_started
+            - job_progress
+            - job_complete
+            - job_failed
+            - job_cancelled
+            - price_alert
+        id:
+          type: string
+        data:
+          oneOf:
+            - $ref: '#/components/schemas/JobStartedPayload'
+            - $ref: '#/components/schemas/JobProgressPayload'
+            - $ref: '#/components/schemas/JobCompletePayload'
+            - $ref: '#/components/schemas/JobFailedPayload'
+            - $ref: '#/components/schemas/PriceAlertPayload'
+
+    SSEEventRecord:
+      type: object
+      properties:
+        id:
+          type: string
+        event:
+          type: string
+        data:
+          type: object
+        timestamp:
+          type: string
+          format: date-time
+        sequence:
+          type: integer
+
+    JobStartedPayload:
+      type: object
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        strategy:
+          type: string
+        symbol:
+          type: string
+        total_combinations:
+          type: integer
+        timestamp:
+          type: string
+          format: date-time
+
+    JobProgressPayload:
+      type: object
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        progress_pct:
+          type: number
+        combinations_tested:
+          type: integer
+        total_combinations:
+          type: integer
+        best_params:
+          type: object
+          nullable: true
+        best_metric_value:
+          type: number
+          nullable: true
+        current_params:
+          type: object
+        timestamp:
+          type: string
+          format: date-time
+
+    JobCompletePayload:
+      type: object
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        best_params:
+          type: object
+        best_metric_value:
+          type: number
+        total_combinations:
+          type: integer
+        duration_seconds:
+          type: number
+        timestamp:
+          type: string
+          format: date-time
+
+    JobFailedPayload:
+      type: object
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        error:
+          type: string
+        combinations_tested:
+          type: integer
+        timestamp:
+          type: string
+          format: date-time
+
+    PriceAlertPayload:
+      type: object
+      properties:
+        ticket:
+          type: integer
+        symbol:
+          type: string
+        alert_type:
+          type: string
+          enum: [liquidity_sweep, breakeven, key_level, custom]
+        price_level:
+          type: number
+        current_price:
+          type: number
+        direction:
+          type: string
+          enum: [above, below]
+        timestamp:
+          type: string
+          format: date-time

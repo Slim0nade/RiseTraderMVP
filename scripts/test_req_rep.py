@@ -8,7 +8,7 @@ import zmq
 import time
 
 def main():
-    host = "75.154.254.186"
+    host = "75.154.254.174"
     rep_port = 5555
 
     print(f"Connecting to MT4 REP socket at tcp://{host}:{rep_port}")

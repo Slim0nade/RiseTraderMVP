@@ -240,20 +240,23 @@ export const DataQuality: React.FC = () => {
           <div>
             <label className="text-sm text-dark-500 mb-2 block">Symbol</label>
             <div className="flex gap-2">
-              {(symbols || ['CrudeOIL', 'DXY', 'VIX']).map((symbol) => (
-                <button
-                  key={symbol}
-                  onClick={() => setSelectedSymbol(symbol)}
-                  className={cn(
-                    'px-4 py-2 rounded-lg font-medium transition-colors',
-                    selectedSymbol === symbol
-                      ? 'bg-primary-500 text-white'
-                      : 'bg-dark-800 text-dark-300 hover:bg-dark-700'
-                  )}
-                >
-                  {symbol}
-                </button>
-              ))}
+              {(symbols || []).map((item) => {
+                const sym = typeof item === 'string' ? item : item.symbol;
+                return (
+                  <button
+                    key={sym}
+                    onClick={() => setSelectedSymbol(sym)}
+                    className={cn(
+                      'px-4 py-2 rounded-lg font-medium transition-colors',
+                      selectedSymbol === sym
+                        ? 'bg-primary-500 text-white'
+                        : 'bg-dark-800 text-dark-300 hover:bg-dark-700'
+                    )}
+                  >
+                    {sym}
+                  </button>
+                );
+              })}
             </div>
           </div>
 

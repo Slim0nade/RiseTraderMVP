@@ -133,7 +133,7 @@ class MT4Connection(Base):
     pub_port = Column(Integer, nullable=False)
     symbol = Column(String(20), nullable=False)
     status = Column(Enum('ACTIVE', 'INACTIVE', 'ERROR', 'RECONNECTING', name='connection_status'), nullable=False)
-    mt4_server_host = Column(String(100), nullable=False, default='75.154.254.186')
+    mt4_server_host = Column(String(100), nullable=False, default='75.154.254.174')
     encryption_enabled = Column(Boolean, nullable=False, default=True)
     client_public_key = Column(String(64), nullable=True)
     server_public_key = Column(String(64), nullable=True)

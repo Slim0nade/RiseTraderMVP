@@ -20,7 +20,7 @@ Design and architect the RiseTrader backend with focus on:
 - **10 Trading Agents** coordinated via MCP server
 - **FastAPI Backend** with async/await throughout
 - **PostgreSQL Database** with SQLAlchemy 2.0
-- **MT4 Integration** via ZMQ at 75.154.254.186
+- **MT4 Integration** via ZMQ at 75.154.254.174
 - **Real-time Data Streams** handling 1M+ ticks/day
 
 ## Key Components You Architect

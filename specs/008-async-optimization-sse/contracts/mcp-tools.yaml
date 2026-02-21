@@ -1,0 +1,247 @@
+# MCP Tools Contract: Async Optimization
+# Feature: 008-async-optimization-sse
+
+# MCP tools are exposed via the RiseTraderMCP server
+# These are the tools added/modified for this feature
+
+tools:
+  # ===========================================================================
+  # Async Optimization Tools (replaces synchronous optimize_strategy)
+  # ===========================================================================
+  
+  - name: optimize_strategy_async
+    description: |
+      Start an async strategy optimization job.
+      Returns immediately with job_id - use get_optimization_status to poll progress.
+      For short optimizations (<100 combinations), use optimize_strategy instead.
+    parameters:
+      symbol:
+        type: string
+        required: true
+        description: Trading symbol (e.g., 'CrudeOIL', 'XAUUSD')
+      timeframe:
+        type: string
+        required: true
+        enum: [M1, M5, M15, H1, H4, D1]
+      start_date:
+        type: string
+        required: true
+        description: Start date (YYYY-MM-DD)
+      end_date:
+        type: string
+        required: true
+        description: End date (YYYY-MM-DD)
+      strategy:
+        type: string
+        required: true
+        description: Strategy name (e.g., 'crude_oil_v3', 'ma_crossover')
+      param_grid:
+        type: object
+        required: false
+        description: Parameter grid to test. If not provided, uses default grid for strategy.
+      optimization_target:
+        type: string
+        required: false
+        default: sharpe_ratio
+        enum: [sharpe_ratio, total_return_pct, profit_factor, risk_adjusted_return]
+      initial_capital:
+        type: number
+        required: false
+        default: 10000
+    returns:
+      job_id:
+        type: string
+        description: UUID of the submitted job
+      status:
+        type: string
+        description: Always 'pending' on submission
+      total_combinations:
+        type: integer
+        description: Number of parameter combinations to test
+
+  - name: get_optimization_status
+    description: |
+      Get the current status and progress of an optimization job.
+      Use this to poll job progress until completion.
+    parameters:
+      job_id:
+        type: string
+        required: true
+        description: Job ID from optimize_strategy_async
+    returns:
+      job_id:
+        type: string
+      status:
+        type: string
+        description: pending, running, completed, failed, or cancelled
+      progress_pct:
+        type: number
+        description: 0-100 completion percentage
+      combinations_tested:
+        type: integer
+      total_combinations:
+        type: integer
+      best_params:
+        type: object
+        description: Best parameters found so far (null if not started)
+      best_metric_value:
+        type: number
+        description: Best metric value so far
+      current_params:
+        type: object
+        description: Parameters currently being tested
+
+  - name: get_optimization_results
+    description: |
+      Get full results from a completed optimization job.
+      Only works for jobs with status 'completed'.
+    parameters:
+      job_id:
+        type: string
+        required: true
+        description: Job ID from optimize_strategy_async
+    returns:
+      job_id:
+        type: string
+      best_params:
+        type: object
+      best_metric_value:
+        type: number
+      all_results:
+        type: array
+        description: All tested combinations with their metrics
+      summary:
+        type: object
+        description: Optimization summary statistics
+
+  - name: cancel_optimization
+    description: |
+      Cancel a running optimization job.
+      Partial results will be available if any combinations completed.
+    parameters:
+      job_id:
+        type: string
+        required: true
+        description: Job ID to cancel
+    returns:
+      job_id:
+        type: string
+      status:
+        type: string
+        description: Always 'cancelled' on success
+      combinations_tested:
+        type: integer
+        description: How many completed before cancellation
+
+  - name: list_active_jobs
+    description: |
+      List all active (pending/running) optimization jobs.
+    parameters:
+      limit:
+        type: integer
+        required: false
+        default: 10
+    returns:
+      jobs:
+        type: array
+        description: List of active job summaries
+
+  # ===========================================================================
+  # Optimization History Tools
+  # ===========================================================================
+
+  - name: list_optimization_runs
+    description: |
+      List past optimization runs from the database.
+      Filter by strategy and/or symbol.
+    parameters:
+      strategy:
+        type: string
+        required: false
+        description: Filter by strategy name
+      symbol:
+        type: string
+        required: false
+        description: Filter by symbol
+      limit:
+        type: integer
+        required: false
+        default: 20
+    returns:
+      runs:
+        type: array
+        description: List of optimization run summaries
+
+  - name: get_optimization_run
+    description: |
+      Get detailed results from a specific optimization run in the database.
+    parameters:
+      run_id:
+        type: string
+        required: true
+        description: Database run ID (UUID)
+    returns:
+      run:
+        type: object
+        description: Full optimization run with results
+
+  # ===========================================================================
+  # Price Alert Tools
+  # ===========================================================================
+
+  - name: set_price_alerts
+    description: |
+      Set price level alerts for an open position.
+      Alerts trigger SSE events when price crosses the specified levels.
+    parameters:
+      ticket:
+        type: integer
+        required: true
+        description: MT4 position ticket
+      liquidity_sweep_price:
+        type: number
+        required: false
+        description: Price level for liquidity sweep alert
+      breakeven_price:
+        type: number
+        required: false
+        description: Price level for breakeven alert
+      key_levels:
+        type: array
+        required: false
+        description: |
+          Additional key levels to monitor.
+          Each item: {price: number, direction: 'above'|'below', label: string}
+    returns:
+      created:
+        type: integer
+        description: Number of alerts created
+      alerts:
+        type: array
+        description: Created alert details
+
+  - name: get_position_alerts
+    description: |
+      Get all active price alerts for a position.
+    parameters:
+      ticket:
+        type: integer
+        required: true
+        description: MT4 position ticket
+    returns:
+      alerts:
+        type: array
+        description: List of alerts for the position
+
+  - name: clear_position_alerts
+    description: |
+      Remove all price alerts for a position.
+    parameters:
+      ticket:
+        type: integer
+        required: true
+        description: MT4 position ticket
+    returns:
+      deleted:
+        type: integer
+        description: Number of alerts removed

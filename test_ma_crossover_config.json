@@ -1,0 +1,19 @@
+{
+  "name": "MA20/50 Crossover - Full Year 2023",
+  "symbol": "CrudeOIL",
+  "start_date": "2023-01-01T00:00:00Z",
+  "end_date": "2023-12-31T23:59:59Z",
+  "initial_capital": 100000,
+  "execution_mode": "synthetic_fast",
+  "agent_config_ref": "ma_crossover",
+  "slippage_pct": 0.001,
+  "commission_pct": 0.0005,
+  "commission_fixed": 0.0,
+  "max_leverage": 1.0,
+  "allow_short_selling": true,
+  "config_params": {
+    "fast_period": 20,
+    "slow_period": 50,
+    "quantity": 1.0
+  }
+}

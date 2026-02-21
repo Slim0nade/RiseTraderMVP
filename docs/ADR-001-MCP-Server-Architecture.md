@@ -17,7 +17,7 @@ RiseTrader requires coordination of 10 autonomous trading agents that must commu
 
 - PostgreSQL database at port 5433 with 13.5M market data records
 - Redis pub/sub for inter-agent messaging
-- MT4 connection at 75.154.254.186 via ZMQ
+- MT4 connection at 75.154.254.174 via ZMQ
 - Async/await architecture throughout (FastAPI + asyncio)
 - Must support both paper trading and live trading modes
 

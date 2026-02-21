@@ -135,7 +135,7 @@ MetaTrader 4
 
 The system supports two network locations:
 - **Local**: Home network (192.168.0.123)
-- **Remote**: Internet (75.154.254.186)
+- **Remote**: Internet (75.154.254.174)
 
 Network location is automatically persisted and survives API restarts. You can check or change it via:
 

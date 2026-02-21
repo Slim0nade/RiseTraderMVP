@@ -353,8 +353,8 @@ class VectorizedBacktestEngine:
         elif strategy == "value_area":
             # ================================================================
             # VALUE AREA STRATEGY - TPO-BASED SUPPORT/RESISTANCE
+            # Fast numpy-based computation (replaces slow rolling().apply())
             # ================================================================
-            # Parameters
             lookback_periods = params.get("lookback_periods", 24)
             value_area_percent = params.get("value_area_percent", 0.70)
             tpo_resolution = params.get("tpo_resolution", 0.10)
@@ -363,21 +363,51 @@ class VectorizedBacktestEngine:
             # Calculate ATR for stop loss sizing
             df["atr"] = self._calculate_atr_vectorized(df, atr_period)
 
-            # Calculate Value Area (POC, VAH, VAL) using rolling windows
-            df["poc"] = df["close"].rolling(window=lookback_periods).apply(
-                lambda x: self._calculate_poc_from_closes(x, tpo_resolution),
-                raw=False
-            )
+            # Fast single-pass TPO computation using numpy
+            closes = df["close"].values
+            n = len(closes)
+            poc_arr = np.full(n, np.nan)
+            vah_arr = np.full(n, np.nan)
+            val_arr = np.full(n, np.nan)
 
-            df["vah"] = df["close"].rolling(window=lookback_periods).apply(
-                lambda x: self._calculate_vah(x, value_area_percent, tpo_resolution, True),
-                raw=False
-            )
+            for i in range(lookback_periods, n):
+                window = closes[i - lookback_periods:i]
+                # Bucket prices into TPO resolution
+                buckets = np.floor(window / tpo_resolution) * tpo_resolution
+                unique, counts = np.unique(buckets, return_counts=True)
 
-            df["val"] = df["close"].rolling(window=lookback_periods).apply(
-                lambda x: self._calculate_vah(x, value_area_percent, tpo_resolution, False),
-                raw=False
-            )
+                if len(unique) == 0:
+                    continue
+
+                # POC = bucket with highest count
+                poc_idx = np.argmax(counts)
+                poc_arr[i] = unique[poc_idx]
+
+                # Value Area: expand from POC until we cover value_area_percent
+                total = counts.sum()
+                target = int(np.ceil(total * value_area_percent))
+                accumulated = counts[poc_idx]
+                lo_idx = poc_idx
+                hi_idx = poc_idx
+
+                while accumulated < target and (lo_idx > 0 or hi_idx < len(unique) - 1):
+                    up_count = counts[hi_idx + 1] if hi_idx < len(unique) - 1 else 0
+                    dn_count = counts[lo_idx - 1] if lo_idx > 0 else 0
+                    if up_count >= dn_count:
+                        if hi_idx < len(unique) - 1:
+                            hi_idx += 1
+                            accumulated += counts[hi_idx]
+                    else:
+                        if lo_idx > 0:
+                            lo_idx -= 1
+                            accumulated += counts[lo_idx]
+
+                vah_arr[i] = unique[hi_idx]
+                val_arr[i] = unique[lo_idx]
+
+            df["poc"] = poc_arr
+            df["vah"] = vah_arr
+            df["val"] = val_arr
 
         else:
             # Default: simple MA

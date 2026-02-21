@@ -56,7 +56,7 @@
 
 ### ⚠️ Must Fix Before Production
 1. **MT4 Connection Security** (HIGH PRIORITY)
-   - Current: Exposed at 75.154.254.186 with no encryption
+   - Current: Exposed at 75.154.254.174 with no encryption
    - Fix: Implement VPN tunnel OR ZMQ CurveZMQ encryption
    - Timeline: Phase 2 (Week 3-4)
 
@@ -203,7 +203,7 @@ DATABASE_URL=postgresql+asyncpg://...
 REDIS_URL=redis://redis:6379
 
 # MT4
-MT4_HOST=75.154.254.186
+MT4_HOST=75.154.254.174
 MT4_COMMAND_PORT=5555
 MT4_STREAM_PORT=5556
 ZMQ_CLIENT_SECRET_KEY=...

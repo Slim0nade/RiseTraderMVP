@@ -1,7 +1,7 @@
 """Create model_metrics table.
 
-Revision ID: 008
-Revises: 007
+Revision ID: 008a
+Revises: 008
 Create Date: 2025-11-29
 """
 
@@ -9,8 +9,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = '008'
-down_revision = '007'
+revision = '008a'
+down_revision = '008'
 branch_labels = None
 depends_on = None
 

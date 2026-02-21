@@ -7,7 +7,7 @@
 
 ## Summary
 
-Build an autonomous AI trading system where ALL trading decisions (position sizing, stop-loss placement, take-profit targets) are made by intelligent agents that learn and adapt from data—eliminating hardcoded formulas. The system uses 12 specialized agents organized in 5 layers (Analysis, Debate, Decision, Execution, Supervisory) with reinforcement learning training for continuous improvement. Key innovations: (1) Adaptive position sizing based on Kelly criterion, regime, conviction, and correlation; (2) Intelligent stop-loss using market structure and probability analysis; (3) Probabilistic take-profit targeting based on ML forecast distributions; (4) Adversarial debate layer producing stress-tested trade ideas; (5) Multi-LLM support with cost optimization using quick-think/deep-think tiers.
+Build an autonomous AI trading system where ALL trading decisions (position sizing, stop-loss placement, take-profit targets) are made by intelligent agents that learn and adapt from data—eliminating hardcoded formulas. The system uses 16 specialized agents organized in 6 layers (Analysis, Debate, Decision, Risk Debate, Approval Gate, Execution/Supervisory) with reinforcement learning training for continuous improvement. Key innovations: (1) Adaptive position sizing based on Kelly criterion, regime, conviction, and correlation; (2) Intelligent stop-loss using market structure and probability analysis; (3) Probabilistic take-profit targeting based on ML forecast distributions; (4) Adversarial debate layer producing stress-tested trade ideas; (5) Three-way risk tolerance debate (Risky/Neutral/Safe) validating position sizing; (6) Fund Manager approval gate enforcing portfolio-level limits; (7) Multi-LLM support with cost optimization using quick-think/deep-think tiers.
 
 **Technical Approach**: Multi-agent architecture using AutoGen 0.4 for agent orchestration (Swarm for sequential pipelines, SelectorGroupChat for debate, RoundRobinGroupChat for analysis), MCP (Model Context Protocol) for ML tool integration, MT4/ZMQ bridge for execution, PostgreSQL for persistence, Redis for state caching, dual-LLM allocation (Qwen3-14B for routine + DeepSeek-R1-14B for reasoning), RL training via PPO/SAC algorithms with walk-forward validation, structured Pydantic schemas for all inter-agent communication, portfolio-level capital allocation supporting 2-3 instruments simultaneously (Gold, Crude Oil).
 
@@ -47,7 +47,7 @@ Build an autonomous AI trading system where ALL trading decisions (position sizi
 - Synchronous decision pipeline per signal (no parallel agent execution within one signal)
 - Paper trading validation required before live deployment
 **Scale/Scope**:
-- 12 specialized agents × 2-3 instruments = ~30-36 agent instances
+- 16 specialized agents × 2-3 instruments = ~48-54 agent instances
 - 10k+ trading decisions per month per instrument
 - 2+ years historical data for RL training
 - Event throughput: 100+ events/sec during high-volatility periods
@@ -177,12 +177,17 @@ src/
 │   │   └── sentiment_analyst_agent.py    # FR-003: Positioning data, SentimentReport
 │   ├── debate/
 │   │   ├── bull_researcher_agent.py      # FR-008: Builds bull case with evidence
-│   │   └── bear_researcher_agent.py      # FR-008: Builds bear case with rebuttals (uses deep-think LLM)
+│   │   ├── bear_researcher_agent.py      # FR-008: Builds bear case with rebuttals (uses deep-think LLM)
+│   │   ├── risky_debator_agent.py        # FR-008A: Risk debate - argues for higher position sizing
+│   │   ├── neutral_debator_agent.py      # FR-008A: Risk debate - validates baseline calculations
+│   │   └── safe_debator_agent.py         # FR-008A: Risk debate - identifies risk reduction factors
 │   ├── decision/
 │   │   ├── trade_decision_agent.py       # FR-004: LONG/SHORT/NO_TRADE with conviction
 │   │   ├── position_sizing_agent.py      # FR-005: Dynamic sizing (Kelly, regime, correlation)
 │   │   ├── stop_loss_agent.py            # FR-006: Structure-based stop placement
 │   │   └── take_profit_agent.py          # FR-007: Probabilistic targets from ML distributions
+│   ├── approval/
+│   │   └── fund_manager_agent.py         # FR-008B: Final approval gate (APPROVE/MODIFY/REJECT)
 │   ├── execution/
 │   │   ├── execution_agent.py            # FR-009: Order placement via MT4/ZMQ
 │   │   ├── position_monitor_agent.py     # FR-010: Trailing stops, target adjustments
@@ -190,7 +195,8 @@ src/
 │   ├── teams/                            # AutoGen 0.4 team orchestration patterns
 │   │   ├── analysis_team.py              # RoundRobinGroupChat: Technical → Fundamental → Sentiment
 │   │   ├── debate_team.py                # SelectorGroupChat: Bull ↔ Bear moderated debate
-│   │   ├── trading_pipeline.py           # Swarm: Analysis → Debate → Decision → Execution
+│   │   ├── risk_debate_team.py           # SelectorGroupChat: Risky ↔ Neutral ↔ Safe position size debate
+│   │   ├── trading_pipeline.py           # Swarm: Analysis → Debate → TradeDecision → Decision Agents → Risk Debate → Fund Manager → Execution
 │   │   ├── strategy_team.py              # Manages full agent team per instrument
 │   │   └── team_factory.py               # Creates teams from model_config for A/B testing
 │   ├── coordination/
@@ -199,7 +205,9 @@ src/
 │   ├── schemas/                          # FR-017: Pydantic schemas for structured communication
 │   │   ├── events.py                     # Event schemas (agent-to-agent)
 │   │   ├── decisions.py                  # TradeIntent, PositionSize, StopLoss, TakeProfit
-│   │   └── reports.py                    # TechnicalReport, FundamentalReport, SentimentReport
+│   │   ├── reports.py                    # TechnicalReport, FundamentalReport, SentimentReport
+│   │   ├── debate.py                     # BullCase, BearCase, RiskDebateOutcome
+│   │   └── approval.py                   # ApprovalDecision (APPROVE/MODIFY/REJECT)
 │   └── tools/                            # MCP tool integration (for ML models/calculators only)
 │       ├── mcp_tools.py                  # @function_tool decorated MCP calls for AutoGen
 │       └── tool_registry.py              # Registers MCP tools with AutoGen agents
@@ -280,7 +288,30 @@ scripts/
     └── check_agent_health.sh             # Health check for all agents
 ```
 
-**Structure Decision**: Backend service with new `src/agents/` directory containing 5 layers of specialized agents. Follows existing RiseTrader patterns (repository pattern, service layer, async SQLAlchemy). Adds RL training infrastructure under `src/ml/rl/` and MCP tool implementations under `src/ml/tools/`. Configuration-driven agent system using YAML files in `config/agents/`.
+**Structure Decision**: Backend service with new `src/agents/` directory containing 6 layers of specialized agents (Analysis, Debate, Decision, Risk Debate, Approval Gate, Execution/Supervisory). Follows existing RiseTrader patterns (repository pattern, service layer, async SQLAlchemy). Adds RL training infrastructure under `src/ml/rl/` and MCP tool implementations under `src/ml/tools/`. Configuration-driven agent system using YAML files in `config/agents/`.
+
+**Updated Trading Pipeline Flow** (Session 2025-12-05):
+```
+Analysis Team (RoundRobinGroupChat)
+  ↓ TechnicalReport, FundamentalReport, SentimentReport
+Bull/Bear Debate (SelectorGroupChat)
+  ↓ BullCase, BearCase
+TradeDecisionAgent
+  ↓ TradeIntent (LONG/SHORT/NO_TRADE + conviction)
+Decision Agents (Sequential)
+  ├─ PositionSizingAgent → PositionSizeDecision
+  ├─ StopLossAgent → StopLossDecision
+  └─ TakeProfitAgent → TakeProfitDecision
+Risk Tolerance Debate (SelectorGroupChat) [NEW - User Story 4B]
+  ├─ RiskyDebator (argues for higher sizing)
+  ├─ NeutralDebator (validates baseline)
+  └─ SafeDebator (identifies reduction factors)
+  ↓ RiskDebateOutcome (adjusted position size/risk level)
+Fund Manager Approval Gate [NEW - User Story 4C]
+  ↓ ApprovalDecision (APPROVE/MODIFY/REJECT)
+ExecutionAgent
+  ↓ Order placement via MT4/ZMQ
+```
 
 ## Complexity Tracking
 
