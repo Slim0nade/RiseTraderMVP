@@ -2,19 +2,97 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## ABSOLUTE RULES (violation = immediate task rejection)
+
+These rules apply to ALL agents and ALL sessions. No exceptions.
+
+### No Fakes Policy
+- **NEVER use hardcoded ATR.** All ATR must come from `atr_calculator.py` with real candle data. If candles unavailable, RAISE ERROR — never fall back to defaults.
+- **NEVER use hardcoded ML confidence (0.75).** Until real models exist (Phase 4), flag and skip ML signals entirely.
+- **NEVER use hardcoded correlation (0.2).** Use rolling 20-day correlation from real price returns. If < 20 days, return NaN.
+- **NEVER use hardcoded VaR (0.02 * balance).** Use realized rolling volatility from actual candle history.
+- **NEVER use `score = 0.5 + (features[0] * 0.3)`.** This is a fake ML formula. Replace or skip.
+- **NEVER use `unittest.mock`, `MagicMock`, or `@patch()`** for MT4/MCP/market data interactions. All integration tests use real data.
+
+### Risk Management
+- **ALL position sizing capped at 2% account risk.** No exceptions. Assert this in every sizing path.
+- **Anti-stop-hunt rules:** Never use round numbers for stops. ATR multiplier + random 5-15 pip offset.
+- **No single instrument > 20% of account margin.**
+
+### Testing Tiers (all 3 required for "done")
+1. **Unit**: Pure math validation (ATR formula, Kelly formula, correlation math) with static inputs
+2. **Integration**: Real candle data from MCP → function → verify output changes with different data
+3. **E2E**: Full pipeline signal → risk → sizing → approval → execution on paper account
+
+### Commit Convention
+- Every task commit tagged with `[integration-pass]` after mcp-verifier confirms
+- Format: `feat(scope): description [integration-pass]`
+- Example: `feat(stealth-stops): wire real ATR from candle data [integration-pass]`
+
+### File Ownership (Enforced)
+- **quant-dev**: `src/strategies/`, `src/agents/`, `src/ml/`, `src/services/backtesting/`
+- **risk-eng**: `src/services/stealth_stop_manager.py`, `src/utils/atr_calculator.py`, `src/risk/`, `src/execution/`, `config/stealth_stops.yaml`
+- **mcp-verifier**: `tests/`, `scripts/`
+- **lead**: `docs/`, `CLAUDE.md`, `.claude/`
+- **reviewer**: Read-only all directories
+- Cross-cutting changes require lead approval + reviewer sign-off
+- See `/docs/file-ownership.md` for full details
+
+## Agent Team Architecture
+
+### Permanent Core (5 agents, all phases)
+| # | Agent | Model | Role |
+|---|-------|-------|------|
+| 1 | `lead` | Opus | Orchestrator. Delegates only. Enforces roadmap. |
+| 2 | `quant-dev` | Sonnet | Primary code author. Strategies + agent logic. |
+| 3 | `risk-eng` | Sonnet | Risk infrastructure. Stops, sizing, correlation. |
+| 4 | `mcp-verifier` | Sonnet | No-mocks enforcer. Exclusive MCP/MT4 access. |
+| 5 | `reviewer` | Sonnet | Devil's advocate. Blocks bad merges. |
+
+### Phase-Specific Specialists (spawn/kill as needed)
+| Phase | Specialist | Model | Purpose |
+|-------|-----------|-------|---------|
+| 2 | `spread-builder` | Sonnet | Crack spread, ag calendar, carry trade |
+| 3 | `crisis-automator` | Opus | VIX triggers, crash portfolio, contrarian signals |
+| 4 | `ml-trainer` | Opus | Real XGBoost/LSTM training (worktree isolation) |
+
+### Quality Gate Hooks
+- **PostToolUse (Edit|Write)**: `scripts/validate-no-fakes.sh` — blocks hardcoded values
+- **TaskCompleted**: `scripts/require-integration-test.sh` — requires [integration-pass]
+
+### Phase Gates
+- **Phase 1→2**: All 6 hardcoded fakes eliminated. Backtest improvement over baseline.
+- **Phase 2→3**: 4+ strategies across 5+ instruments. Real correlation live.
+- **Phase 3→4**: Crisis replay reproduces +150% COVID, +60% energy crisis.
+- **Phase 4→Production**: Autonomous 24hr paper trading session passes.
+
+## The 6 Known Fakes (Elimination Targets)
+
+| # | Fake | File | Line | Current Value | Required Fix |
+|---|------|------|------|--------------|-------------|
+| 1 | ATR defaults | stealth_stop_manager.py | 249 | `{"CrudeOIL": 0.75}` | Wire atr_calculator.py |
+| 2 | ML score | ml_prediction.py | 338 | `0.5 + features[0]*0.3` | Real model or skip |
+| 3 | ML confidence | ml_prediction.py | 339 | `0.75` hardcoded | Calibrated output or skip |
+| 4 | Correlation | risk_overseer.py | 340 | `return 0.2` | Rolling 20-day real corr |
+| 5 | VaR volatility | risk_overseer.py | 368 | `0.02 * balance` | Realized rolling vol |
+| 6 | Kelly inputs | risk_manager.py | 303 | Uses fake confidence | Real win_rate + P&L ratio |
+
 ## Quick Reference for New Sessions
 
 **IMPORTANT:** Before starting any work, check these files:
 - `.serena/QUICK_START.md` - Infrastructure status & immediate next steps
-- `.serena/SESSION_PROGRESS_2025-11-16.md` - Latest session progress & detailed notes
-- `.claude/SETUP_COMPLETE.md` - Subagent system usage guide
+- `.serena/memories/` - All Serena memory files for project context
+- `.claude/agents/` - Agent team configurations
+- `docs/file-ownership.md` - Directory ownership boundaries
 
- Key Learnings:
+Key Learnings:
 
-  1. ⚠️ Always search entire codebase before changing class names
-  2. ⚠️ Always verify fixes work by checking logs and data
-  3. ⚠️ Always provide context for anything
-  4. ⚠️ Never assume a fix is complete without verification
+  1. Always search entire codebase before changing class names
+  2. Always verify fixes work by checking logs and data
+  3. Always provide context for anything
+  4. Never assume a fix is complete without verification
+  5. Never introduce hardcoded trading values — the validate-no-fakes.sh hook will block you
+  6. Every change needs 3-tier testing: unit → integration → e2e
 
 
 ## Project Overview
