@@ -11,6 +11,7 @@ Performance Target: <200ms risk calculation
 """
 
 import asyncio
+import math
 import time
 from typing import Dict, Any, List, Optional
 
@@ -82,6 +83,10 @@ class RiskOverseerAgent(BaseAgent):
 
         # Last check timestamp
         self.last_check = 0.0
+
+        # Correlation cache — key: frozenset of symbols, value: (corr_value, computed_at)
+        self._corr_cache: Dict[frozenset, float] = {}
+        self._corr_cache_time: Dict[frozenset, float] = {}
 
         # Stats
         self.risk_alerts = 0
@@ -229,8 +234,15 @@ class RiskOverseerAgent(BaseAgent):
 
         # 2. Correlation
         if "correlation" in self.checks:
-            correlation = self._check_correlation()
+            correlation = await self._check_correlation()
             risk_metrics["avg_correlation"] = correlation
+
+            if math.isnan(correlation):
+                self.logger.warning(
+                    "correlation_nan_insufficient_data",
+                    symbols=[pos["symbol"] for pos in self.open_positions.values()],
+                    message="Correlation check skipped — fewer than 21 D1 candles for at least one symbol",
+                )
 
             if correlation > 0.7:  # High correlation
                 alerts.append({
@@ -322,26 +334,85 @@ class RiskOverseerAgent(BaseAgent):
 
         return float(concentration)
 
-    def _check_correlation(self) -> float:
+    async def _check_correlation(self) -> float:
         """
-        Check average correlation between positions
+        Check average pairwise Pearson correlation between open position symbols.
 
-        For simplicity, returns 0 (uncorrelated) if diverse symbols,
-        1 (fully correlated) if same symbols
+        Uses rolling 20-day log returns from D1 candles fetched from the database.
+        Returns NaN if any symbol has fewer than 21 D1 candles (20 returns).
+        Results are cached for 1 hour per symbol-set.
 
-        In production, calculate actual correlation matrix
+        Returns:
+            Average pairwise Pearson correlation, or NaN if insufficient data.
         """
         if len(self.open_positions) <= 1:
             return 0.0
 
-        # Simplified: Check if all same symbol
-        symbols = set(pos["symbol"] for pos in self.open_positions.values())
+        symbols = list(set(pos["symbol"] for pos in self.open_positions.values()))
 
         if len(symbols) == 1:
-            return 1.0  # All same symbol = fully correlated
+            return 1.0
 
-        # Diverse symbols - assume low correlation
-        return 0.2
+        cache_key = frozenset(symbols)
+        now = time.time()
+        if cache_key in self._corr_cache and (now - self._corr_cache_time[cache_key]) < 3600:
+            cached = self._corr_cache[cache_key]
+            self.logger.debug("correlation_cache_hit", symbols=symbols, correlation=cached)
+            return cached
+
+        from src.api.dependencies import get_db_context
+        from src.database.repositories.market_data_repository import MarketDataRepository
+
+        returns_by_symbol: Dict[str, np.ndarray] = {}
+        async with get_db_context() as db:
+            repo = MarketDataRepository(db)
+            for sym in symbols:
+                rows = await repo.get_latest_ticks(symbol=sym, timeframe="D1", limit=21)
+                if len(rows) < 21:
+                    self.logger.warning(
+                        "correlation_insufficient_data",
+                        symbol=sym,
+                        rows_available=len(rows),
+                        rows_required=21,
+                    )
+                    return float("nan")
+                # rows are newest-first — reverse to oldest-first for chronological returns
+                closes = [float(r.close) for r in reversed(rows)]
+                log_returns = np.array(
+                    [np.log(closes[i + 1] / closes[i]) for i in range(len(closes) - 1)]
+                )
+                returns_by_symbol[sym] = log_returns
+
+        correlations = []
+        for i in range(len(symbols)):
+            for j in range(i + 1, len(symbols)):
+                r1 = returns_by_symbol[symbols[i]]
+                r2 = returns_by_symbol[symbols[j]]
+                corr = float(np.corrcoef(r1, r2)[0, 1])
+                correlations.append(corr)
+                self.logger.debug(
+                    "pairwise_correlation",
+                    symbol_a=symbols[i],
+                    symbol_b=symbols[j],
+                    correlation=corr,
+                )
+
+        if not correlations:
+            return 0.0
+
+        avg_corr = float(np.mean(correlations))
+
+        self._corr_cache[cache_key] = avg_corr
+        self._corr_cache_time[cache_key] = now
+
+        self.logger.info(
+            "correlation_computed",
+            symbols=symbols,
+            avg_correlation=avg_corr,
+            pairs=len(correlations),
+        )
+
+        return avg_corr
 
     def _calculate_var(self, confidence: float = 0.95) -> float:
         """

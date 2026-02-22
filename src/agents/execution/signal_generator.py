@@ -188,6 +188,78 @@ class SignalGeneratorAgent(BaseAgent):
         for symbol in self.price_history.keys():
             await self._generate_signal(symbol)
 
+    def _get_regime_weights(self, regime: Optional[str]) -> tuple:
+        """
+        Return (strategy_weights_dict, position_size_multiplier) for a given regime.
+
+        Weights are relative (do not need to sum to 1.0).
+        ml_forecast weight is 0.0 for all regimes — ML is fake until Phase 4.
+
+        Args:
+            regime: One of "high_volatility", "trending_up", "trending_down",
+                    "ranging", "low_volatility", or None
+
+        Returns:
+            Tuple of (weights_dict, position_size_multiplier)
+
+        Ranges:
+            - weights: 0.0 to 0.5 per strategy
+            - multiplier: 0.5 (low_vol) or 1.0 (all others)
+        """
+        if regime == "high_volatility":
+            return (
+                {
+                    "crude_oil_v3": 0.4,
+                    "ma_crossover": 0.3,
+                    "momentum": 0.2,
+                    "mean_reversion": 0.1,
+                    "breakout": 0.0,
+                    "ml_forecast": 0.0,
+                },
+                1.0,
+            )
+        elif regime in ("trending_up", "trending_down"):
+            return (
+                {
+                    "ma_crossover": 0.4,
+                    "momentum": 0.35,
+                    "breakout": 0.25,
+                    "crude_oil_v3": 0.0,
+                    "mean_reversion": 0.0,
+                    "ml_forecast": 0.0,
+                },
+                1.0,
+            )
+        elif regime == "ranging":
+            return (
+                {
+                    "value_area": 0.4,
+                    "mean_reversion": 0.35,
+                    "momentum": 0.15,
+                    "breakout": 0.1,
+                    "crude_oil_v3": 0.0,
+                    "ma_crossover": 0.0,
+                    "ml_forecast": 0.0,
+                },
+                1.0,
+            )
+        elif regime == "low_volatility":
+            return (
+                {
+                    "value_area": 0.5,
+                    "mean_reversion": 0.3,
+                    "momentum": 0.0,
+                    "breakout": 0.0,
+                    "crude_oil_v3": 0.0,
+                    "ma_crossover": 0.0,
+                    "ml_forecast": 0.0,
+                },
+                0.5,  # Half position size in low-volatility regimes
+            )
+        else:
+            # None or unknown regime: use default configured weights unchanged
+            return (self.strategy_weights, 1.0)
+
     async def _generate_signal(self, symbol: str) -> None:
         """
         Generate trading signal by combining all strategies
@@ -202,23 +274,34 @@ class SignalGeneratorAgent(BaseAgent):
         if len(prices) < 20:
             return
 
-        # Calculate each strategy signal
+        # Select weights for current regime (replaces fixed self.strategy_weights)
+        regime_weights, size_multiplier = self._get_regime_weights(self.current_regime)
+
+        self.logger.debug(
+            "regime_weights_active",
+            regime=self.current_regime,
+            weights=regime_weights,
+            size_multiplier=size_multiplier,
+        )
+
+        # Calculate each strategy signal using regime-adjusted weights as gate
         strategy_signals = {}
 
-        if "momentum" in self.strategy_weights:
+        if regime_weights.get("momentum", 0.0) > 0.0:
             strategy_signals["momentum"] = self._momentum_strategy(prices)
 
-        if "mean_reversion" in self.strategy_weights:
+        if regime_weights.get("mean_reversion", 0.0) > 0.0:
             strategy_signals["mean_reversion"] = self._mean_reversion_strategy(prices)
 
-        if "breakout" in self.strategy_weights:
+        if regime_weights.get("breakout", 0.0) > 0.0:
             strategy_signals["breakout"] = self._breakout_strategy(prices)
 
-        if "ml_forecast" in self.strategy_weights and self.latest_forecast:
-            strategy_signals["ml_forecast"] = self._ml_forecast_strategy()
+        # ml_forecast always skipped — fake model (Phase 4 fix)
+        # if regime_weights.get("ml_forecast", 0.0) > 0.0 and self.latest_forecast:
+        #     strategy_signals["ml_forecast"] = self._ml_forecast_strategy()
 
-        # Combine signals using weighted voting
-        combined_signal = self._combine_signals(strategy_signals)
+        # Combine signals using weighted voting with regime weights
+        combined_signal = self._combine_signals(strategy_signals, regime_weights)
 
         # Check threshold
         if abs(combined_signal["score"]) < self.signal_threshold:
@@ -250,6 +333,7 @@ class SignalGeneratorAgent(BaseAgent):
             "strategy_votes": strategy_signals,
             "current_price": prices[-1]["close"],
             "regime": self.current_regime,
+            "position_size_multiplier": size_multiplier,
             "timestamp": time.time(),
         }
 
@@ -375,32 +459,38 @@ class SignalGeneratorAgent(BaseAgent):
 
         return {"score": score, "confidence": confidence}
 
-    def _combine_signals(self, strategy_signals: Dict[str, Dict[str, float]]) -> Dict[str, float]:
+    def _combine_signals(
+        self,
+        strategy_signals: Dict[str, Dict[str, float]],
+        regime_weights: Optional[Dict[str, float]] = None,
+    ) -> Dict[str, float]:
         """
-        Combine strategy signals using weighted voting
+        Combine strategy signals using weighted voting.
 
         Args:
             strategy_signals: Dict of strategy_name -> {score, confidence}
+            regime_weights: Weights to use for combination. If None, falls back to
+                            self.strategy_weights. Obtained from _get_regime_weights().
 
         Returns:
-            Combined signal with score and confidence
+            Combined signal with score and confidence.
+            score range: [-1.0, 1.0]
+            confidence range: [0.0, 1.0]
         """
+        weights = regime_weights if regime_weights is not None else self.strategy_weights
+
         weighted_sum = 0.0
         total_weight = 0.0
         confidence_sum = 0.0
         count = 0
 
         for strategy_name, signal in strategy_signals.items():
-            if strategy_name not in self.strategy_weights:
+            weight = weights.get(strategy_name, 0.0)
+            if weight <= 0.0:
                 continue
 
-            weight = self.strategy_weights[strategy_name]
             score = signal.get("score", 0.0)
             confidence = signal.get("confidence", 0.0)
-
-            # Adjust by regime if applicable
-            if self.current_regime:
-                weight = self._adjust_weight_by_regime(strategy_name, weight)
 
             weighted_sum += score * weight * confidence
             total_weight += weight * confidence
@@ -417,33 +507,3 @@ class SignalGeneratorAgent(BaseAgent):
             "score": combined_score,
             "confidence": combined_confidence,
         }
-
-    def _adjust_weight_by_regime(self, strategy_name: str, weight: float) -> float:
-        """
-        Adjust strategy weight based on market regime
-
-        Different strategies perform better in different regimes
-        """
-        if not self.current_regime:
-            return weight
-
-        # Regime-specific adjustments
-        if self.current_regime in ["trending_up", "trending_down"]:
-            # Momentum works better in trending markets
-            if strategy_name == "momentum":
-                return weight * 1.3
-            elif strategy_name == "mean_reversion":
-                return weight * 0.7
-
-        elif self.current_regime == "ranging":
-            # Mean reversion works better in ranging markets
-            if strategy_name == "mean_reversion":
-                return weight * 1.3
-            elif strategy_name == "momentum":
-                return weight * 0.7
-
-        elif self.current_regime == "high_volatility":
-            # Reduce all weights in high volatility
-            return weight * 0.8
-
-        return weight

@@ -302,6 +302,17 @@ class RiskManagerAgent(BaseAgent):
             # Default to fixed
             position_size = self._fixed_size()
 
+        # Apply regime-based position size multiplier (e.g., 0.5x for low_volatility)
+        size_multiplier = signal_data.get("position_size_multiplier", 1.0)
+        if size_multiplier != 1.0:
+            self.logger.info(
+                "position_size_regime_scaled",
+                original=position_size,
+                multiplier=size_multiplier,
+                scaled=position_size * size_multiplier,
+            )
+            position_size = position_size * size_multiplier
+
         # Hard 2% cap — final enforcement regardless of sizing method
         max_risk = self.account_balance * self.risk_per_trade
         if position_size > max_risk:
