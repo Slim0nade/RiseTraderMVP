@@ -191,52 +191,11 @@ def calculate_atr_from_ohlc(
         return calculate_atr_simple(candles, period)
 
 
-def estimate_atr_from_symbol(symbol: str) -> float:
-    """
-    Get estimated ATR for a symbol when historical data is unavailable.
 
-    These are conservative estimates based on typical volatility.
-    Used as fallback when database/API is unavailable.
-
-    Args:
-        symbol: Trading symbol
-
-    Returns:
-        Estimated ATR value
-    """
-    # Symbol-specific ATR defaults (based on typical H1 volatility)
-    atr_defaults = {
-        # Commodities
-        "CrudeOIL": 0.75,
-        "CRUDEOIL": 0.75,
-        "WTI": 0.75,
-        "XAUUSD": 15.0,   # Gold
-        "XAGUSD": 0.35,   # Silver
-
-        # Forex majors
-        "EURUSD": 0.0050,
-        "GBPUSD": 0.0070,
-        "USDJPY": 0.50,
-        "USDCHF": 0.0045,
-        "AUDUSD": 0.0045,
-        "USDCAD": 0.0050,
-        "NZDUSD": 0.0040,
-
-        # Forex crosses
-        "EURGBP": 0.0035,
-        "EURJPY": 0.55,
-        "GBPJPY": 0.80,
-
-        # Indices
-        "US30": 150.0,    # Dow Jones
-        "US500": 20.0,    # S&P 500
-        "USTEC": 80.0,    # Nasdaq
-    }
-
-    # Normalize symbol (remove suffixes like .raw, .pro)
-    normalized = symbol.upper().split(".")[0]
-
-    return atr_defaults.get(normalized, 0.75)
+# estimate_atr_from_symbol() REMOVED — Phase 1 fake elimination.
+# The hardcoded atr_defaults dict (CrudeOIL=0.75, XAUUSD=15.0, etc.) was
+# Fake #1 in CLAUDE.md. All ATR must now come from real candle data via
+# calculate_atr_wilder(). If candles are unavailable, raise InsufficientDataError.
 
 
 def calculate_atr_percentage(atr: float, price: float) -> float:
@@ -325,10 +284,13 @@ class ATRCalculator:
                 self.set_cached_atr(symbol, atr)
                 return atr
 
-        # Fallback to estimate
-        estimate = estimate_atr_from_symbol(symbol)
-        logger.info(f"Using estimated ATR for {symbol}: {estimate}")
-        return estimate
+        # No fallback — hardcoded estimates are banned (Phase 1 fake elimination)
+        raise InsufficientDataError(
+            symbol=symbol,
+            timeframe="unknown",
+            got=len(candles) if candles else 0,
+            need=self.period + 1,
+        )
 
     def clear_cache(self) -> None:
         """Clear the ATR cache."""

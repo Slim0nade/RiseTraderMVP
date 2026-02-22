@@ -7,10 +7,10 @@ Common utilities used across the trading platform.
 from src.utils.atr_calculator import (
     ATRCalculator,
     Candle,
+    InsufficientDataError,
     calculate_atr_wilder,
     calculate_atr_simple,
     calculate_true_range,
-    estimate_atr_from_symbol,
     calculate_atr_percentage,
 )
 
@@ -30,7 +30,7 @@ __all__ = [
     "calculate_atr_wilder",
     "calculate_atr_simple",
     "calculate_true_range",
-    "estimate_atr_from_symbol",
+    "InsufficientDataError",
     "calculate_atr_percentage",
     # Config Loader
     "ConfigLoader",
