@@ -83,6 +83,9 @@ class CrudeOilParams:
     close_only_in_profit: bool = True
     min_profit_close: float = 0.0
 
+    # Seasonality filter
+    enable_seasonality: bool = True
+
 
 @dataclass
 class TradeState:
@@ -271,8 +274,48 @@ class CrudeOilStrategy:
             
         return current_atr <= average_atr * self.params.volatility_threshold
     
+    def _check_seasonality(self, timestamp: datetime) -> float:
+        """
+        Check seasonal weight for crude oil trading.
+
+        Crude oil has strong seasonal patterns:
+        - Q1 (Jan-Mar): signal_weight = 1.0 (winter demand, strongest seasonal)
+        - Q2 (Apr-Jun): signal_weight = 1.0 (refinery maintenance season)
+        - Q3 (Jul-Sep): signal_weight = 0.5 (fading summer demand)
+        - Q4 (Oct-Dec): signal_weight = 0.0 (DISABLED — weakest period, 68-72% win rate drops)
+
+        Args:
+            timestamp: Current candle timestamp
+
+        Returns:
+            Signal weight multiplier (0.0 = disabled, 0.5 = half weight, 1.0 = full weight)
+        """
+        if not self.params.enable_seasonality:
+            return 1.0
+
+        month = timestamp.month
+
+        if month <= 3:      # Q1: Jan-Mar
+            return 1.0
+        elif month <= 6:    # Q2: Apr-Jun
+            return 1.0
+        elif month <= 9:    # Q3: Jul-Sep
+            return 0.5
+        else:               # Q4: Oct-Dec
+            return 0.0
+
     def _check_entry(self, tick: MarketTick) -> CrudeOilSignal:
         """Check for new trade entry signals."""
+        # Check seasonality filter before any indicator calculation
+        seasonality_weight = self._check_seasonality(tick.timestamp)
+        if seasonality_weight == 0.0:
+            return CrudeOilSignal(
+                action=None,
+                quantity=Decimal("0.0"),
+                confidence=0.0,
+                reason="Q4 seasonal filter: trading disabled (Oct-Dec)"
+            )
+
         # Calculate indicators
         ema_fast = self._calculate_ema(self.params.ema_fast)
         ema_slow = self._calculate_ema(self.params.ema_slow)
@@ -302,15 +345,17 @@ class CrudeOilStrategy:
             if self._check_filters(buy_rsi, buy_cci) and buy_momentum:
                 return self._open_position(
                     'buy', tick, stop_distance, tp_distance,
-                    f"BUY: EMA({ema_fast:.2f}>{ema_slow:.2f}), RSI={rsi:.1f}, CCI={cci:.1f}, Mom={momentum:.2f}"
+                    f"BUY: EMA({ema_fast:.2f}>{ema_slow:.2f}), RSI={rsi:.1f}, CCI={cci:.1f}, Mom={momentum:.2f}, seasonal_weight={seasonality_weight:.1f}",
+                    seasonality_weight=seasonality_weight
                 )
-        
+
         # Check sell signal
         if sell_ema:
             if self._check_filters(sell_rsi, sell_cci) and sell_momentum:
                 return self._open_position(
                     'sell', tick, stop_distance, tp_distance,
-                    f"SELL: EMA({ema_fast:.2f}<{ema_slow:.2f}), RSI={rsi:.1f}, CCI={cci:.1f}, Mom={momentum:.2f}"
+                    f"SELL: EMA({ema_fast:.2f}<{ema_slow:.2f}), RSI={rsi:.1f}, CCI={cci:.1f}, Mom={momentum:.2f}, seasonal_weight={seasonality_weight:.1f}",
+                    seasonality_weight=seasonality_weight
                 )
         
         return CrudeOilSignal(
@@ -334,23 +379,24 @@ class CrudeOilStrategy:
             return rsi_condition
     
     def _open_position(
-        self, 
-        position_type: str, 
+        self,
+        position_type: str,
         tick: MarketTick,
         stop_distance: float,
         tp_distance: float,
-        reason: str
+        reason: str,
+        seasonality_weight: float = 1.0
     ) -> CrudeOilSignal:
         """Open a new position."""
         price = float(tick.close)
-        
+
         if position_type == 'buy':
             stop_loss = price - stop_distance
             take_profit = price + tp_distance
         else:
             stop_loss = price + stop_distance
             take_profit = price - tp_distance
-        
+
         # Update state
         self.state.has_position = True
         self.state.position_type = position_type
@@ -359,11 +405,11 @@ class CrudeOilStrategy:
         self.state.stop_loss = Decimal(str(stop_loss))
         self.state.take_profit = Decimal(str(take_profit))
         self.state.initial_stop_distance = stop_distance
-        
+
         return CrudeOilSignal(
             action=position_type,
             quantity=self.params.quantity,
-            confidence=0.7,
+            confidence=0.7 * seasonality_weight,
             reason=reason,
             stop_loss=stop_loss,
             take_profit=take_profit
@@ -688,7 +734,9 @@ def create_crude_oil_strategy(**kwargs) -> CrudeOilStrategy:
             - trading_start_hour: Start hour GMT (default: 8)
             - trading_end_hour: End hour GMT (default: 20)
             - close_only_in_profit: Only close in profit (default: True)
-            
+            - enable_seasonality: Gate entries by quarter (default: True)
+                Q1/Q2=full, Q3=50%, Q4=disabled
+
     Returns:
         Configured CrudeOilStrategy instance
         
