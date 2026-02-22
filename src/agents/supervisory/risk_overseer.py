@@ -88,6 +88,9 @@ class RiskOverseerAgent(BaseAgent):
         self._corr_cache: Dict[frozenset, float] = {}
         self._corr_cache_time: Dict[frozenset, float] = {}
 
+        # VaR realized-vol cache — key: frozenset of symbols, value: (realized_vol, computed_at)
+        self._var_vol_cache: Dict[frozenset, tuple] = {}
+
         # Stats
         self.risk_alerts = 0
         self.emergency_stops = 0
@@ -255,7 +258,7 @@ class RiskOverseerAgent(BaseAgent):
 
         # 3. VaR (Value at Risk)
         if "var" in self.checks:
-            var = self._calculate_var()
+            var = await self._calculate_var()
             risk_metrics["var_95"] = var
 
             if var < -0.05 * self.current_balance:  # VaR > 5% of capital
@@ -414,36 +417,102 @@ class RiskOverseerAgent(BaseAgent):
 
         return avg_corr
 
-    def _calculate_var(self, confidence: float = 0.95) -> float:
+    async def _calculate_var(self, confidence: float = 0.95) -> float:
         """
-        Calculate Value at Risk (VaR)
+        Calculate Value at Risk (VaR) using realized rolling volatility from real D1 candles.
 
-        VaR = Expected maximum loss at confidence level
+        For each open-position symbol, fetches 21 D1 candles and computes 20 log returns.
+        If multiple positions are open, the portfolio vol is the position-value-weighted
+        average of per-symbol realized volatilities.
+
+        Conservative fallback: any symbol with < 21 D1 candles uses 5% daily vol (not 2%).
+        Results are cached per symbol-set for 1 hour.
 
         Args:
-            confidence: Confidence level (0.95 = 95%)
+            confidence: Confidence level (0.95 = 95%, 0.99 = 99%)
 
         Returns:
-            VaR (negative value)
+            VaR (negative value).
         """
         if not self.open_positions:
             return 0.0
 
-        # Simplified VaR calculation
-        # In production: Use historical simulation or parametric VaR
+        from src.api.dependencies import get_db_context
+        from src.database.repositories.market_data_repository import MarketDataRepository
 
-        # Sum unrealized P&L
-        total_unrealized = sum(
-            pos.get("unrealized_pnl", 0.0) for pos in self.open_positions.values()
+        CONSERVATIVE_VOL = 0.05  # 5% daily — used when insufficient history
+
+        symbols = list(set(pos["symbol"] for pos in self.open_positions.values()))
+        cache_key = frozenset(symbols)
+        now = time.time()
+
+        cached = self._var_vol_cache.get(cache_key)
+        if cached is not None:
+            realized_vol, cached_at = cached
+            if now - cached_at < 3600:
+                self.logger.debug("var_vol_cache_hit", symbols=symbols, realized_vol=realized_vol)
+                # Compute VaR from cached vol
+                portfolio_value = self.current_balance
+                z_score = 1.645 if confidence == 0.95 else 2.33
+                holding_period = 1  # 1-day VaR
+                var = -z_score * realized_vol * math.sqrt(holding_period) * portfolio_value
+                return float(var)
+
+        vol_by_symbol: Dict[str, float] = {}
+        async with get_db_context() as db:
+            repo = MarketDataRepository(db)
+            for sym in symbols:
+                rows = await repo.get_latest_ticks(symbol=sym, timeframe="D1", limit=21)
+                if len(rows) < 21:
+                    self.logger.warning(
+                        "var_insufficient_candles",
+                        symbol=sym,
+                        rows_available=len(rows),
+                        rows_required=21,
+                        fallback_vol=CONSERVATIVE_VOL,
+                    )
+                    vol_by_symbol[sym] = CONSERVATIVE_VOL
+                else:
+                    # rows newest-first — reverse to oldest-first
+                    closes = [float(r.close) for r in reversed(rows)]
+                    log_returns = np.array(
+                        [np.log(closes[i + 1] / closes[i]) for i in range(len(closes) - 1)]
+                    )
+                    realized_std = float(np.std(log_returns, ddof=1))
+                    vol_by_symbol[sym] = realized_std
+                    self.logger.debug(
+                        "var_realized_vol",
+                        symbol=sym,
+                        realized_std=realized_std,
+                        n_returns=len(log_returns),
+                    )
+
+        # Portfolio vol: weight by position size as fraction of total absolute exposure
+        total_exposure = sum(abs(pos["size"]) for pos in self.open_positions.values())
+        if total_exposure == 0.0:
+            realized_vol = CONSERVATIVE_VOL
+        else:
+            weighted_vol = 0.0
+            for pos in self.open_positions.values():
+                sym = pos["symbol"]
+                weight = abs(pos["size"]) / total_exposure
+                weighted_vol += weight * vol_by_symbol.get(sym, CONSERVATIVE_VOL)
+            realized_vol = weighted_vol
+
+        self._var_vol_cache[cache_key] = (realized_vol, now)
+
+        self.logger.info(
+            "var_computed",
+            symbols=symbols,
+            realized_vol=realized_vol,
+            old_assumed_vol=0.02,
+            improvement_factor=round(realized_vol / 0.02, 2) if realized_vol else None,
         )
 
-        # Estimate portfolio volatility (assume 2% daily)
-        portfolio_volatility = 0.02 * self.current_balance
-
-        # VaR at confidence level (z-score for 95% = 1.645)
+        portfolio_value = self.current_balance
         z_score = 1.645 if confidence == 0.95 else 2.33
-
-        var = -z_score * portfolio_volatility + total_unrealized
+        holding_period = 1  # 1-day VaR
+        var = -z_score * realized_vol * math.sqrt(holding_period) * portfolio_value
 
         return float(var)
 

@@ -74,6 +74,9 @@ class RiskManagerAgent(BaseAgent):
         self.trades_rejected = 0
         self.rejection_reasons: Dict[str, int] = {}
 
+        # Kelly Criterion trade-stats cache: {symbol: (metrics_dict, cached_at_epoch)}
+        self._kelly_stats_cache: Dict[str, tuple] = {}
+
     async def initialize(self) -> None:
         """Initialize database and subscribe to events"""
         self.subscribe_to_event("signal_generated")
@@ -290,7 +293,7 @@ class RiskManagerAgent(BaseAgent):
         confidence = signal_data.get("confidence", 0.5)
 
         if self.sizing_method == "kelly":
-            position_size = self._kelly_criterion_size(confidence)
+            position_size = await self._kelly_criterion_size(signal_data)
 
         elif self.sizing_method == "fixed":
             position_size = self._fixed_size()
@@ -330,17 +333,78 @@ class RiskManagerAgent(BaseAgent):
 
         return position_size
 
-    def _kelly_criterion_size(self, confidence: float) -> float:
+    async def _kelly_criterion_size(self, signal_data: Dict[str, Any]) -> float:
         """
-        Kelly Criterion position sizing
+        Kelly Criterion position sizing using real historical trade statistics.
 
         Formula: f* = (p * (b + 1) - 1) / b
         Where:
-        - p = probability of win (confidence)
-        - b = win/loss ratio (assume 1.5)
+        - p = actual win rate from trade history (not ML confidence)
+        - b = actual avg_win / avg_loss ratio from trade history
+
+        If fewer than 30 historical trades exist for the symbol, returns minimum
+        size (0.01 * account_balance) — never falls back to hardcoded assumptions.
+
+        Trade stats are cached per symbol for 1 hour.
         """
-        win_rate = confidence
-        win_loss_ratio = 1.5  # Assume 1.5:1 risk-reward
+        from src.api.dependencies import get_db_context
+        from src.database.repositories.trading_history_repository import TradingHistoryRepository
+
+        symbol = signal_data.get("symbol")
+        minimum_size = 0.01 * self.account_balance
+
+        # Check 1-hour cache
+        now = time.time()
+        cached = self._kelly_stats_cache.get(symbol)
+        if cached is not None:
+            metrics, cached_at = cached
+            if now - cached_at < 3600:
+                self.logger.debug("kelly_stats_cache_hit", symbol=symbol)
+            else:
+                cached = None  # Expired
+
+        if cached is None:
+            async with get_db_context() as db:
+                repo = TradingHistoryRepository(db)
+                metrics = await repo.get_performance_metrics(symbol=symbol)
+            self._kelly_stats_cache[symbol] = (metrics, now)
+
+        total_trades = metrics.get("total_trades", 0)
+
+        if total_trades < 30:
+            self.logger.info(
+                "kelly_insufficient_history",
+                symbol=symbol,
+                total_trades=total_trades,
+                required=30,
+                fallback="minimum_size",
+            )
+            return minimum_size
+
+        # win_rate from DB is a percentage (e.g. 55.0 = 55%) — convert to decimal
+        win_rate = metrics["win_rate"] / 100.0
+        avg_win = metrics.get("average_win", 0.0)
+        avg_loss = metrics.get("average_loss", 0.0)
+
+        if avg_loss == 0.0:
+            self.logger.info(
+                "kelly_zero_avg_loss",
+                symbol=symbol,
+                fallback="minimum_size",
+            )
+            return minimum_size
+
+        win_loss_ratio = avg_win / avg_loss
+
+        self.logger.info(
+            "kelly_real_stats",
+            symbol=symbol,
+            total_trades=total_trades,
+            win_rate=win_rate,
+            avg_win=avg_win,
+            avg_loss=avg_loss,
+            win_loss_ratio=win_loss_ratio,
+        )
 
         # Kelly fraction
         kelly_fraction = (win_rate * (win_loss_ratio + 1) - 1) / win_loss_ratio
