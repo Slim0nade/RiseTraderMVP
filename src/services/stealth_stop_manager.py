@@ -83,7 +83,7 @@ class DynamicTrailConfig:
     # NEW: Configuration management
     monitoring_cycle_seconds: int = 60     # Position check interval
     max_volatility_adjustment: float = 0.5  # Max 50% stop change per cycle
-    atr_fallback_percentage: float = 0.02  # Fallback when ATR unavailable
+    # atr_fallback_percentage REMOVED — Phase 1: no fallback, raise InsufficientDataError
     manual_override_grace_period: int = 60  # Respect manual changes for 60s    # Lock in 10 pips profit at breakeven
 
 
@@ -380,16 +380,16 @@ class StealthStopManager:
         entry = position.entry_price
         multiplier = self.config.disaster_stop_multiplier
         
-        # Use ATR or fallback to percentage of entry
+        # ATR is mandatory — no fallback to hardcoded percentages (Phase 1 policy)
         if atr is None or atr <= 0:
-            # Fallback: use percentage of entry price
-            distance = entry * self.config.atr_fallback_percentage * multiplier
-            logger.warning(
-                f"ATR unavailable for {position.symbol}, using fallback: "
-                f"{self.config.atr_fallback_percentage * 100:.1f}% × {multiplier}× = ${distance:.2f}"
+            from src.utils.atr_calculator import InsufficientDataError
+            raise InsufficientDataError(
+                symbol=position.symbol,
+                timeframe="H1",
+                got=0,
+                need=15,
             )
-        else:
-            distance = atr * multiplier
+        distance = atr * multiplier
         
         # Calculate stop based on direction
         if position.direction.lower() == "short":
