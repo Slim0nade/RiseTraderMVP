@@ -30,6 +30,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.trading.execution.mt4_client import MT4Client
 from src.trading.execution.mt4_encryption import MT4EncryptionManager
+from src.utils.atr_calculator import (
+    Candle,
+    InsufficientDataError,
+    calculate_atr_wilder,
+)
 
 # Configure logging
 logging.basicConfig(
@@ -247,24 +252,83 @@ class StealthStopManager:
             logger.error(f"Reconnection failed: {e}")
             return False
     
-    async def get_atr(self, symbol: str, period: int = 14, timeframe: str = "H1") -> Optional[float]:
+    async def get_atr(self, symbol: str, period: int = 14, timeframe: str = "H1") -> float:
         """
-        Get ATR value for a symbol.
-        
-        For now, uses sensible defaults based on symbol type.
-        TODO: Implement proper ATR calculation from candle data.
+        Get ATR value for a symbol using real candle data from the database.
+
+        Fetches the last (period + 1) H1 candles for the symbol, applies
+        Wilder's smoothed ATR formula, and caches the result for 1 hour.
+
+        Raises:
+            InsufficientDataError: If fewer than (period + 1) candles exist.
+                                   NEVER falls back to hardcoded defaults.
         """
-        # Symbol-specific ATR defaults (based on typical volatility)
-        atr_defaults = {
-            "CrudeOIL": 0.75,
-            "XAUUSD": 15.0,
-            "EURUSD": 0.0050,
-            "GBPUSD": 0.0070,
-            "USDJPY": 0.50,
+        # --- 1. Check 1-hour cache ---
+        cache_key = f"{symbol}:{timeframe}:{period}"
+        now = datetime.now()
+        if cache_key in self._atr_cache and cache_key in self._atr_cache_time:
+            age_seconds = (now - self._atr_cache_time[cache_key]).total_seconds()
+            if age_seconds < 3600:
+                return self._atr_cache[cache_key]
+
+        # --- 2. Fetch real candles from the database ---
+        # Normalise timeframe: MT4-style "H1" → DB-style "1h", etc.
+        tf_map = {
+            "M1": "1m", "M5": "5m", "M15": "15m", "M30": "30m",
+            "H1": "1h", "H4": "4h", "D1": "1d", "W1": "1w",
         }
-        
-        # Return default or generic fallback
-        return atr_defaults.get(symbol, 0.75)
+        db_timeframe = tf_map.get(timeframe.upper(), timeframe.lower())
+
+        need = period + 1  # Wilder's ATR needs period+1 candles
+        fetch_limit = need + 5  # Small buffer for safety
+
+        try:
+            from src.api.dependencies import get_db_context
+            from src.database.repositories.market_data_repository import MarketDataRepository
+
+            async with get_db_context() as db:
+                repo = MarketDataRepository(db)
+                # get_latest_ticks returns newest-first; we need oldest-first for ATR
+                rows = await repo.get_latest_ticks(
+                    symbol=symbol,
+                    timeframe=db_timeframe,
+                    limit=fetch_limit,
+                )
+        except Exception as exc:
+            raise InsufficientDataError(symbol, timeframe, 0, need) from exc
+
+        if len(rows) < need:
+            raise InsufficientDataError(symbol, timeframe, len(rows), need)
+
+        # Reverse so oldest candle is first (required by calculate_atr_wilder)
+        rows_asc = list(reversed(rows))
+
+        candles: List[Candle] = [
+            Candle(
+                timestamp=row.time,
+                open=float(row.open),
+                high=float(row.high),
+                low=float(row.low),
+                close=float(row.close),
+                volume=float(row.volume) if row.volume is not None else 0.0,
+            )
+            for row in rows_asc
+        ]
+
+        # --- 3. Calculate Wilder's ATR ---
+        atr = calculate_atr_wilder(candles, period=period)
+        if atr is None:
+            raise InsufficientDataError(symbol, timeframe, len(candles), need)
+
+        # --- 4. Cache for 1 hour ---
+        self._atr_cache[cache_key] = atr
+        self._atr_cache_time[cache_key] = now
+
+        logger.info(
+            f"ATR({period}) for {symbol}/{timeframe} = {atr:.5f} "
+            f"(from {len(candles)} real candles)"
+        )
+        return atr
     
     async def get_open_positions_from_mt4(self) -> List[Dict[str, Any]]:
         """Get all open positions directly from MT4."""

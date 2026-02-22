@@ -284,21 +284,40 @@ class RiskManagerAgent(BaseAgent):
         - kelly: Kelly Criterion
         - fixed: Fixed percentage
         - volatility: Volatility-adjusted
+
+        All methods are subject to a hard 2% account risk cap enforced here.
         """
         confidence = signal_data.get("confidence", 0.5)
 
         if self.sizing_method == "kelly":
-            return self._kelly_criterion_size(confidence)
+            position_size = self._kelly_criterion_size(confidence)
 
         elif self.sizing_method == "fixed":
-            return self._fixed_size()
+            position_size = self._fixed_size()
 
         elif self.sizing_method == "volatility":
-            return await self._volatility_adjusted_size(signal_data)
+            position_size = await self._volatility_adjusted_size(signal_data)
 
         else:
             # Default to fixed
-            return self._fixed_size()
+            position_size = self._fixed_size()
+
+        # Hard 2% cap — final enforcement regardless of sizing method
+        max_risk = self.account_balance * self.risk_per_trade
+        if position_size > max_risk:
+            self.logger.warning(
+                "position_size_capped",
+                original=position_size,
+                capped=max_risk,
+                method=self.sizing_method,
+            )
+            position_size = max_risk
+
+        assert position_size <= max_risk, (
+            f"Position size {position_size} exceeds 2% risk cap {max_risk}"
+        )
+
+        return position_size
 
     def _kelly_criterion_size(self, confidence: float) -> float:
         """
@@ -318,8 +337,9 @@ class RiskManagerAgent(BaseAgent):
         # Use fractional Kelly (25% Kelly) for safety
         fractional_kelly = kelly_fraction * 0.25
 
-        # Convert to position size (as percentage of balance)
-        position_size = max(0.01, min(fractional_kelly, 0.1))  # Cap at 10%
+        # Convert to position size (as percentage of balance).
+        # Hard cap at risk_per_trade (2%) — never exceed 2% account risk.
+        position_size = max(0.01, min(fractional_kelly, self.risk_per_trade))
 
         # Multiply by balance
         dollar_size = position_size * self.account_balance
@@ -364,6 +384,10 @@ class RiskManagerAgent(BaseAgent):
 
         # Adjusted size
         adjusted_size = base_size * vol_adjustment
+
+        # Hard cap at 2% account risk regardless of volatility adjustment
+        max_risk_amount = self.risk_per_trade * self.account_balance
+        adjusted_size = min(adjusted_size, max_risk_amount)
 
         # Apply limits
         return max(0.01, min(adjusted_size, self.max_position_size))

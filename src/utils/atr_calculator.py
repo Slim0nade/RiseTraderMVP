@@ -15,6 +15,24 @@ import logging
 logger = logging.getLogger("atr-calculator")
 
 
+class InsufficientDataError(Exception):
+    """Raised when insufficient candle data is available to compute ATR.
+
+    This is a hard error — callers must NOT fall back to hardcoded defaults.
+    Upstream code must surface this failure so the operator knows data is missing.
+    """
+
+    def __init__(self, symbol: str, timeframe: str, got: int, need: int):
+        self.symbol = symbol
+        self.timeframe = timeframe
+        self.got = got
+        self.need = need
+        super().__init__(
+            f"Insufficient candle data for ATR({need}) on {symbol}/{timeframe}: "
+            f"got {got} candles, need at least {need + 1}"
+        )
+
+
 @dataclass
 class Candle:
     """OHLC candle data for ATR calculation."""
