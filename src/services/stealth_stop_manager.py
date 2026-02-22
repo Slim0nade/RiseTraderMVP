@@ -272,12 +272,9 @@ class StealthStopManager:
                 return self._atr_cache[cache_key]
 
         # --- 2. Fetch real candles from the database ---
-        # Normalise timeframe: MT4-style "H1" → DB-style "1h", etc.
-        tf_map = {
-            "M1": "1m", "M5": "5m", "M15": "15m", "M30": "30m",
-            "H1": "1h", "H4": "4h", "D1": "1d", "W1": "1w",
-        }
-        db_timeframe = tf_map.get(timeframe.upper(), timeframe.lower())
+        # DB stores timeframes as PostgreSQL ENUM: 'M1','M5','M15','M30','H1','H4','D1','W1','MN1'
+        # Callers already use this notation, so pass through as-is.
+        db_timeframe = timeframe.upper()
 
         need = period + 1  # Wilder's ATR needs period+1 candles
         fetch_limit = need + 5  # Small buffer for safety
