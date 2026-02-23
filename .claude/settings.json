@@ -1,0 +1,80 @@
+{
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(docker ps:*)",
+      "Bash(docker-compose up:*)",
+      "Bash(docker-compose ps:*)",
+      "Bash(docker-compose exec:*)",
+      "Bash(docker-compose logs:*)",
+      "Bash(docker exec:*)",
+      "Bash(docker logs:*)",
+      "Bash(docker rm:*)",
+      "Bash(curl:*)",
+      "Bash(tree:*)",
+      "Bash(git log:*)",
+      "Bash(git diff:*)",
+      "Bash(git status:*)",
+      "Bash(git branch:*)",
+      "Bash(git worktree:*)",
+      "Bash(pytest:*)",
+      "Bash(pip:*)",
+      "Bash(chmod:*)",
+      "Bash(mkdir:*)",
+      "Bash(cp:*)",
+      "Bash(mv:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(grep:*)",
+      "Bash(wc:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(jq:*)",
+      "mcp__serena__list_dir",
+      "mcp__serena__find_symbol",
+      "mcp__serena__find_file",
+      "mcp__serena__search_for_pattern",
+      "mcp__serena__check_onboarding_performed",
+      "mcp__serena__read_memory",
+      "mcp__serena__write_memory",
+      "mcp__serena__read_file",
+      "mcp__serena__get_symbols_overview",
+      "mcp__risetrader-db__query",
+      "WebSearch"
+    ],
+    "deny": [],
+    "ask": []
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "serena",
+    "risetrader-db",
+    "risetradermvp-mcp"
+  ],
+  "hooks": {
+    "TaskCompleted": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./scripts/require-integration-test.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./scripts/validate-no-fakes.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
