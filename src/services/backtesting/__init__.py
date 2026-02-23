@@ -28,7 +28,8 @@ Optimization:
 """
 
 from .backtest_service import BacktestService
-from .data_replay_engine import DataReplayEngine, MarketTick
+from src.services.market_tick import MarketTick
+from .data_replay_engine import DataReplayEngine
 from .data_validator import DataValidator, ValidationResult
 from .metrics_calculator import MetricsCalculator, PerformanceMetrics
 from .portfolio_state import PortfolioState, Position

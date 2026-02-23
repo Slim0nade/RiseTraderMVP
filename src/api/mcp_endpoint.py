@@ -988,18 +988,71 @@ async def _list_strategies() -> Dict[str, Any]:
     try:
         from src.services.backtesting.synthetic_engine import SyntheticEngine
         descriptions = {
+            # Phase 1 strategies
             "crude_oil_v3": "Multi-indicator strategy with EMA, RSI, CCI, and ATR-based stops",
             "ma_crossover": "Simple moving average crossover strategy",
             "rsi": "RSI overbought/oversold mean reversion strategy",
             "trend_following": "Simple trend following with momentum",
             "mean_reversion": "Statistical mean reversion with standard deviation bands",
             "value_area": "Volume Profile / TPO based mean-reversion from VAH/VAL to POC",
+            # Phase 2 strategies
+            "crack_spread": (
+                "Crack spread mean-reversion: gasoline_barrel_price − crude_price. "
+                "Multi-symbol (CrudeOIL + GASOLINE). Hedge ratio 0.42 gas lots per crude lot. "
+                "Entry ±1.5σ, stop 2.5σ. Seasonal overlay widens entry in Q2-Q3."
+            ),
+            "wti_brent_spread": (
+                "WTI-Brent spread mean-reversion: BRENT_OIL − CrudeOIL. "
+                "Multi-symbol (CrudeOIL + BRENT_OIL). 1:1 lot ratio (same barrel units). "
+                "Entry ±1.5σ, stop 2.5σ. Historical range $3-$7."
+            ),
+            "seasonal_ma_corn": (
+                "CORN seasonal MA crossover. Long bias Mar-Jun (planting), "
+                "Short Sep-Nov (harvest), neutral otherwise. Fast=10, Slow=30 SMA."
+            ),
+            "seasonal_ma_wheat": (
+                "WHEAT seasonal MA crossover. Long bias Feb-May (weather risk premium), "
+                "Short Jul-Sep (harvest supply glut), neutral otherwise. Fast=10, Slow=30 SMA."
+            ),
+            "gbpjpy_carry": (
+                "GBPJPY long-only carry trade. Entry on 20-SMA pullback while above 50-SMA. "
+                "Stop: 2× ATR(14). Exit: close below 50-SMA. Earns +8pts/day swap on long."
+            ),
+            # Phase 3 strategies
+            "vix_regime": (
+                "VIX-proxy regime detector using USA500 rolling drawdown. "
+                "Normal: all 1.0x. Elevated (5d drop >3%): momentum 2.0x, carry 0.0x. "
+                "Crisis (10d drop >7%): crude_oil_v3 2.5x, crash_portfolio 1.0x. "
+                "This strategy does NOT trade directly — it emits regime multipliers."
+            ),
+            "crash_portfolio": (
+                "Crisis pre-positioning portfolio. Triggers on USA500 drawdown >7% in 10 bars. "
+                "SHORT: CrudeOIL, USA500, USA100 (60% allocation — demand destruction). "
+                "LONG: GOLD, 30Y_T-BOND, DOLLAR_INDX (40% — safe havens). "
+                "ATR-based stops (2.5× ATR + random 5-15 pip anti-hunt offset). "
+                "Trailing stop at 2× ATR once profitable 1× ATR. "
+                "Exit: USA500 recovers >3% from crash low. "
+                "In backtest: primary_symbol (USA500) only; in live: all 6 symbols deploy."
+            ),
         }
+        all_strategy_names = [
+            # Phase 1
+            "crude_oil_v3", "ma_crossover", "rsi", "trend_following", "mean_reversion", "value_area",
+            # Phase 2
+            "crack_spread", "wti_brent_spread", "seasonal_ma_corn", "seasonal_ma_wheat", "gbpjpy_carry",
+            # Phase 3
+            "vix_regime", "crash_portfolio",
+        ]
         strategies = []
-        for name in ["crude_oil_v3", "ma_crossover", "rsi", "trend_following", "mean_reversion", "value_area"]:
+        for name in all_strategy_names:
             params = SyntheticEngine._default_params(name)
             if params:
-                strategies.append({"name": name, "description": descriptions.get(name, ""), "parameters": {k: v for k, v in params.items() if k != "quantity"}})
+                strategies.append({
+                    "name": name,
+                    "description": descriptions.get(name, ""),
+                    "parameters": {k: str(v) if hasattr(v, '__class__') and v.__class__.__name__ == 'Decimal' else v
+                                   for k, v in params.items() if k != "quantity"},
+                })
         return {"strategies": strategies, "total": len(strategies)}
     except Exception as e:
         return {"strategies": [], "error": str(e)}

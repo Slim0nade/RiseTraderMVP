@@ -4,60 +4,14 @@ Historical data replay engine for backtesting.
 Streams market data chronologically with efficient memory management
 for large datasets (13.5M+ candles).
 """
-from dataclasses import dataclass
-from datetime import datetime
-from decimal import Decimal
+from datetime import datetime, timedelta
 from typing import AsyncGenerator, List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models.market_data import MarketData
 from src.database.repositories.market_data_repository import MarketDataRepository
-
-
-@dataclass
-class MarketTick:
-    """
-    Simplified market data tick for backtesting.
-
-    Attributes:
-        symbol: Trading symbol
-        timestamp: Tick timestamp
-        open: Open price
-        high: High price
-        low: Low price
-        close: Close price
-        volume: Volume
-    """
-
-    symbol: str
-    timestamp: datetime
-    open: Decimal
-    high: Decimal
-    low: Decimal
-    close: Decimal
-    volume: int
-
-    @classmethod
-    def from_market_data(cls, md: MarketData) -> "MarketTick":
-        """
-        Create MarketTick from MarketData model.
-
-        Args:
-            md: MarketData instance
-
-        Returns:
-            MarketTick instance
-        """
-        return cls(
-            symbol=md.symbol,
-            timestamp=md.time,
-            open=md.open,
-            high=md.high,
-            low=md.low,
-            close=md.last,
-            volume=int(md.volume or 0),
-        )
+from src.services.market_tick import MarketTick
 
 
 class DataReplayEngine:
@@ -217,8 +171,6 @@ class DataReplayEngine:
             return MarketTick.from_market_data(candles[0])
 
         # If no exact match, get the closest earlier candle
-        from datetime import timedelta
-
         earlier_candles = await self.repository.get_by_timeframe_range(
             symbol=symbol,
             timeframe=timeframe,

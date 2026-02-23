@@ -381,7 +381,10 @@ class BacktestService:
                     params=merged_params if merged_params else None,
                 )
                 
-                # Create decision_engine callable from synthetic_engine
+                # Create decision_engine callable from synthetic_engine.
+                # For spread strategies the signal carries secondary leg fields
+                # (secondary_symbol, secondary_action, secondary_quantity) which
+                # the signal processing loop uses to execute both legs atomically.
                 def decision_engine(tick):
                     signal = synthetic_engine.process_tick(tick)
                     if signal.action:
@@ -390,6 +393,10 @@ class BacktestService:
                             "quantity": signal.quantity,
                             "stop_loss": signal.stop_loss,
                             "take_profit": signal.take_profit,
+                            # Spread/multi-leg fields (None for single-symbol strategies)
+                            "secondary_symbol": signal.secondary_symbol,
+                            "secondary_action": signal.secondary_action,
+                            "secondary_quantity": signal.secondary_quantity,
                         }
                     return None
                 
@@ -425,7 +432,7 @@ class BacktestService:
             candles_processed += 1
 
             # Check max candles limit to prevent infinite loops
-            if candles_processed > config.max_candles:
+            if config.max_candles is not None and candles_processed > config.max_candles:
                 logger.warning(
                     "max_candles_limit_reached",
                     run_id=str(run.id),
@@ -517,6 +524,10 @@ class BacktestService:
                     quantity = decision.get("quantity", Decimal("1.0"))
                     stop_loss = decision.get("stop_loss")
                     take_profit = decision.get("take_profit")
+                    # Spread/multi-leg fields (None for single-symbol strategies)
+                    secondary_symbol = decision.get("secondary_symbol")
+                    secondary_action = decision.get("secondary_action")
+                    secondary_quantity = decision.get("secondary_quantity")
 
                     # Execute trade based on decision
                     if action in ["buy", "sell"]:
@@ -557,8 +568,53 @@ class BacktestService:
                                     portfolio_value=float(portfolio.get_total_value()),
                                 )
 
+                                # --- Secondary leg (spread strategies only) ---
+                                # For crack_spread and wti_brent_spread, a second
+                                # instrument must be traded in the opposite direction
+                                # to form a dollar-neutral spread.  Both legs share
+                                # the same entry price (we use tick.close as a proxy
+                                # since both symbols move together at H1 resolution).
+                                if (
+                                    secondary_symbol
+                                    and secondary_action in ("buy", "sell")
+                                    and secondary_quantity
+                                ):
+                                    sec_can_open, _ = portfolio.can_open_position(
+                                        secondary_symbol,
+                                        secondary_action,
+                                        tick.close,
+                                        secondary_quantity,
+                                    )
+                                    if sec_can_open:
+                                        sec_result = simulator.execute_entry(
+                                            portfolio=portfolio,
+                                            symbol=secondary_symbol,
+                                            action=secondary_action,
+                                            price=tick.close,
+                                            quantity=secondary_quantity,
+                                            timestamp=tick.timestamp,
+                                            stop_loss=stop_loss,
+                                            take_profit=take_profit,
+                                        )
+                                        if sec_result.success:
+                                            trades_opened += 1
+                                            sec_trade_dict = simulator.to_simulated_trade_dict(
+                                                result=sec_result,
+                                                backtest_run_id=run.id
+                                            )
+                                            await self.backtest_repo.create_trade(sec_trade_dict)
+                                            logger.info(
+                                                "spread_secondary_leg_opened",
+                                                run_id=str(run.id),
+                                                trade_id=str(sec_result.trade_id),
+                                                secondary_symbol=secondary_symbol,
+                                                secondary_action=secondary_action,
+                                                quantity=float(secondary_quantity),
+                                                portfolio_value=float(portfolio.get_total_value()),
+                                            )
+
                     elif action in ["close", "exit", "close_long", "close_short"] and portfolio.has_position(tick.symbol):
-                        # Close existing position
+                        # Close existing primary-leg position
                         exit_result, gross_pnl, net_pnl = simulator.execute_exit(
                             portfolio=portfolio,
                             symbol=tick.symbol,
@@ -592,6 +648,38 @@ class BacktestService:
                             net_pnl=float(net_pnl),
                             portfolio_value=float(portfolio.get_total_value()),
                         )
+
+                        # --- Close secondary leg (spread strategies only) ---
+                        if secondary_symbol and portfolio.has_position(secondary_symbol):
+                            sec_exit, sec_gross, sec_net = simulator.execute_exit(
+                                portfolio=portfolio,
+                                symbol=secondary_symbol,
+                                exit_price=tick.close,
+                                timestamp=tick.timestamp,
+                            )
+                            trades_closed += 1
+                            await self.backtest_repo.update_trade(
+                                trade_id=sec_exit.trade_id,
+                                update_data={
+                                    "exit_timestamp": tick.timestamp,
+                                    "exit_price": tick.close,
+                                    "gross_pnl": sec_gross,
+                                    "net_pnl": sec_net,
+                                    "holding_duration_seconds": int(
+                                        (tick.timestamp - sec_exit.timestamp).total_seconds()
+                                    ) if sec_exit.timestamp else None,
+                                }
+                            )
+                            logger.info(
+                                "spread_secondary_leg_closed",
+                                run_id=str(run.id),
+                                trade_id=str(sec_exit.trade_id),
+                                secondary_symbol=secondary_symbol,
+                                exit_price=float(tick.close),
+                                gross_pnl=float(sec_gross),
+                                net_pnl=float(sec_net),
+                                portfolio_value=float(portfolio.get_total_value()),
+                            )
 
             # Periodic portfolio snapshot
             if candles_processed % snapshot_interval == 0:

@@ -10,9 +10,15 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
-from .data_replay_engine import MarketTick
+from src.services.market_tick import MarketTick
 from .crude_oil_strategy import CrudeOilStrategy, CrudeOilParams, create_crude_oil_strategy
 from .value_area_strategy import ValueAreaStrategy, ValueAreaParams, create_value_area_strategy
+from src.strategies.spreads.crack_spread import CrackSpreadStrategy, create_crack_spread_strategy
+from src.strategies.spreads.wti_brent_spread import WTIBrentSpreadStrategy, create_wti_brent_spread_strategy
+from src.strategies.agriculture.seasonal_ma import SeasonalMAStrategy, create_seasonal_ma_strategy
+from src.strategies.carry.gbpjpy_carry import GBPJPYCarryStrategy, create_gbpjpy_carry_strategy
+from src.strategies.crisis.vix_regime import VixRegimeStrategy, create_vix_regime_strategy
+from src.strategies.crisis.crash_portfolio import CrashPortfolioStrategy, create_crash_portfolio_strategy
 
 
 @dataclass
@@ -22,11 +28,20 @@ class SyntheticSignal:
 
     Attributes:
         action: 'buy', 'sell', 'close', or None
-        quantity: Position size
+        quantity: Position size (primary leg)
         confidence: Signal confidence (0.0-1.0)
         reason: Human-readable reason for decision
         stop_loss: Optional stop loss price for the trade
         take_profit: Optional take profit price for the trade
+        secondary_symbol: Secondary leg symbol (spread strategies only, e.g. 'GASOLINE', 'BRENT_OIL')
+        secondary_action: Secondary leg action — opposite of primary for dollar-neutral spreads
+        secondary_quantity: Secondary leg lot size (e.g. 0.42 GASOLINE lots per 1 CrudeOIL lot)
+
+    For spread strategies:
+        - primary leg  = (action, quantity) on the strategy's primary symbol
+        - secondary leg = (secondary_action, secondary_quantity) on secondary_symbol
+        - Both legs must be executed atomically; P&L is the sum of both legs
+        - Single-symbol strategies leave secondary_* fields as None
     """
     action: Optional[str]
     quantity: Decimal
@@ -34,6 +49,10 @@ class SyntheticSignal:
     reason: str
     stop_loss: Optional[Decimal] = None
     take_profit: Optional[Decimal] = None
+    # Spread/multi-leg fields (None for single-symbol strategies)
+    secondary_symbol: Optional[str] = None
+    secondary_action: Optional[str] = None
+    secondary_quantity: Optional[Decimal] = None
 
 
 class SyntheticEngine:
@@ -92,6 +111,63 @@ class SyntheticEngine:
             })
             if 'quantity' in self.params:
                 self._value_area_strategy.params.quantity = self.params['quantity']
+
+        # Initialize Crack Spread strategy if selected
+        # Note: multi-symbol — accepts ticks from CrudeOIL and GASOLINE
+        self._crack_spread_strategy: Optional[CrackSpreadStrategy] = None
+        if strategy == "crack_spread":
+            self._crack_spread_strategy = create_crack_spread_strategy(**{
+                k: v for k, v in self.params.items()
+                if k != 'quantity'
+            })
+
+        # Initialize WTI-Brent Spread strategy if selected
+        # Note: multi-symbol — accepts ticks from CrudeOIL and BRENT_OIL
+        self._wti_brent_strategy: Optional[WTIBrentSpreadStrategy] = None
+        if strategy == "wti_brent_spread":
+            self._wti_brent_strategy = create_wti_brent_spread_strategy(**{
+                k: v for k, v in self.params.items()
+                if k not in ('quantity',)
+            })
+
+        # Initialize Seasonal MA strategy if selected (CORN or WHEAT)
+        self._seasonal_ma_strategy: Optional[SeasonalMAStrategy] = None
+        if strategy in ("seasonal_ma_corn", "seasonal_ma_wheat"):
+            symbol_for_strategy = "CORN" if strategy == "seasonal_ma_corn" else "WHEAT"
+            init_params = {k: v for k, v in self.params.items() if k != 'quantity'}
+            init_params["symbol"] = symbol_for_strategy
+            self._seasonal_ma_strategy = create_seasonal_ma_strategy(**init_params)
+            if 'quantity' in self.params:
+                self._seasonal_ma_strategy.params.quantity = self.params['quantity']
+
+        # Initialize GBPJPY Carry Trade strategy if selected
+        self._gbpjpy_carry_strategy: Optional[GBPJPYCarryStrategy] = None
+        if strategy == "gbpjpy_carry":
+            self._gbpjpy_carry_strategy = create_gbpjpy_carry_strategy(**{
+                k: v for k, v in self.params.items()
+                if k != 'quantity'
+            })
+            if 'quantity' in self.params:
+                self._gbpjpy_carry_strategy.params.quantity = self.params['quantity']
+
+        # Initialize VIX Regime strategy if selected
+        # Note: consumes USA500 ticks; returns regime multipliers, never trades directly
+        self._vix_regime_strategy: Optional[VixRegimeStrategy] = None
+        if strategy == "vix_regime":
+            init_params = {k: v for k, v in self.params.items() if k != 'quantity'}
+            self._vix_regime_strategy = create_vix_regime_strategy(**init_params)
+            if 'quantity' in self.params:
+                self._vix_regime_strategy.params.quantity = self.params['quantity']
+
+        # Initialize Crash Portfolio strategy if selected
+        # Note: multi-symbol — accepts ticks from USA500, CrudeOIL, USA100, GOLD, etc.
+        # In backtest mode operates on the primary_symbol only.
+        self._crash_portfolio_strategy: Optional[CrashPortfolioStrategy] = None
+        if strategy == "crash_portfolio":
+            init_params = {k: v for k, v in self.params.items() if k != 'quantity'}
+            self._crash_portfolio_strategy = create_crash_portfolio_strategy(**init_params)
+            if 'quantity' in self.params:
+                self._crash_portfolio_strategy.params.quantity = self.params['quantity']
 
         # Price history for indicators
         self.price_history: List[Decimal] = []
@@ -159,7 +235,119 @@ class SyntheticEngine:
                 "trading_start_hour": 8,
                 "trading_end_hour": 20,
                 "quantity": Decimal("1.0")
-            }
+            },
+            # ── Phase 2: Multi-instrument + Spread strategies ──────────────
+            # RISK NOTE: Lot sizes below are fixed for signal-quality measurement.
+            # The 2% account-risk cap (CLAUDE.md ABSOLUTE RULE) is enforced only in
+            # the live/paper execution path via RiskManagerAgent._calculate_position_size().
+            # When sizing for live trading, RiskManagerAgent overrides these lot sizes.
+            # Do NOT add a 2% cap here — it would distort backtest P&L comparisons
+            # and make it impossible to compare strategy quality across accounts.
+            "crack_spread": {
+                # Spread: gasoline_barrel_price − crude_price (= gas_gal × 42 − crude)
+                # Entry at ±1.5σ, exit at ±0.3σ (mean), stop at 2.5σ
+                # Hedge ratio: 0.42 GASOLINE lots per 1 CrudeOIL lot (dollar-neutral)
+                "lookback": 20,
+                "entry_sigma": 1.5,
+                "exit_sigma": 0.3,
+                "stop_sigma": 2.5,
+                "q2_sigma_addon": 0.3,       # Q2 (Apr-Jun): wider entry (+0.3σ)
+                "q3_sigma_addon": 0.5,       # Q3 (Jul-Sep): widest entry (+0.5σ)
+                "crude_lots": Decimal("1.0"),  # Fixed for backtest (live sizing uses RiskManagerAgent)
+                "crude_symbol": "CrudeOIL",
+                "gasoline_symbol": "GASOLINE",
+                "max_tick_age_seconds": 3600,
+                "use_time_filter": True,
+                "trading_start_hour": 8,
+                "trading_end_hour": 20,
+                "enable_seasonality": True,
+            },
+            "wti_brent_spread": {
+                # Spread: BRENT_OIL − CrudeOIL (same barrel units, no conversion)
+                # Entry at ±1.5σ, exit at ±0.3σ band, stop at 2.5σ
+                # 1:1 lot ratio (both 1,000 bbl contracts)
+                "lookback_period": 20,
+                "entry_sigma": 1.5,
+                "exit_band": 0.3,
+                "stop_sigma": 2.5,
+                "quantity": Decimal("1.0"),  # Fixed for backtest (live sizing uses RiskManagerAgent)
+                "use_time_filter": True,
+                "trading_start_hour": 8,
+                "trading_end_hour": 20,
+            },
+            "seasonal_ma_corn": {
+                # CORN: seasonal MA crossover. Long bias Mar-Jun, Short Sep-Nov, Neutral otherwise.
+                "symbol": "CORN",
+                "fast_period": 10,
+                "slow_period": 30,
+                "quantity": Decimal("0.01"),
+                "use_time_filter": True,
+                "trading_start_hour": 8,
+                "trading_end_hour": 20,
+                "hold_through_neutral": True,
+            },
+            "seasonal_ma_wheat": {
+                # WHEAT: seasonal MA crossover. Long bias Feb-May, Short Jul-Sep, Neutral otherwise.
+                "symbol": "WHEAT",
+                "fast_period": 10,
+                "slow_period": 30,
+                "quantity": Decimal("0.01"),
+                "use_time_filter": True,
+                "trading_start_hour": 8,
+                "trading_end_hour": 20,
+                "hold_through_neutral": True,
+            },
+            "gbpjpy_carry": {
+                # GBPJPY long-only carry trade. Entry on 20-SMA pullback while above 50-SMA.
+                # Stop: 2× ATR(14). Exit: close below 50-SMA.
+                "trend_sma_period": 50,
+                "entry_sma_period": 20,
+                "atr_period": 14,
+                "atr_stop_multiplier": 2.0,
+                "pullback_tolerance": 0.003,
+                "quantity": Decimal("0.01"),
+                "use_time_filter": True,
+                "trading_start_hour": 8,
+                "trading_end_hour": 20,
+            },
+            # ── Phase 3: Crisis / Regime strategies ───────────────────────────
+            # RISK NOTE: vix_regime never trades directly. It emits regime signals
+            # and strategy_multipliers that other strategies consume for sizing.
+            # Sizing multipliers only apply in the live/paper path (RiskManagerAgent).
+            "vix_regime": {
+                # USA500 rolling drawdown proxy for VIX.
+                # Elevated: 5-day drop > 3% → momentum 2x, carry/mean-rev disabled
+                # Crisis:  10-day drop > 7% → crude_oil_v3 2.5x, crash_portfolio on
+                "proxy_symbol": "USA500",
+                "elevated_threshold_pct": 3.0,
+                "elevated_lookback": 5,
+                "crisis_threshold_pct": 7.0,
+                "crisis_lookback": 10,
+                "quantity": Decimal("1.0"),
+            },
+            "crash_portfolio": {
+                # Crisis pre-positioning: SHORT crude/equities, LONG gold/bonds/USD.
+                # Triggered by USA500 drawdown > 7% in 10 bars.
+                # Exit when USA500 recovers > 3% from crash low.
+                # ATR-based stops with anti-stop-hunt random pip offset.
+                # BACKTEST NOTE: In backtest mode, primary_symbol is the traded symbol.
+                # In live mode, all 6 positions deploy simultaneously.
+                "crisis_drawdown_threshold": 0.07,    # 7% drawdown = crisis
+                "recovery_threshold": 0.03,           # 3% recovery = easing
+                "drawdown_lookback": 10,              # bars for drawdown computation
+                "atr_period": 14,
+                "atr_stop_multiplier": 2.5,           # wider in crisis (more noise)
+                "atr_trail_multiplier": 2.0,          # trail at 2× ATR once profitable
+                "min_offset_pips": 5,
+                "max_offset_pips": 15,
+                "short_allocation": 0.60,             # 60% to short book
+                "long_allocation": 0.40,              # 40% to long book
+                "primary_symbol": "USA500",           # backtest primary
+                "quantity": Decimal("0.01"),          # fixed for backtest
+                "use_time_filter": True,
+                "trading_start_hour": 8,
+                "trading_end_hour": 20,
+            },
         }
         return defaults.get(strategy, {})
 
@@ -191,6 +379,18 @@ class SyntheticEngine:
             return self._crude_oil_v3_strategy(tick)
         elif self.strategy == "value_area":
             return self._value_area_strategy_handler(tick)
+        elif self.strategy == "crack_spread":
+            return self._crack_spread_handler(tick)
+        elif self.strategy == "wti_brent_spread":
+            return self._wti_brent_spread_handler(tick)
+        elif self.strategy in ("seasonal_ma_corn", "seasonal_ma_wheat"):
+            return self._seasonal_ma_handler(tick)
+        elif self.strategy == "gbpjpy_carry":
+            return self._gbpjpy_carry_handler(tick)
+        elif self.strategy == "vix_regime":
+            return self._vix_regime_handler(tick)
+        elif self.strategy == "crash_portfolio":
+            return self._crash_portfolio_handler(tick)
         else:
             return SyntheticSignal(
                 action=None,
@@ -544,6 +744,248 @@ class SyntheticEngine:
             take_profit=Decimal(str(signal.take_profit)) if signal.take_profit else None,
         )
 
+    def _crack_spread_handler(self, tick: MarketTick) -> SyntheticSignal:
+        """
+        Crack spread strategy handler.
+
+        Multi-symbol: accepts ticks from CrudeOIL or GASOLINE.
+        Spread = gasoline_barrel_price − crude_price.
+        Hedge ratio: 0.42 GASOLINE lots per 1 CrudeOIL lot (dollar-neutral).
+        Entry ±1.5σ, exit ±0.3σ, stop 2.5σ.
+
+        Spread leg mapping (both legs must be executed atomically):
+            buy_spread  → sell CrudeOIL (primary), buy  GASOLINE (secondary)
+            sell_spread → buy  CrudeOIL (primary), sell GASOLINE (secondary)
+            close       → close both legs
+        """
+        if self._crack_spread_strategy is None:
+            return SyntheticSignal(
+                action=None,
+                quantity=Decimal("0.0"),
+                confidence=0.0,
+                reason="Crack spread strategy not initialized",
+            )
+        signal = self._crack_spread_strategy.process_tick(tick)
+        self.has_position = self._crack_spread_strategy.has_position
+        self.entry_price = self._crack_spread_strategy.entry_price
+
+        # Map spread direction to per-leg actions so backtest_service
+        # can track both legs independently with correct P&L.
+        primary_action: Optional[str]
+        secondary_action: Optional[str]
+        if signal.action == "buy_spread":
+            # Buy GASOLINE (long), Sell CrudeOIL (short)
+            primary_action = "sell"       # CrudeOIL leg
+            secondary_action = "buy"      # GASOLINE leg
+        elif signal.action == "sell_spread":
+            # Sell GASOLINE (short), Buy CrudeOIL (long)
+            primary_action = "buy"        # CrudeOIL leg
+            secondary_action = "sell"     # GASOLINE leg
+        elif signal.action == "close":
+            primary_action = "close"
+            secondary_action = "close"
+        else:
+            primary_action = signal.action
+            secondary_action = None
+
+        params = self._crack_spread_strategy.params
+        return SyntheticSignal(
+            action=primary_action,
+            quantity=signal.crude_quantity,
+            confidence=signal.confidence,
+            reason=signal.reason,
+            stop_loss=Decimal(str(signal.stop_spread)) if signal.stop_spread is not None else None,
+            take_profit=Decimal(str(signal.target_spread)) if signal.target_spread is not None else None,
+            secondary_symbol=params.gasoline_symbol,
+            secondary_action=secondary_action,
+            secondary_quantity=signal.gasoline_quantity if signal.gasoline_quantity != Decimal("0") else None,
+        )
+
+    def _wti_brent_spread_handler(self, tick: MarketTick) -> SyntheticSignal:
+        """
+        WTI-Brent spread strategy handler.
+
+        Multi-symbol: accepts ticks from CrudeOIL or BRENT_OIL.
+        Spread = BRENT_OIL − CrudeOIL (same barrel units, 1:1 ratio).
+        Entry ±1.5σ, exit at ±0.3σ band, stop 2.5σ.
+
+        Spread leg mapping (both legs must be executed atomically):
+            buy  (long spread)  → buy  BRENT_OIL (primary), sell CrudeOIL (secondary)
+            sell (short spread) → sell BRENT_OIL (primary), buy  CrudeOIL (secondary)
+            close_long/_short   → close both legs
+        """
+        if self._wti_brent_strategy is None:
+            return SyntheticSignal(
+                action=None,
+                quantity=Decimal("0.0"),
+                confidence=0.0,
+                reason="WTI-Brent spread strategy not initialized",
+            )
+        signal = self._wti_brent_strategy.process_tick(tick)
+        self.has_position = self._wti_brent_strategy.has_position
+        self.entry_price = self._wti_brent_strategy.entry_price
+
+        # Map spread direction to per-leg actions so backtest_service
+        # can track both legs independently with correct P&L.
+        # Primary = BRENT_OIL; secondary = CrudeOIL (opposite direction).
+        primary_action = signal.action
+        secondary_action: Optional[str] = None
+        if signal.action == "buy":
+            secondary_action = "sell"    # sell CrudeOIL leg
+        elif signal.action == "sell":
+            secondary_action = "buy"     # buy CrudeOIL leg
+        elif signal.action in ("close_long", "close_short"):
+            secondary_action = "close"
+
+        secondary_qty = signal.quantity if signal.quantity != Decimal("0.0") else None
+
+        return SyntheticSignal(
+            action=primary_action,
+            quantity=signal.quantity,
+            confidence=signal.confidence,
+            reason=signal.reason,
+            stop_loss=Decimal(str(signal.stop_loss)) if signal.stop_loss is not None else None,
+            take_profit=Decimal(str(signal.take_profit)) if signal.take_profit is not None else None,
+            secondary_symbol=self._wti_brent_strategy.SYMBOL_WTI,  # "CrudeOIL"
+            secondary_action=secondary_action,
+            secondary_quantity=secondary_qty,
+        )
+
+    def _seasonal_ma_handler(self, tick: MarketTick) -> SyntheticSignal:
+        """
+        Seasonal MA Crossover handler for CORN and WHEAT.
+
+        Single-symbol: only accepts ticks matching the configured symbol.
+        Signals only fire during seasonally-aligned windows.
+        """
+        if self._seasonal_ma_strategy is None:
+            return SyntheticSignal(
+                action=None,
+                quantity=Decimal("0.0"),
+                confidence=0.0,
+                reason="Seasonal MA strategy not initialized",
+            )
+        signal = self._seasonal_ma_strategy.process_tick(tick)
+        self.has_position = self._seasonal_ma_strategy.has_position
+        self.entry_price = self._seasonal_ma_strategy.entry_price
+        return SyntheticSignal(
+            action=signal.action,
+            quantity=signal.quantity,
+            confidence=signal.confidence,
+            reason=signal.reason,
+            stop_loss=Decimal(str(signal.stop_loss)) if signal.stop_loss is not None else None,
+            take_profit=Decimal(str(signal.take_profit)) if signal.take_profit is not None else None,
+        )
+
+    def _gbpjpy_carry_handler(self, tick: MarketTick) -> SyntheticSignal:
+        """
+        GBPJPY Carry Trade handler.
+
+        Long-only. Entry on 20-SMA pullback while price > 50-SMA.
+        Stop: 2× ATR(14). Exit: close below 50-SMA.
+        InsufficientDataError propagates if < atr_period+1 candles.
+        """
+        if self._gbpjpy_carry_strategy is None:
+            return SyntheticSignal(
+                action=None,
+                quantity=Decimal("0.0"),
+                confidence=0.0,
+                reason="GBPJPY carry strategy not initialized",
+            )
+        signal = self._gbpjpy_carry_strategy.process_tick(tick)
+        self.has_position = self._gbpjpy_carry_strategy.has_position
+        self.entry_price = self._gbpjpy_carry_strategy.entry_price
+        return SyntheticSignal(
+            action=signal.action,
+            quantity=signal.quantity,
+            confidence=signal.confidence,
+            reason=signal.reason,
+            stop_loss=Decimal(str(signal.stop_loss)) if signal.stop_loss is not None else None,
+            take_profit=Decimal(str(signal.take_profit)) if signal.take_profit is not None else None,
+        )
+
+    def _vix_regime_handler(self, tick: MarketTick) -> SyntheticSignal:
+        """
+        VIX Regime (USA500 proxy) handler.
+
+        This strategy never trades directly. It classifies the current macro
+        risk regime using USA500 rolling drawdown and emits strategy_multipliers
+        for consumption by signal_generator and live risk sizing logic.
+
+        Only USA500 ticks update the buffer; other ticks return the last regime.
+        The SyntheticSignal.action is always None; backtest P&L will be flat.
+
+        Regime → action mapping:
+            normal / elevated / crisis → None (no direct trade)
+        """
+        if self._vix_regime_strategy is None:
+            return SyntheticSignal(
+                action=None,
+                quantity=Decimal("0.0"),
+                confidence=0.0,
+                reason="VIX regime strategy not initialized",
+            )
+        signal = self._vix_regime_strategy.process_tick(tick)
+        # has_position / entry_price stay False/None — this strategy never trades
+        return SyntheticSignal(
+            action=signal.action,
+            quantity=signal.quantity,
+            confidence=signal.confidence,
+            reason=signal.reason,
+        )
+
+    def _crash_portfolio_handler(self, tick: MarketTick) -> SyntheticSignal:
+        """
+        Crash Portfolio pre-positioning handler.
+
+        Accepts ticks from USA500 (primary for crisis detection) or any of the
+        6 portfolio symbols. In backtest mode, signals always reference the
+        primary_symbol (default: USA500).
+
+        Action mapping:
+            'deploy'    → SHORT primary if in short book, else LONG
+            'close_all' → Close the primary symbol position
+            None        → Hold or warming up
+
+        Multi-symbol deployment list is included in the SyntheticSignal reason
+        for live-mode pipeline consumption. The `secondary_*` fields are not
+        populated here — the RiskManagerAgent fan-out handles the 6-leg deployment.
+
+        InsufficientDataError propagates if ATR cannot be computed.
+        """
+        if self._crash_portfolio_strategy is None:
+            return SyntheticSignal(
+                action=None,
+                quantity=Decimal("0.0"),
+                confidence=0.0,
+                reason="Crash portfolio strategy not initialized",
+            )
+        signal = self._crash_portfolio_strategy.process_tick(tick)
+        self.has_position = self._crash_portfolio_strategy.has_position
+        self.entry_price = self._crash_portfolio_strategy.entry_price
+
+        # Map 'deploy' → 'sell' (shorting USA500 as primary in backtest)
+        # or 'buy' if primary is in the long book
+        params = self._crash_portfolio_strategy.params
+        if signal.action == "deploy":
+            if params.primary_symbol in params.short_symbols:
+                primary_action = "sell"
+            else:
+                primary_action = "buy"
+        elif signal.action == "close_all":
+            primary_action = "close"
+        else:
+            primary_action = signal.action  # None
+
+        return SyntheticSignal(
+            action=primary_action,
+            quantity=signal.quantity,
+            confidence=signal.confidence,
+            reason=signal.reason,
+            stop_loss=signal.stop_loss,
+            take_profit=signal.take_profit,
+        )
+
     def reset(self) -> None:
         """Reset engine state for new backtest."""
         self.price_history.clear()
@@ -557,6 +999,20 @@ class SyntheticEngine:
         # Reset Value Area strategy if initialized
         if self._value_area_strategy is not None:
             self._value_area_strategy.reset()
+
+        # Reset Phase 2 strategies
+        if self._crack_spread_strategy is not None:
+            self._crack_spread_strategy.reset()
+        if self._wti_brent_strategy is not None:
+            self._wti_brent_strategy.reset()
+        if self._seasonal_ma_strategy is not None:
+            self._seasonal_ma_strategy.reset()
+        if self._gbpjpy_carry_strategy is not None:
+            self._gbpjpy_carry_strategy.reset()
+        if self._vix_regime_strategy is not None:
+            self._vix_regime_strategy.reset()
+        if self._crash_portfolio_strategy is not None:
+            self._crash_portfolio_strategy.reset()
 
     def get_state(self) -> Dict:
         """

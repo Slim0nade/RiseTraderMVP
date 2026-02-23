@@ -11,6 +11,7 @@ Performance Target: <30ms risk validation
 """
 
 import asyncio
+import json
 import time
 from typing import Dict, Any, Optional, List
 
@@ -76,6 +77,9 @@ class RiskManagerAgent(BaseAgent):
 
         # Kelly Criterion trade-stats cache: {symbol: (metrics_dict, cached_at_epoch)}
         self._kelly_stats_cache: Dict[str, tuple] = {}
+
+        # Correlation cache — key: frozenset({sym_a, sym_b}), value: (corr_float, cached_at_epoch)
+        self._corr_cache: Dict[frozenset, tuple] = {}
 
     async def initialize(self) -> None:
         """Initialize database and subscribe to events"""
@@ -168,7 +172,7 @@ class RiskManagerAgent(BaseAgent):
         )
 
         # Run risk checks
-        is_valid, rejection_reason = await self._validate_trade(signal_data)
+        is_valid, rejection_reason, corr_size_multiplier = await self._validate_trade(signal_data)
 
         if not is_valid:
             self.trades_rejected += 1
@@ -195,6 +199,21 @@ class RiskManagerAgent(BaseAgent):
                 reason=rejection_reason,
             )
             return
+
+        # Apply correlation-based size reduction on top of regime multiplier.
+        # corr_size_multiplier = 0.5 when corr > 0.7 with any existing position.
+        if corr_size_multiplier != 1.0:
+            existing_mult = signal_data.get("position_size_multiplier", 1.0)
+            signal_data = {
+                **signal_data,
+                "position_size_multiplier": existing_mult * corr_size_multiplier,
+            }
+            self.logger.warning(
+                "position_size_reduced_correlation",
+                symbol=symbol,
+                corr_multiplier=corr_size_multiplier,
+                effective_multiplier=signal_data["position_size_multiplier"],
+            )
 
         # Calculate position size
         position_size = await self._calculate_position_size(signal_data)
@@ -233,51 +252,58 @@ class RiskManagerAgent(BaseAgent):
             processing_time=processing_time,
         )
 
-    async def _validate_trade(self, signal_data: Dict[str, Any]) -> tuple[bool, Optional[str]]:
+    async def _validate_trade(
+        self, signal_data: Dict[str, Any]
+    ) -> tuple[bool, Optional[str], float]:
         """
         Perform all risk validation checks
 
         Returns:
-            (is_valid, rejection_reason)
+            (is_valid, rejection_reason, size_multiplier)
+            size_multiplier = 0.5 when correlation > 0.7, else 1.0
         """
         symbol = signal_data.get("symbol")
         action = signal_data.get("action")
 
         # 1. Check daily loss limit
         if self.daily_pnl <= -abs(self.max_daily_loss):
-            return False, "daily_loss_limit_exceeded"
+            return False, "daily_loss_limit_exceeded", 1.0
 
         # 2. Check max open positions
         if len(self.open_positions) >= self.max_open_positions:
-            return False, "max_open_positions_exceeded"
+            return False, "max_open_positions_exceeded", 1.0
 
         # 3. Check if already have position in this symbol
         existing_position = self._get_position(symbol)
         if existing_position:
             # Don't open opposing position
             if action == "BUY" and existing_position["side"] == "SELL":
-                return False, "opposing_position_exists"
+                return False, "opposing_position_exists", 1.0
             elif action == "SELL" and existing_position["side"] == "BUY":
-                return False, "opposing_position_exists"
+                return False, "opposing_position_exists", 1.0
 
             # Don't add to existing position (for now)
             if action == existing_position["side"]:
-                return False, "position_already_exists"
+                return False, "position_already_exists", 1.0
 
         # 4. Check correlation with existing positions
-        if not await self._check_correlation(symbol):
-            return False, "high_correlation_with_existing"
+        # Returns (block, reduce_50pct): block=True if corr >0.7 AND we choose to block,
+        # reduce_50pct=True if corr >0.7 (we reduce size instead of blocking).
+        corr_block, corr_reduce = await self._check_correlation(symbol)
+        if corr_block:
+            return False, "high_correlation_with_existing", 1.0
+        size_multiplier = 0.5 if corr_reduce else 1.0
 
         # 5. Check account balance
         if self.account_balance <= 0:
-            return False, "insufficient_balance"
+            return False, "insufficient_balance", 1.0
 
         # 6. Check signal confidence
         min_confidence = 0.5
         if signal_data.get("confidence", 0) < min_confidence:
-            return False, "low_signal_confidence"
+            return False, "low_signal_confidence", 1.0
 
-        return True, None
+        return True, None, size_multiplier
 
     async def _calculate_position_size(self, signal_data: Dict[str, Any]) -> float:
         """
@@ -467,23 +493,117 @@ class RiskManagerAgent(BaseAgent):
         # Apply limits
         return max(0.01, min(adjusted_size, self.max_position_size))
 
-    async def _check_correlation(self, symbol: str) -> bool:
+    async def _check_correlation(self, symbol: str) -> tuple[bool, bool]:
         """
-        Check if symbol is highly correlated with existing positions
+        Check if opening a position in `symbol` would create high correlation
+        with existing open positions.
+
+        Uses rolling 20-day Pearson correlation from D1 candles (same math as
+        RiskOverseerAgent._check_correlation). Results are cached per symbol-pair
+        for 1 hour.
+
+        Decision:
+          - Correlation > 0.7 with any existing position → reduce size 50%
+            (corr_reduce=True, block=False)
+          - No existing positions or correlation <= 0.7 → allow full size
+          - Insufficient D1 data (<21 candles) → allow full size with warning
 
         Returns:
-            True if correlation is acceptable, False if too high
+            (block, reduce_50pct)
+            block=True  → reject trade entirely
+            reduce_50pct=True → allow trade at 50% position size
         """
+        import math
+        import numpy as np
+        from src.api.dependencies import get_db_context
+        from src.database.repositories.market_data_repository import MarketDataRepository
+
         if not self.open_positions:
-            return True
+            return False, False
 
-        # For now, simple check: don't allow multiple positions in same symbol
-        # In production, calculate actual correlation coefficients
-        for position in self.open_positions:
-            if position["symbol"] == symbol:
-                return False
+        existing_symbols = list({pos["symbol"] for pos in self.open_positions if pos["symbol"] != symbol})
+        if not existing_symbols:
+            return False, False
 
-        return True
+        now = time.time()
+        reduce = False
+
+        for existing_sym in existing_symbols:
+            pair_key = frozenset({symbol, existing_sym})
+
+            # Check 1-hour cache
+            if pair_key in self._corr_cache:
+                cached_corr, cached_at = self._corr_cache[pair_key]
+                if (now - cached_at) < 3600:
+                    self.logger.debug(
+                        "correlation_cache_hit",
+                        symbol_a=symbol,
+                        symbol_b=existing_sym,
+                        correlation=cached_corr,
+                    )
+                    if not math.isnan(cached_corr) and cached_corr > self.max_correlation:
+                        reduce = True
+                    continue
+
+            # Fetch D1 candles for both symbols
+            try:
+                async with get_db_context() as db:
+                    repo = MarketDataRepository(db)
+                    rows_new = await repo.get_latest_ticks(symbol=symbol, timeframe="D1", limit=21)
+                    rows_existing = await repo.get_latest_ticks(symbol=existing_sym, timeframe="D1", limit=21)
+            except Exception as exc:
+                self.logger.warning(
+                    "correlation_db_fetch_failed",
+                    symbol=symbol,
+                    existing_sym=existing_sym,
+                    error=str(exc),
+                )
+                # Allow trade with warning on DB error
+                self._corr_cache[pair_key] = (float("nan"), now)
+                continue
+
+            if len(rows_new) < 21 or len(rows_existing) < 21:
+                self.logger.warning(
+                    "correlation_insufficient_d1_data",
+                    symbol=symbol,
+                    symbol_rows=len(rows_new),
+                    existing_sym=existing_sym,
+                    existing_rows=len(rows_existing),
+                    required=21,
+                    action="allow_with_warning",
+                )
+                self._corr_cache[pair_key] = (float("nan"), now)
+                continue
+
+            # rows are newest-first — reverse to oldest-first for chronological returns
+            closes_new = [float(r.close) for r in reversed(rows_new)]
+            closes_existing = [float(r.close) for r in reversed(rows_existing)]
+
+            returns_new = np.array(
+                [np.log(closes_new[i + 1] / closes_new[i]) for i in range(len(closes_new) - 1)]
+            )
+            returns_existing = np.array(
+                [np.log(closes_existing[i + 1] / closes_existing[i]) for i in range(len(closes_existing) - 1)]
+            )
+
+            corr = float(np.corrcoef(returns_new, returns_existing)[0, 1])
+            self._corr_cache[pair_key] = (corr, now)
+
+            self.logger.info(
+                "pre_trade_correlation_computed",
+                proposed_symbol=symbol,
+                existing_symbol=existing_sym,
+                correlation=corr,
+                threshold=self.max_correlation,
+                reduce_size=corr > self.max_correlation,
+            )
+
+            if not math.isnan(corr) and corr > self.max_correlation:
+                reduce = True
+
+        # We reduce size (50%) rather than blocking outright — lets correlated
+        # trades through but at half size to limit concentrated risk.
+        return False, reduce
 
     def _get_position(self, symbol: str) -> Optional[Dict[str, Any]]:
         """Get existing position for symbol"""
@@ -555,7 +675,7 @@ class RiskManagerAgent(BaseAgent):
             # Load from context first (faster)
             open_positions = await self.get_context("open_positions")
             if open_positions:
-                self.open_positions = eval(open_positions) if isinstance(open_positions, str) else []
+                self.open_positions = json.loads(open_positions) if isinstance(open_positions, str) else []
 
             daily_pnl = await self.get_context("daily_pnl")
             if daily_pnl:

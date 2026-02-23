@@ -247,13 +247,21 @@ class RiskOverseerAgent(BaseAgent):
                     message="Correlation check skipped — fewer than 21 D1 candles for at least one symbol",
                 )
 
-            if correlation > 0.7:  # High correlation
+            if correlation > 0.85:  # Critical correlation — near-identical instruments
+                alerts.append({
+                    "type": "high_correlation",
+                    "metric": "correlation",
+                    "value": correlation,
+                    "threshold": 0.85,
+                    "severity": "critical",
+                })
+            elif correlation > 0.7:  # Warning correlation — significant overlap
                 alerts.append({
                     "type": "high_correlation",
                     "metric": "correlation",
                     "value": correlation,
                     "threshold": 0.7,
-                    "severity": "low",
+                    "severity": "warning",
                 })
 
         # 3. VaR (Value at Risk)

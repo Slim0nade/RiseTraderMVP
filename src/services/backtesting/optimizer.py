@@ -178,6 +178,67 @@ class StrategyOptimizer:
             "min_penetration_atr": [0.2, 0.3, 0.5],
             "max_penetration_atr": [1.5, 2.0, 2.5],
         },
+        # ── Phase 2 strategies ─────────────────────────────────────────────
+        "crack_spread": {
+            # Spread: gasoline_barrel_price − crude_price (gas_gal × 42 − crude_bbl)
+            # Multi-symbol (CrudeOIL + GASOLINE). Hedge ratio 0.42 gas lots per crude lot.
+            # Target: 60-65% win rate, 1.8-2.2× profit factor
+            "lookback": [15, 20, 25, 30],
+            "entry_sigma": [1.2, 1.5, 1.8, 2.0],
+            "exit_sigma": [0.1, 0.2, 0.3, 0.5],
+            "stop_sigma": [2.0, 2.5, 3.0],
+            "q2_sigma_addon": [0.0, 0.2, 0.3, 0.5],
+            "q3_sigma_addon": [0.0, 0.3, 0.5, 0.7],
+            "enable_seasonality": [True, False],
+        },
+        "wti_brent_spread": {
+            # Spread: BRENT_OIL − CrudeOIL. Both 1,000 bbl contracts — 1:1 lot ratio.
+            # Historical range $3-$7. Entry at extremes.
+            "lookback_period": [15, 20, 25, 30],
+            "entry_sigma": [1.2, 1.5, 1.8, 2.0],
+            "exit_band": [0.1, 0.2, 0.3, 0.5],
+            "stop_sigma": [2.0, 2.5, 3.0],
+        },
+        "seasonal_ma_corn": {
+            # CORN: long bias Mar-Jun, short Sep-Nov, neutral otherwise.
+            "fast_period": [5, 8, 10, 12, 15],
+            "slow_period": [20, 25, 30, 35, 40],
+            "hold_through_neutral": [True, False],
+        },
+        "seasonal_ma_wheat": {
+            # WHEAT: long bias Feb-May, short Jul-Sep, neutral otherwise.
+            "fast_period": [5, 8, 10, 12, 15],
+            "slow_period": [20, 25, 30, 35, 40],
+            "hold_through_neutral": [True, False],
+        },
+        "gbpjpy_carry": {
+            # GBPJPY long-only carry. Entry on 20-SMA pullback while above 50-SMA.
+            # Stop 2× ATR(14). Earning +8pts/day positive swap.
+            "trend_sma_period": [30, 40, 50, 60],
+            "entry_sma_period": [10, 15, 20, 25],
+            "atr_period": [10, 14, 20],
+            "atr_stop_multiplier": [1.5, 2.0, 2.5, 3.0],
+            "pullback_tolerance": [0.001, 0.002, 0.003, 0.005],
+        },
+        # ── Phase 3 strategies ─────────────────────────────────────────────
+        "vix_regime": {
+            # USA500 rolling drawdown proxy for VIX.
+            # Does not trade directly — optimizing thresholds maximizes
+            # regime classification accuracy vs realized vol/drawdown correlation.
+            "elevated_threshold_pct": [2.0, 2.5, 3.0, 3.5, 4.0],
+            "elevated_lookback": [3, 4, 5, 6, 8],
+            "crisis_threshold_pct": [5.0, 6.0, 7.0, 8.0, 10.0],
+            "crisis_lookback": [7, 10, 12, 15],
+        },
+        "crash_portfolio": {
+            # Crash portfolio: SHORT crude/equities + LONG gold/bonds/USD.
+            # Deployed when USA500 drawdown > threshold. Closed on recovery.
+            "crisis_drawdown_threshold": [0.05, 0.06, 0.07, 0.08, 0.10],
+            "recovery_threshold": [0.02, 0.03, 0.04, 0.05],
+            "drawdown_lookback": [7, 10, 12, 15],
+            "atr_stop_multiplier": [2.0, 2.5, 3.0, 3.5],
+            "atr_trail_multiplier": [1.5, 2.0, 2.5],
+        },
     }
     
     # Optimization targets
