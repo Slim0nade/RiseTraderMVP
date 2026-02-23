@@ -86,6 +86,14 @@ class DynamicTrailConfig:
     # atr_fallback_percentage REMOVED — Phase 1: no fallback, raise InsufficientDataError
     manual_override_grace_period: int = 60  # Respect manual changes for 60s    # Lock in 10 pips profit at breakeven
 
+    # Crisis mode overrides — activated externally by VIX regime strategy
+    crisis_mode_enabled: bool = False
+    crisis_disaster_stop_multiplier: float = 4.0   # Wider: 4× ATR during crisis
+    crisis_erosion_threshold_atr: float = 0.3      # Tighter: protect gains faster
+    crisis_erosion_alert_threshold_atr: float = 0.2  # Earlier warning during crisis
+    crisis_trail_trigger_atr: float = 0.3          # More aggressive trailing during crisis
+    crisis_atr_multiplier_trail: float = 2.0       # Wider trail distance during crisis
+
 
 @dataclass 
 class MonitoredPosition:
@@ -171,7 +179,123 @@ class StealthStopManager:
         self._alert_history: List[Dict[str, Any]] = []
         self._max_alert_history = 100
         self.on_alert: Optional[Callable[[Dict[str, Any]], None]] = None  # symbol -> last update time
-        
+
+    # ========================================================================
+    # Crisis Mode Control
+    # ========================================================================
+
+    def enable_crisis_mode(self) -> None:
+        """Activate crisis mode — wider entry stops, tighter profit protection."""
+        self.config.crisis_mode_enabled = True
+        logger.warning(
+            "CRISIS MODE ENABLED — disaster stop widened to "
+            f"{self.config.crisis_disaster_stop_multiplier}x ATR, "
+            f"erosion threshold tightened to {self.config.crisis_erosion_threshold_atr}x ATR"
+        )
+
+    def disable_crisis_mode(self) -> None:
+        """Deactivate crisis mode — return to normal stop parameters."""
+        self.config.crisis_mode_enabled = False
+        logger.info("Crisis mode disabled — normal stop parameters restored")
+
+    @property
+    def effective_disaster_stop_multiplier(self) -> float:
+        """Return disaster stop multiplier based on crisis mode."""
+        if self.config.crisis_mode_enabled:
+            return self.config.crisis_disaster_stop_multiplier
+        return self.config.disaster_stop_multiplier
+
+    @property
+    def effective_erosion_threshold_atr(self) -> float:
+        """Return erosion threshold based on crisis mode."""
+        if self.config.crisis_mode_enabled:
+            return self.config.crisis_erosion_threshold_atr
+        return self.config.erosion_threshold_atr
+
+    @property
+    def effective_erosion_alert_threshold_atr(self) -> float:
+        """Return erosion alert threshold based on crisis mode."""
+        if self.config.crisis_mode_enabled:
+            return self.config.crisis_erosion_alert_threshold_atr
+        return self.config.erosion_alert_threshold_atr
+
+    @property
+    def effective_trail_trigger_atr(self) -> float:
+        """Return trail trigger threshold based on crisis mode."""
+        if self.config.crisis_mode_enabled:
+            return self.config.crisis_trail_trigger_atr
+        return self.config.trail_trigger_atr
+
+    @property
+    def effective_atr_multiplier_trail(self) -> float:
+        """Return ATR trail multiplier based on crisis mode."""
+        if self.config.crisis_mode_enabled:
+            return self.config.crisis_atr_multiplier_trail
+        return self.config.atr_multiplier_trail
+
+    @classmethod
+    def load_from_yaml(
+        cls,
+        yaml_path: str,
+        mt4_host: str = "localhost",
+        mt4_port: int = 5555,
+        poll_interval: int = 5,
+    ) -> "StealthStopManager":
+        """
+        Create a StealthStopManager with config loaded from stealth_stops.yaml.
+
+        Reads defaults, symbol_overrides, features, and crisis_mode sections.
+        The returned manager has crisis_mode_enabled set from yaml crisis_mode.enabled.
+        """
+        import yaml  # late import — only needed when loading from file
+
+        with open(yaml_path, "r") as fh:
+            raw = yaml.safe_load(fh)
+
+        defaults = raw.get("defaults", {})
+        crisis = raw.get("crisis_mode", {})
+        features = raw.get("features", {})
+
+        config = DynamicTrailConfig(
+            disaster_stop_multiplier=defaults.get("disaster_stop_multiplier", 3.0),
+            trail_trigger_atr=defaults.get("trail_trigger_atr", 0.5),
+            breakeven_trigger_atr=defaults.get("breakeven_trigger_atr", 0.5),
+            erosion_threshold_atr=defaults.get("erosion_threshold_atr", 0.5),
+            erosion_alert_threshold_atr=defaults.get("erosion_alert_threshold_atr", 0.3),
+            atr_multiplier_trail=defaults.get("atr_multiplier_trail", 1.5),
+            trail_step_atr=defaults.get("trail_step_atr", 0.5),
+            breakeven_offset_pips=defaults.get("breakeven_offset_pips", 10),
+            monitoring_cycle_seconds=defaults.get("monitoring_cycle_seconds", 60),
+            max_volatility_adjustment=defaults.get("max_volatility_adjustment", 0.5),
+            manual_override_grace_period=defaults.get("manual_override_grace_period", 60),
+            min_offset_pips=defaults.get("min_offset_pips", 5),
+            max_offset_pips=defaults.get("max_offset_pips", 15),
+            pip_value=defaults.get("pip_value", 0.01),
+            # Crisis mode fields
+            crisis_mode_enabled=crisis.get("enabled", False),
+            crisis_disaster_stop_multiplier=crisis.get("disaster_stop_multiplier", 4.0),
+            crisis_erosion_threshold_atr=crisis.get("erosion_threshold_atr", 0.3),
+            crisis_erosion_alert_threshold_atr=crisis.get("erosion_alert_threshold_atr", 0.2),
+            crisis_trail_trigger_atr=crisis.get("trail_trigger_atr", 0.3),
+            crisis_atr_multiplier_trail=crisis.get("atr_multiplier_trail", 2.0),
+        )
+
+        features_enabled = {
+            "enable_disaster_stops": features.get("enable_disaster_stops", True),
+            "enable_profit_erosion": features.get("enable_profit_erosion", True),
+            "enable_early_breakeven": features.get("enable_early_breakeven", True),
+            "enable_institutional_pricing": features.get("enable_institutional_pricing", True),
+            "enable_alerts": True,
+        }
+
+        return cls(
+            mt4_host=mt4_host,
+            mt4_port=mt4_port,
+            poll_interval=poll_interval,
+            config=config,
+            features_enabled=features_enabled,
+        )
+
     def calculate_institutional_price(
         self,
         base_price: float,
@@ -378,8 +502,8 @@ class StealthStopManager:
             Calculated stop price
         """
         entry = position.entry_price
-        multiplier = self.config.disaster_stop_multiplier
-        
+        multiplier = self.effective_disaster_stop_multiplier
+
         # ATR is mandatory — no fallback to hardcoded percentages (Phase 1 policy)
         if atr is None or atr <= 0:
             from src.utils.atr_calculator import InsufficientDataError
@@ -464,7 +588,7 @@ class StealthStopManager:
         logger.info(
             f"🛡️ Applying disaster stop to {position.ticket}: "
             f"{position.direction.upper()} {position.symbol} @ ${position.entry_price:.2f} → "
-            f"stop ${disaster_stop:.2f} ({self.config.disaster_stop_multiplier}×ATR)"
+            f"stop ${disaster_stop:.2f} ({self.effective_disaster_stop_multiplier}×ATR)"
         )
         
         success = await self.modify_stop(position.ticket, disaster_stop)
@@ -621,22 +745,22 @@ class StealthStopManager:
         erosion_atr_ratio = erosion / atr
         result["erosion_atr_ratio"] = erosion_atr_ratio
         
-        # Check alert threshold (0.3× ATR default)
-        if erosion_atr_ratio >= self.config.erosion_alert_threshold_atr:
+        # Check alert threshold — uses crisis threshold (0.2×) if crisis mode active
+        if erosion_atr_ratio >= self.effective_erosion_alert_threshold_atr:
             result["alert_triggered"] = True
             logger.warning(
                 f"⚠️ PROFIT EROSION ALERT for {position.ticket}: "
                 f"${erosion:.2f} erosion ({erosion_atr_ratio:.2f}× ATR) "
                 f"from highwater ${position.profit_highwater:.2f}"
             )
-        
-        # Check protection threshold (0.5× ATR default)
-        if erosion_atr_ratio >= self.config.erosion_threshold_atr:
+
+        # Check protection threshold — uses crisis threshold (0.3×) if crisis mode active
+        if erosion_atr_ratio >= self.effective_erosion_threshold_atr:
             result["protection_triggered"] = True
             logger.warning(
                 f"🛡️ EROSION PROTECTION TRIGGERED for {position.ticket}: "
                 f"${erosion:.2f} erosion ({erosion_atr_ratio:.2f}× ATR) "
-                f"exceeds threshold ({self.config.erosion_threshold_atr}×)"
+                f"exceeds threshold ({self.effective_erosion_threshold_atr}×)"
             )
         
         return result
@@ -808,17 +932,17 @@ class StealthStopManager:
             profit_distance = current_price - entry
             
             # Calculate ideal stop (trailing behind current price)
-            ideal_stop = current_price - (atr * self.config.atr_multiplier_trail)
-            
+            ideal_stop = current_price - (atr * self.effective_atr_multiplier_trail)
+
             # CRITICAL: Stop must be ABOVE entry to lock profit
             if ideal_stop <= entry:
                 logger.debug(f"LONG {position.ticket}: ideal_stop ${ideal_stop:.2f} <= entry ${entry:.2f}, skipping (would not lock profit)")
                 return None
-            
+
             # Only trail if:
-            # 1. We're in profit by at least trail_trigger_atr
+            # 1. We're in profit by at least trail_trigger_atr (crisis: 0.3× vs normal: 0.5×)
             # 2. New stop would be higher than current stop (tightening)
-            min_profit_for_trail = atr * self.config.trail_trigger_atr
+            min_profit_for_trail = atr * self.effective_trail_trigger_atr
             
             if profit_distance >= min_profit_for_trail:
                 if current_stop == 0 or ideal_stop > current_stop:
@@ -838,17 +962,17 @@ class StealthStopManager:
             profit_distance = entry - current_price
             
             # Calculate ideal stop (trailing above current price)
-            ideal_stop = current_price + (atr * self.config.atr_multiplier_trail)
-            
+            ideal_stop = current_price + (atr * self.effective_atr_multiplier_trail)
+
             # CRITICAL: Stop must be BELOW entry to lock profit
             if ideal_stop >= entry:
                 logger.debug(f"SHORT {position.ticket}: ideal_stop ${ideal_stop:.2f} >= entry ${entry:.2f}, skipping (would not lock profit)")
                 return None
-            
+
             # Only trail if:
-            # 1. We're in profit by at least trail_trigger_atr
+            # 1. We're in profit by at least trail_trigger_atr (crisis: 0.3× vs normal: 0.5×)
             # 2. New stop would be lower than current stop (tightening)
-            min_profit_for_trail = atr * self.config.trail_trigger_atr
+            min_profit_for_trail = atr * self.effective_trail_trigger_atr
             
             if profit_distance >= min_profit_for_trail:
                 if current_stop == 0 or ideal_stop < current_stop:
@@ -943,11 +1067,11 @@ class StealthStopManager:
         else:
             profit = position.entry_price - position.current_price
         
-        # Check against threshold
-        threshold = atr * self.config.trail_trigger_atr
-        
+        # Check against threshold — uses crisis value (0.3×) if crisis mode active
+        threshold = atr * self.effective_trail_trigger_atr
+
         return profit >= threshold
-    
+
     def should_breakeven(self, position: MonitoredPosition, atr: float) -> bool:
         """
         Check if position should trigger breakeven.
@@ -1351,8 +1475,8 @@ class StealthStopManager:
         logger.info("🚀 Stealth Stop Manager Started (DYNAMIC MODE)")
         logger.info(f"   MT4: {self.mt4_host}:{self.mt4_port}")
         logger.info(f"   Poll interval: {self.poll_interval}s")
-        logger.info(f"   ATR Trail Multiplier: {self.config.atr_multiplier_trail}x")
-        logger.info(f"   Trail Trigger: {self.config.trail_trigger_atr}x ATR profit")
+        logger.info(f"   ATR Trail Multiplier: {self.effective_atr_multiplier_trail}x")
+        logger.info(f"   Trail Trigger: {self.effective_trail_trigger_atr}x ATR profit")
         logger.info(f"   Breakeven Trigger: {self.config.breakeven_trigger_atr}x ATR profit")
         logger.info("   Positions: Auto-detected from MT4")
         logger.info("=" * 60)

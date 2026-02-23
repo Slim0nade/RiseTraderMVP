@@ -56,6 +56,15 @@ symbol_overrides:
     trail_trigger_atr: 0.6           # Less aggressive trailing
     pip_value: 0.0001
 
+# Crisis mode overrides — activated by VIX regime strategy
+crisis_mode:
+  enabled: false                          # Toggle via API or VIX regime detection
+  disaster_stop_multiplier: 4.0           # Wider: 4× ATR (vs 3× normal) — room for crisis volatility
+  erosion_threshold_atr: 0.3             # Tighter: protect gains faster during crisis
+  erosion_alert_threshold_atr: 0.2       # Earlier warning during crisis
+  trail_trigger_atr: 0.3                 # More aggressive trailing during crisis
+  atr_multiplier_trail: 2.0             # Wider trail distance during crisis
+
 # Feature flags - gradual rollout
 features:
   enable_disaster_stops: true        # FR-002: Initial protection (P1)
