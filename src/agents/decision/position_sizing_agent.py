@@ -638,16 +638,56 @@ OUTPUT ONLY THE JSON OBJECT. START WITH { and END WITH }. NO OTHER TEXT."""
             Position sizing decision dictionary
         """
         import structlog
+        from src.api.dependencies import get_db_context
+        from src.database.repositories.trading_history_repository import TradingHistoryRepository
         logger = structlog.get_logger(__name__)
 
         try:
-            # Calculate win/loss ratio if data provided
-            win_loss_ratio = 1.5  # Default
+            # Query real trade stats from DB if caller did not supply pip data.
+            # If caller supplies avg_win_pips/avg_loss_pips, use those directly.
+            # Otherwise query TradingHistoryRepository for actual avg_win/avg_loss.
+            # Conservative default (1.0, not 1.5) only when < 30 trades exist.
+            metrics: dict = {}
             if avg_win_pips and avg_loss_pips and avg_loss_pips > 0:
                 win_loss_ratio = avg_win_pips / avg_loss_pips
+            else:
+                async with get_db_context() as db:
+                    repo = TradingHistoryRepository(db)
+                    metrics = await repo.get_performance_metrics(symbol=symbol)
 
-            # Use provided win rate or default
-            win_probability = win_rate if win_rate is not None else 0.55
+                total_trades = metrics.get("total_trades", 0)
+                avg_win_db = metrics.get("average_win", 0.0)
+                avg_loss_db = metrics.get("average_loss", 0.0)
+
+                if total_trades < 30 or avg_loss_db == 0.0:
+                    # Insufficient history — use conservative default of 1.0, not 1.5
+                    win_loss_ratio = 1.0
+                    logger.warning(
+                        "win_loss_ratio_conservative_fallback",
+                        symbol=symbol,
+                        total_trades=total_trades,
+                        reason="fewer than 30 trades or zero avg_loss in DB",
+                        fallback_ratio=win_loss_ratio,
+                    )
+                else:
+                    win_loss_ratio = avg_win_db / avg_loss_db
+                    logger.info(
+                        "win_loss_ratio_from_db",
+                        symbol=symbol,
+                        total_trades=total_trades,
+                        avg_win=avg_win_db,
+                        avg_loss=avg_loss_db,
+                        win_loss_ratio=win_loss_ratio,
+                    )
+
+            # Use provided win rate, or DB-sourced win rate if sufficient history
+            if win_rate is not None:
+                win_probability = win_rate
+            elif metrics.get("total_trades", 0) >= 30:
+                # win_rate from DB is a percentage (e.g. 55.0 = 55%) — convert to decimal
+                win_probability = metrics["win_rate"] / 100.0
+            else:
+                win_probability = 0.55
 
             # Fetch MCP tool data (Kelly + Regime)
             logger.info(

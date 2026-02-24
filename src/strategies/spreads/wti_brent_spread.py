@@ -37,10 +37,12 @@ Multi-symbol note:
 
 Author: Claude (RiseTrader Phase 2 - Spread Builder)
 """
+from collections import deque
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Dict, List, Optional, Tuple
+from typing import Deque, Dict, List, Optional, Tuple
 from datetime import datetime
+import random
 import numpy as np
 
 from src.services.market_tick import MarketTick
@@ -146,8 +148,8 @@ class WTIBrentSpreadStrategy:
         # Per-symbol last close price
         self._last_close: Dict[str, float] = {}
 
-        # Rolling spread history (BRENT − WTI)
-        self._spread_history: List[float] = []
+        # Rolling spread history (BRENT − WTI) — deque auto-evicts oldest
+        self._spread_history: Deque[float] = deque(maxlen=self.params.lookback_period * 3)
 
         # Track which symbol's tick was most recent
         self._last_tick_symbol: Optional[str] = None
@@ -210,8 +212,6 @@ class WTIBrentSpreadStrategy:
 
         # Update spread history (one data point per completed tick pair)
         self._spread_history.append(spread)
-        if len(self._spread_history) > self.params.lookback_period * 3:
-            self._spread_history.pop(0)
 
         # Warmup check
         if len(self._spread_history) < self.params.lookback_period:
@@ -246,9 +246,18 @@ class WTIBrentSpreadStrategy:
     ) -> WTIBrentSignal:
         """Check for spread entry signals."""
 
+        # Data-driven confidence: scale with |z_score| magnitude.
+        # 1.5σ=0.50, 2.0σ=0.65, 2.5σ=0.80, 3.0σ+=0.90 (capped).
+        abs_z = abs(spread_z)
+        confidence = min(0.90, max(0.50, 0.50 + (abs_z - 1.5) * 0.267))
+
+        # Anti-stop-hunt: randomize stop z-score by +0.05-0.15σ so stops
+        # don't sit at exact ATR/sigma multiples that market makers can target.
+        stop_sigma_offset = random.uniform(0.05, 0.15)
+
         # Spread too HIGH → sell BRENT, buy WTI (short spread)
         if spread_z >= self.params.entry_sigma:
-            stop_z = spread_z + (self.params.stop_sigma - self.params.entry_sigma)
+            stop_z = spread_z + (self.params.stop_sigma - self.params.entry_sigma) + stop_sigma_offset
             self.state.has_position = True
             self.state.spread_direction = "short_spread"
             self.state.entry_spread = spread
@@ -259,11 +268,11 @@ class WTIBrentSpreadStrategy:
             return WTIBrentSignal(
                 action="sell",  # Sell BRENT (primary leg), buy WTI (hedge leg)
                 quantity=self.params.quantity,
-                confidence=0.65,
+                confidence=confidence,
                 reason=(
                     f"SHORT SPREAD: BRENT−WTI spread={spread:.2f} z={spread_z:.2f}σ "
-                    f"(entry≥{self.params.entry_sigma}σ) "
-                    f"→ sell BRENT, buy WTI; stop at z={stop_z:.2f}σ"
+                    f"(entry≥{self.params.entry_sigma}σ) confidence={confidence:.3f} "
+                    f"→ sell BRENT, buy WTI; stop at z={stop_z:.2f}σ (+{stop_sigma_offset:.3f} offset)"
                 ),
                 spread_value=spread,
                 spread_z=spread_z,
@@ -271,7 +280,7 @@ class WTIBrentSpreadStrategy:
 
         # Spread too LOW → buy BRENT, sell WTI (long spread)
         if spread_z <= -self.params.entry_sigma:
-            stop_z = spread_z - (self.params.stop_sigma - self.params.entry_sigma)
+            stop_z = spread_z - (self.params.stop_sigma - self.params.entry_sigma) - stop_sigma_offset
             self.state.has_position = True
             self.state.spread_direction = "long_spread"
             self.state.entry_spread = spread
@@ -282,11 +291,11 @@ class WTIBrentSpreadStrategy:
             return WTIBrentSignal(
                 action="buy",   # Buy BRENT (primary leg), sell WTI (hedge leg)
                 quantity=self.params.quantity,
-                confidence=0.65,
+                confidence=confidence,
                 reason=(
                     f"LONG SPREAD: BRENT−WTI spread={spread:.2f} z={spread_z:.2f}σ "
-                    f"(entry≤-{self.params.entry_sigma}σ) "
-                    f"→ buy BRENT, sell WTI; stop at z={stop_z:.2f}σ"
+                    f"(entry≤-{self.params.entry_sigma}σ) confidence={confidence:.3f} "
+                    f"→ buy BRENT, sell WTI; stop at z={stop_z:.2f}σ (-{stop_sigma_offset:.3f} offset)"
                 ),
                 spread_value=spread,
                 spread_z=spread_z,
@@ -380,7 +389,7 @@ class WTIBrentSpreadStrategy:
         Returns:
             (z_score, mean, std)
         """
-        window = self._spread_history[-self.params.lookback_period:]
+        window = list(self._spread_history)[-self.params.lookback_period:]
         mean = float(np.mean(window))
         std = float(np.std(window, ddof=1))
 

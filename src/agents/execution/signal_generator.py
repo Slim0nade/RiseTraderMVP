@@ -20,6 +20,7 @@ import structlog
 
 from ..base_agent import BaseAgent
 from ..event_bus import Event, EventPriority
+from src.strategies.signals.contrarian_filter import ContrariánFilter, create_contrarian_filter
 
 logger = structlog.get_logger(__name__)
 
@@ -75,6 +76,13 @@ class SignalGeneratorAgent(BaseAgent):
         self.signals_buy = 0
         self.signals_sell = 0
         self.signals_hold = 0
+
+        # Contrarian filter: flips signals when recent loss rate exceeds threshold.
+        # Disable by setting enable_contrarian_filter=False in agent config.
+        self.enable_contrarian_filter: bool = config.get("enable_contrarian_filter", True)
+        self._contrarian_filter: Optional[ContrariánFilter] = (
+            create_contrarian_filter() if self.enable_contrarian_filter else None
+        )
 
     async def initialize(self) -> None:
         """Subscribe to relevant events"""
@@ -324,16 +332,45 @@ class SignalGeneratorAgent(BaseAgent):
 
         self.signals_generated += 1
 
+        # Apply contrarian filter: if recent loss rate exceeds threshold, flip direction.
+        # Filter uses lowercase buy/sell; signal_generator uses uppercase BUY/SELL.
+        confidence = combined_signal["confidence"]
+        contrarian_flipped = False
+        contrarian_reason = None
+        if self._contrarian_filter is not None and action in ("BUY", "SELL"):
+            cf_result = await self._contrarian_filter.apply(
+                strategy_name="combined",
+                action=action.lower(),
+                confidence=confidence,
+                symbol=symbol,
+            )
+            if cf_result.was_flipped:
+                action = cf_result.filtered_action.upper()
+                confidence = cf_result.filtered_confidence
+                contrarian_flipped = True
+                contrarian_reason = cf_result.reason
+                self.logger.info(
+                    "contrarian_filter_flip",
+                    symbol=symbol,
+                    original_action=cf_result.original_action,
+                    filtered_action=cf_result.filtered_action,
+                    loss_rate=round(cf_result.loss_rate, 3),
+                    trades_analyzed=cf_result.trades_analyzed,
+                    reason=cf_result.reason,
+                )
+
         # Emit signal
         signal_data = {
             "symbol": symbol,
             "action": action,
             "score": combined_signal["score"],
-            "confidence": combined_signal["confidence"],
+            "confidence": confidence,
             "strategy_votes": strategy_signals,
             "current_price": prices[-1]["close"],
             "regime": self.current_regime,
             "position_size_multiplier": size_multiplier,
+            "contrarian_flipped": contrarian_flipped,
+            "contrarian_reason": contrarian_reason,
             "timestamp": time.time(),
         }
 

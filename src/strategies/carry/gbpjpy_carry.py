@@ -40,10 +40,12 @@ Design notes:
 
 Author: Claude (RiseTrader Phase 2 - Spread Builder)
 """
+from collections import deque
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Dict, List, Optional
+from typing import Deque, Dict, List, Optional
 from datetime import datetime
+import random
 import numpy as np
 
 from src.services.market_tick import MarketTick
@@ -142,8 +144,9 @@ class GBPJPYCarryStrategy:
         self.state = GBPJPYCarryState()
 
         # Price history as plain dicts (for SMA) and as Candle objects (for ATR)
-        self._price_history: List[Dict] = []
         self._max_history = max(self.params.trend_sma_period, self.params.atr_period) * 3
+        # deque auto-evicts oldest on append — no manual pop(0) needed
+        self._price_history: Deque[Dict] = deque(maxlen=self._max_history)
 
     # ------------------------------------------------------------------
     # SyntheticEngine interface
@@ -178,7 +181,7 @@ class GBPJPYCarryStrategy:
             InsufficientDataError: If ATR cannot be computed when needed
                 (propagates from calculate_atr_wilder — never silently suppressed)
         """
-        # Buffer history
+        # Buffer history (deque auto-evicts oldest)
         self._price_history.append({
             "timestamp": tick.timestamp,
             "open":  float(tick.open),
@@ -187,8 +190,6 @@ class GBPJPYCarryStrategy:
             "close": float(tick.close),
             "volume": tick.volume,
         })
-        if len(self._price_history) > self._max_history:
-            self._price_history.pop(0)
 
         # Warmup: need at least trend_sma_period bars for SMA
         min_warmup = max(self.params.trend_sma_period, self.params.atr_period + 1)
@@ -245,7 +246,17 @@ class GBPJPYCarryStrategy:
         # 3. Calculate ATR for stop — NEVER hardcode; let InsufficientDataError propagate
         atr = self._calculate_atr()  # Raises InsufficientDataError if insufficient data
 
-        stop_loss = close - (self.params.atr_stop_multiplier * atr)
+        # Anti-stop-hunt: add random 5-15 pip offset below the ATR-based stop.
+        # GBPJPY pip_size = 0.01 (JPY pair), so 5-15 pips = 0.05-0.15 JPY.
+        # This prevents market makers from hunting exact ATR multiples.
+        offset = random.uniform(0.05, 0.15)
+        stop_loss = close - (self.params.atr_stop_multiplier * atr) - offset
+
+        # Data-driven confidence: scale with trend strength (distance above 50-SMA).
+        # Stronger uptrend → higher conviction → higher confidence.
+        # Range: [0.5, 0.85]
+        trend_strength = (close - sma_50) / sma_50
+        confidence = min(0.85, max(0.5, 0.5 + trend_strength * 10))
 
         # Open long position
         self.state.has_position = True
@@ -258,11 +269,12 @@ class GBPJPYCarryStrategy:
         return GBPJPYCarrySignal(
             action="buy",
             quantity=self.params.quantity,
-            confidence=0.70,
+            confidence=confidence,
             reason=(
                 f"CARRY BUY: close({close:.4f}) pulled back to 20-SMA({sma_20:.4f}), "
                 f"above 50-SMA({sma_50:.4f}), ATR={atr:.4f}, "
-                f"stop={stop_loss:.4f} ({self.params.atr_stop_multiplier}×ATR)"
+                f"stop={stop_loss:.4f} ({self.params.atr_stop_multiplier}×ATR + {offset:.4f} offset), "
+                f"confidence={confidence:.3f} (trend_strength={trend_strength:.5f})"
             ),
             stop_loss=stop_loss,
             take_profit=None,  # No fixed TP — hold and earn carry until trend ends
@@ -334,7 +346,7 @@ class GBPJPYCarryStrategy:
         """Simple moving average of close prices."""
         if len(self._price_history) < period:
             return float(self._price_history[-1]["close"]) if self._price_history else 0.0
-        window = [bar["close"] for bar in self._price_history[-period:]]
+        window = [bar["close"] for bar in list(self._price_history)[-period:]]
         return float(np.mean(window))
 
     def _calculate_atr(self) -> float:

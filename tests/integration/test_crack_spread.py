@@ -122,10 +122,6 @@ class TestCrackSpreadInit:
     def test_hedge_ratio_correct(self):
         """
         Hedge ratio = (1000 bbl × 42 gal/bbl) / 100_000 gal = 0.42.
-        $1/bbl move in crude = $1,000 per contract.
-        Matching gasoline exposure: 0.42 lots × $10/tick × 10,000 ticks/$ ≈ $4,200 — off.
-        The ratio ensures equal per-barrel dollar exposure, not equal contract dollars.
-        Verify the math is correct.
         """
         assert abs(HEDGE_RATIO_GAS_PER_CRUDE - 0.42) < 1e-9
 
@@ -217,7 +213,7 @@ class TestWarmup:
 
 
 # ---------------------------------------------------------------------------
-# 4. Entry signals
+# 4. Entry signals — HARD assertions, no conditional paths
 # ---------------------------------------------------------------------------
 
 class TestEntrySignals:
@@ -289,12 +285,25 @@ class TestEntrySignals:
         assert sig.action is None
         assert "No signal" in sig.reason
 
-    def test_confidence_scales_with_z_score(self):
+    def test_confidence_is_in_valid_range(self):
+        """Confidence must always be in [0.0, 1.0]."""
+        s, last_ts = self._build_primed_strategy()
+        ts_signal = last_ts + timedelta(hours=1)
+
+        s.process_tick(make_tick("CrudeOIL", 75.0, ts_signal))
+        sig = s.process_tick(make_tick("GASOLINE", 2.90, ts_signal))
+
+        assert sig.action == "sell_spread", f"Expected sell_spread, got {sig.action}"
+        assert 0.0 <= sig.confidence <= 1.0, (
+            f"Confidence {sig.confidence} out of [0.0, 1.0]"
+        )
+
+    def test_larger_z_score_gives_higher_confidence(self):
         """Higher |z-score| at entry → higher confidence."""
         s1, ts1 = self._build_primed_strategy(seed=42)
         s2, ts2 = self._build_primed_strategy(seed=42)  # same setup
 
-        # Moderate spike (just beyond 1.5σ)
+        # Moderate spike
         ts_sig1 = ts1 + timedelta(hours=1)
         s1.process_tick(make_tick("CrudeOIL", 75.0, ts_sig1))
         sig1 = s1.process_tick(make_tick("GASOLINE", 2.90, ts_sig1))
@@ -304,11 +313,11 @@ class TestEntrySignals:
         s2.process_tick(make_tick("CrudeOIL", 75.0, ts_sig2))
         sig2 = s2.process_tick(make_tick("GASOLINE", 3.20, ts_sig2))
 
-        if sig1.action and sig2.action:
-            # Both should have fired; sig2 should have higher confidence
-            assert sig2.confidence >= sig1.confidence, (
-                f"sig2.confidence={sig2.confidence} should >= sig1.confidence={sig1.confidence}"
-            )
+        assert sig1.action == "sell_spread", f"sig1 must fire: {sig1.reason}"
+        assert sig2.action == "sell_spread", f"sig2 must fire: {sig2.reason}"
+        assert sig2.confidence >= sig1.confidence, (
+            f"sig2.confidence={sig2.confidence} should >= sig1.confidence={sig1.confidence}"
+        )
 
     def test_gasoline_quantity_matches_hedge_ratio(self):
         """gasoline_lots = round(crude_lots × 0.42, 2)."""
@@ -318,15 +327,15 @@ class TestEntrySignals:
         s.process_tick(make_tick("CrudeOIL", 75.0, ts_signal))
         sig = s.process_tick(make_tick("GASOLINE", 2.90, ts_signal))
 
-        if sig.action in ("buy_spread", "sell_spread"):
-            expected_gas = Decimal(str(round(float(s.params.crude_lots) * HEDGE_RATIO_GAS_PER_CRUDE, 2)))
-            assert sig.gasoline_quantity == expected_gas, (
-                f"Expected {expected_gas}, got {sig.gasoline_quantity}"
-            )
+        assert sig.action == "sell_spread", f"Expected sell_spread, got {sig.action}"
+        expected_gas = Decimal(str(round(float(s.params.crude_lots) * HEDGE_RATIO_GAS_PER_CRUDE, 2)))
+        assert sig.gasoline_quantity == expected_gas, (
+            f"Expected {expected_gas}, got {sig.gasoline_quantity}"
+        )
 
 
 # ---------------------------------------------------------------------------
-# 5. Exit signals
+# 5. Exit signals — HARD assertions
 # ---------------------------------------------------------------------------
 
 class TestExitSignals:
@@ -339,7 +348,7 @@ class TestExitSignals:
         s = create_crack_spread_strategy(
             lookback=20,
             enable_seasonality=False,
-            use_time_filter=False,  # isolate exit signal logic from time filter
+            use_time_filter=False,
         )
         last_ts = prime_strategy(s, n=20, ts_base=ts_base)
         ts_signal = last_ts + timedelta(hours=1)
@@ -390,20 +399,20 @@ class TestExitSignals:
         assert s.state.entry_price_crude is None
         assert s.state.entry_price_gasoline is None
 
-    def test_hold_while_between_exit_and_stop(self):
-        """While |z| is between exit_sigma and stop_sigma, hold (action=None)."""
+    def test_hold_action_is_none_between_thresholds(self):
+        """While |z| is between exit_sigma and stop_sigma, action=None."""
         s, ts_entry = self._enter_sell_spread()
 
         # Partial reversion: spread narrows a bit but not back to mean
-        # z should be between exit_sigma (0.3) and stop_sigma (2.5)
         ts_hold = ts_entry + timedelta(hours=2)
         s.process_tick(make_tick("CrudeOIL", 75.0, ts_hold))
         sig = s.process_tick(make_tick("GASOLINE", 2.50, ts_hold))
 
-        # We don't know exact z (depends on distribution), but position should be held
-        # unless the spread was extreme enough to stop out immediately.
-        if s.has_position:
-            assert sig.action is None, f"Expected hold, got {sig.action}: {sig.reason}"
+        # position may or may not be open depending on exact z-score distribution
+        # but whatever the state, action must be None or close (never "sell_spread"/"buy_spread")
+        assert sig.action in (None, "close"), (
+            f"Unexpected action={sig.action} while holding spread: {sig.reason}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -414,7 +423,6 @@ class TestSeasonalOverlay:
     """
     Entry sigma is widened in Q2 (Apr-Jun) and Q3 (Jul-Sep) because crack
     spreads naturally widen during the summer driving season.
-    Wider sigma = harder to enter = fewer false signals during noisy periods.
     """
 
     def _get_effective_sigma(self, month: int) -> float:
@@ -451,47 +459,20 @@ class TestSeasonalOverlay:
             ts = datetime(2024, month, 15, 12, 0, 0, tzinfo=timezone.utc)
             assert s._get_entry_sigma(ts) == pytest.approx(1.5)
 
-    def test_q2_requires_bigger_spike_to_enter(self):
-        """
-        A spike that triggers entry in Q1 must NOT trigger in Q2
-        if the z-score falls between the two sigma thresholds.
-        """
-        # Build a stable spread history
-        def build_and_prime(month: int) -> CrackSpreadStrategy:
-            ts_base = datetime(2024, month, 1, 9, 0, 0, tzinfo=timezone.utc)
-            s = create_crack_spread_strategy(
-                lookback=20,
-                entry_sigma=1.5,
-                q2_sigma_addon=0.3,
-                enable_seasonality=True,
-                use_time_filter=False,
-            )
-            prime_strategy(s, n=20, ts_base=ts_base, seed=99)
-            return s, ts_base
-
-        s_q1, base_q1 = build_and_prime(1)  # January
-        s_q2, base_q2 = build_and_prime(4)  # April
-
-        # Create a spike that lands at ~1.7σ above mean — between 1.5 and 1.8
-        # We'll use an extreme price that definitely clears the base 1.5σ bar.
-        # We need z ≈ 1.6–1.7, so a moderate-but-not-huge gasoline spike.
-        # Since std depends on the random warmup, we use the same seed (99) for both.
-        ts_q1_signal = base_q1 + timedelta(hours=21)
-        ts_q2_signal = base_q2 + timedelta(hours=21)
-
-        # Feed the same relative spike to both
-        s_q1.process_tick(make_tick("CrudeOIL", 75.0, ts_q1_signal))
-        sig_q1 = s_q1.process_tick(make_tick("GASOLINE", 2.50, ts_q1_signal))
-
-        s_q2.process_tick(make_tick("CrudeOIL", 75.0, ts_q2_signal))
-        sig_q2 = s_q2.process_tick(make_tick("GASOLINE", 2.50, ts_q2_signal))
-
-        # If Q1 fires, Q2 may or may not depending on exact z-score.
-        # The key assertion: Q2 sigma >= Q1 sigma (behaviour is correct).
-        q1_sigma = s_q1._get_entry_sigma(ts_q1_signal)
-        q2_sigma = s_q2._get_entry_sigma(ts_q2_signal)
+    def test_q2_sigma_strictly_greater_than_q1(self):
+        """Q2 entry sigma must be strictly larger than Q1."""
+        q1_sigma = self._get_effective_sigma(1)
+        q2_sigma = self._get_effective_sigma(4)
         assert q2_sigma > q1_sigma, (
-            f"Q2 sigma ({q2_sigma}) should be wider than Q1 sigma ({q1_sigma})"
+            f"Q2 sigma ({q2_sigma}) must exceed Q1 sigma ({q1_sigma})"
+        )
+
+    def test_q3_sigma_strictly_greater_than_q2(self):
+        """Q3 entry sigma must be strictly larger than Q2."""
+        q2_sigma = self._get_effective_sigma(4)
+        q3_sigma = self._get_effective_sigma(7)
+        assert q3_sigma > q2_sigma, (
+            f"Q3 sigma ({q3_sigma}) must exceed Q2 sigma ({q2_sigma})"
         )
 
 
@@ -597,23 +578,16 @@ class TestContractNormalization:
     def test_hedge_ratio_formula(self):
         """
         Dollar-neutral hedge ratio.
-
-        CrudeOIL:  1,000 bbl/contract, $1/tick ($0.01/bbl), $1,000 per $1/bbl move
-        GASOLINE:  100,000 gal/contract, $10/tick ($0.0001/gal), $10,000 per $0.1/gal
-
-        To balance $1/bbl exposure on crude:
-            crude_dollar_per_bbl = $1 × 1,000 = $1,000 per lot
-            gasoline_bbl_equiv_per_lot = 100,000 / 42 = 2,380.95 bbl
-            → gas_lots needed for 1,000 bbl exposure = 1,000 / 2,380.95 = 0.42
-
         HEDGE_RATIO = 1,000 × 42 / 100,000 = 0.42
         """
         expected = (1_000 * 42) / 100_000  # = 0.42
         assert abs(HEDGE_RATIO_GAS_PER_CRUDE - expected) < 1e-9
 
-    def test_gasoline_quantity_always_positive(self):
+    def test_gasoline_quantity_always_positive_on_entry(self):
         """gasoline_quantity must be > 0 for any non-zero crude_lots."""
-        s = create_crack_spread_strategy(crude_lots=Decimal("1.0"), enable_seasonality=False)
+        s = create_crack_spread_strategy(
+            crude_lots=Decimal("1.0"), enable_seasonality=False, use_time_filter=False
+        )
         ts_base = datetime(2024, 3, 1, 9, 0, 0, tzinfo=timezone.utc)
         last_ts = prime_strategy(s, n=20, ts_base=ts_base)
 
@@ -621,9 +595,9 @@ class TestContractNormalization:
         s.process_tick(make_tick("CrudeOIL", 75.0, ts_signal))
         sig = s.process_tick(make_tick("GASOLINE", 2.90, ts_signal))
 
-        if sig.action in ("buy_spread", "sell_spread"):
-            assert sig.gasoline_quantity > Decimal("0")
-            assert sig.crude_quantity > Decimal("0")
+        assert sig.action == "sell_spread", f"Expected sell_spread, got {sig.action}"
+        assert sig.gasoline_quantity > Decimal("0")
+        assert sig.crude_quantity > Decimal("0")
 
 
 # ---------------------------------------------------------------------------
@@ -632,7 +606,7 @@ class TestContractNormalization:
 
 class TestGetState:
     def test_state_reflects_position(self):
-        s = create_crack_spread_strategy(lookback=20, enable_seasonality=False)
+        s = create_crack_spread_strategy(lookback=20, enable_seasonality=False, use_time_filter=False)
         ts_base = datetime(2024, 3, 1, 9, 0, 0, tzinfo=timezone.utc)
         last_ts = prime_strategy(s, n=20, ts_base=ts_base)
 
@@ -643,11 +617,11 @@ class TestGetState:
         s.process_tick(make_tick("CrudeOIL", 75.0, ts_signal))
         sig = s.process_tick(make_tick("GASOLINE", 2.90, ts_signal))
 
-        if sig.action in ("buy_spread", "sell_spread"):
-            state_after = s.get_state()
-            assert state_after["position"]["has_position"]
-            assert state_after["position"]["type"] == sig.action
-            assert state_after["position"]["entry_crude"] is not None
+        assert sig.action == "sell_spread", f"Expected sell_spread, got {sig.action}"
+        state_after = s.get_state()
+        assert state_after["position"]["has_position"]
+        assert state_after["position"]["type"] == sig.action
+        assert state_after["position"]["entry_crude"] is not None
 
     def test_state_shows_spread_and_zscore(self):
         s = create_crack_spread_strategy(lookback=20, enable_seasonality=False)

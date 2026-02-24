@@ -12,6 +12,13 @@ Tests verify:
 8. hold_through_neutral=False closes on season change
 9. Reset clears all state
 10. Unsupported symbol raises ValueError
+
+HARD assertion rules:
+- No `assert sig is None or sig.action != "sell"` — unconditional assertions only
+- Every test that expects a signal must assert it fires
+- Every test that expects no signal must assert action is None
+
+mcp-verifier: run with `pytest tests/integration/test_seasonal_ma.py -v`
 """
 from decimal import Decimal
 from datetime import datetime, timezone, timedelta
@@ -80,7 +87,7 @@ def inject_crossover(
     month: int,
     base_price: float = 500.0,
     n_bars: int = 35,
-) -> SeasonalMASignal:
+) -> SeasonalMASignal | None:
     """
     Feed n_bars of trending prices in the given month.
     Returns the FIRST signal that triggers an action (or the last signal).
@@ -162,7 +169,7 @@ class TestSeasonalMAWarmup:
 
 
 # ---------------------------------------------------------------------------
-# Tests: CORN seasonal calendar
+# Tests: CORN seasonal calendar — HARD assertions
 # ---------------------------------------------------------------------------
 
 class TestCornSeasonalCalendar:
@@ -171,50 +178,66 @@ class TestCornSeasonalCalendar:
         strategy = build_warmed_strategy("CORN")
         sig = inject_crossover(strategy, "CORN", "golden", month=4)
 
-        assert sig is not None
+        assert sig is not None, "inject_crossover must return a signal"
         assert sig.action == "buy", f"Expected 'buy' in April, got '{sig.action}': {sig.reason}"
+        assert 0.0 <= sig.confidence <= 1.0
+        assert sig.seasonal_bias == "long"
 
     def test_sell_signal_filtered_in_long_month(self):
-        """Death cross in April (LONG month) → SELL must be filtered."""
+        """Death cross in April (LONG month) → SELL must be filtered — action must not be 'sell'."""
         strategy = build_warmed_strategy("CORN")
         sig = inject_crossover(strategy, "CORN", "death", month=4)
 
-        # Death cross in LONG month → should be filtered, no sell action
-        assert sig is None or sig.action != "sell", (
-            f"SELL should be filtered in April, got: {sig.action if sig else 'None'}: "
-            f"{sig.reason if sig else ''}"
+        # SELL in LONG month must be filtered — the signal must NOT have action="sell"
+        assert sig is not None, "inject_crossover must return a signal"
+        assert sig.action != "sell", (
+            f"SELL should be filtered in April (LONG month), got action='{sig.action}'"
         )
+        assert not strategy.has_position, "No position should be opened after filtered SELL"
 
     def test_sell_signal_in_short_month_october(self):
         """Death cross in October (SHORT) → SELL executes."""
         strategy = build_warmed_strategy("CORN")
         sig = inject_crossover(strategy, "CORN", "death", month=10)
 
-        assert sig is not None
+        assert sig is not None, "inject_crossover must return a signal"
         assert sig.action == "sell", f"Expected 'sell' in October, got '{sig.action}': {sig.reason}"
+        assert sig.seasonal_bias == "short"
 
     def test_buy_signal_filtered_in_short_month(self):
-        """Golden cross in October (SHORT month) → BUY must be filtered."""
+        """Golden cross in October (SHORT month) → BUY must be filtered — action must not be 'buy'."""
         strategy = build_warmed_strategy("CORN")
         sig = inject_crossover(strategy, "CORN", "golden", month=10)
 
-        assert sig is None or sig.action != "buy", (
-            f"BUY should be filtered in October, got: {sig.action if sig else 'None'}"
+        assert sig is not None, "inject_crossover must return a signal"
+        assert sig.action != "buy", (
+            f"BUY should be filtered in October (SHORT month), got action='{sig.action}'"
         )
+        assert not strategy.has_position, "No position should be opened after filtered BUY"
 
     def test_no_entry_in_neutral_month_january(self):
         """Any crossover in January (neutral) → no entry."""
         strategy = build_warmed_strategy("CORN")
         sig = inject_crossover(strategy, "CORN", "golden", month=1)
 
-        assert sig is None or sig.action is None, (
-            f"Expected no entry in January, got '{sig.action if sig else None}': "
-            f"{sig.reason if sig else ''}"
+        assert sig is not None, "inject_crossover must return a signal"
+        assert sig.action is None, (
+            f"Expected no entry in January (neutral), got '{sig.action}': {sig.reason}"
         )
+        assert not strategy.has_position
+
+    def test_buy_confidence_in_valid_range(self):
+        """BUY signal confidence must be in [0.0, 1.0]."""
+        strategy = build_warmed_strategy("CORN")
+        sig = inject_crossover(strategy, "CORN", "golden", month=4)
+
+        assert sig is not None
+        assert sig.action == "buy"
+        assert 0.0 <= sig.confidence <= 1.0, f"Confidence {sig.confidence} out of range"
 
 
 # ---------------------------------------------------------------------------
-# Tests: WHEAT seasonal calendar
+# Tests: WHEAT seasonal calendar — HARD assertions
 # ---------------------------------------------------------------------------
 
 class TestWheatSeasonalCalendar:
@@ -223,34 +246,42 @@ class TestWheatSeasonalCalendar:
         strategy = build_warmed_strategy("WHEAT")
         sig = inject_crossover(strategy, "WHEAT", "golden", month=3)
 
-        assert sig is not None
+        assert sig is not None, "inject_crossover must return a signal"
         assert sig.action == "buy", f"Expected 'buy' in March, got '{sig.action}': {sig.reason}"
+        assert sig.seasonal_bias == "long"
 
     def test_sell_filtered_in_long_month_february(self):
-        """Death cross in February (LONG) → SELL filtered."""
+        """Death cross in February (LONG) → SELL filtered — must not be 'sell'."""
         strategy = build_warmed_strategy("WHEAT")
         sig = inject_crossover(strategy, "WHEAT", "death", month=2)
 
-        assert sig is None or sig.action != "sell"
+        assert sig is not None, "inject_crossover must return a signal"
+        assert sig.action != "sell", (
+            f"SELL in February (LONG month) must be filtered, got '{sig.action}'"
+        )
 
     def test_sell_signal_in_short_month_august(self):
         """Death cross in August (SHORT) → SELL executes."""
         strategy = build_warmed_strategy("WHEAT")
         sig = inject_crossover(strategy, "WHEAT", "death", month=8)
 
-        assert sig is not None
+        assert sig is not None, "inject_crossover must return a signal"
         assert sig.action == "sell", f"Expected 'sell' in August, got '{sig.action}': {sig.reason}"
+        assert sig.seasonal_bias == "short"
 
     def test_no_entry_in_neutral_month_june(self):
         """June is neutral for WHEAT → no entry."""
         strategy = build_warmed_strategy("WHEAT")
         sig = inject_crossover(strategy, "WHEAT", "golden", month=6)
 
-        assert sig is None or sig.action is None
+        assert sig is not None, "inject_crossover must return a signal"
+        assert sig.action is None, (
+            f"Expected no entry in June (neutral for WHEAT), got '{sig.action}'"
+        )
 
 
 # ---------------------------------------------------------------------------
-# Tests: Exit signals
+# Tests: Exit signals — HARD assertions
 # ---------------------------------------------------------------------------
 
 class TestSeasonalMAExits:
@@ -284,7 +315,7 @@ class TestSeasonalMAExits:
             if sig.action == "close_long":
                 break
 
-        assert sig is not None
+        assert sig is not None, "Must have a final signal"
         assert sig.action == "close_long", f"Expected close_long, got '{sig.action}': {sig.reason}"
         assert not strategy.has_position
 
@@ -304,9 +335,9 @@ class TestSeasonalMAExits:
             strategy.process_tick(tick)
 
         sig = inject_crossover(strategy, "CORN", "golden", month=4)
-        assert sig is not None and sig.action == "buy"
+        assert sig is not None and sig.action == "buy", f"Setup failed: {sig}"
 
-        # Feed a tick in July (neutral) with prices still above fast MA
+        # Feed a tick in July (neutral) with prices still above fast MA → should hold
         ts = datetime(2024, 7, 15, 10, 0, 0, tzinfo=timezone.utc)
         tick = MarketTick(
             symbol="CORN", timestamp=ts,
@@ -314,8 +345,11 @@ class TestSeasonalMAExits:
             low=Decimal("518.00"), close=Decimal("520.00"), volume=1000,
         )
         sig2 = strategy.process_tick(tick)
-        # Should still hold (no death cross) — position managed, not force-closed
-        assert strategy.has_position, "Position should be held through neutral month"
+        # With hold_through_neutral=True: position must still be open (no death cross occurred)
+        assert strategy.has_position, "Position must be held through neutral month"
+        assert sig2.action is None, (
+            f"Expected hold (None) in neutral month, got '{sig2.action}'"
+        )
 
     def test_hold_through_neutral_false_closes(self):
         """With hold_through_neutral=False, position closes when season turns neutral."""
@@ -332,9 +366,9 @@ class TestSeasonalMAExits:
             strategy.process_tick(tick)
 
         sig = inject_crossover(strategy, "CORN", "golden", month=4)
-        assert sig is not None and sig.action == "buy"
+        assert sig is not None and sig.action == "buy", f"Setup failed: {sig}"
 
-        # Feed a tick in July (neutral) → should trigger seasonal exit
+        # Feed a tick in July (neutral) → must close due to hold_through_neutral=False
         ts = datetime(2024, 7, 15, 10, 0, 0, tzinfo=timezone.utc)
         tick = MarketTick(
             symbol="CORN", timestamp=ts,
@@ -342,7 +376,9 @@ class TestSeasonalMAExits:
             low=Decimal("518.00"), close=Decimal("520.00"), volume=1000,
         )
         sig2 = strategy.process_tick(tick)
-        assert sig2.action == "close_long", f"Expected close_long on neutral season, got '{sig2.action}'"
+        assert sig2.action == "close_long", (
+            f"Expected close_long on neutral season, got '{sig2.action}': {sig2.reason}"
+        )
         assert not strategy.has_position
 
 
@@ -388,3 +424,20 @@ class TestSeasonalMAGetState:
         assert "fast_ma" in state
         assert "slow_ma" in state
         assert "has_position" in state
+
+    def test_get_state_no_position_initially(self):
+        strategy = create_seasonal_ma_strategy(symbol="CORN")
+        state = strategy.get_state()
+        assert state["has_position"] is False
+
+    def test_get_state_reflects_open_long(self):
+        """get_state reports position_type='buy' after long opened."""
+        strategy = build_warmed_strategy("CORN")
+        sig = inject_crossover(strategy, "CORN", "golden", month=4)
+
+        assert sig is not None and sig.action == "buy", "Setup: buy must fire in April"
+        state = strategy.get_state()
+        assert state["has_position"] is True
+        assert state["position_type"] == "buy"
+        assert state["entry_price"] is not None
+        assert state["entry_season"] == "long"

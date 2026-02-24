@@ -36,10 +36,11 @@ Strategy logic
 
 Author: Claude (RiseTrader Phase 2 - Spread Builder)
 """
+from collections import deque
 from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import Enum
-from typing import Dict, List, Optional, Set
+from typing import Deque, Dict, List, Optional, Set
 from datetime import datetime
 import numpy as np
 
@@ -179,8 +180,9 @@ class SeasonalMAStrategy:
             )
 
         self._calendar = _SYMBOL_CALENDARS[self.params.symbol]
-        self._price_history: List[float] = []
         self._max_history = self.params.slow_period * 3
+        # deque auto-evicts oldest on append — no manual pop(0) needed
+        self._price_history: Deque[float] = deque(maxlen=self._max_history)
 
     # ------------------------------------------------------------------
     # SyntheticEngine interface
@@ -211,10 +213,8 @@ class SeasonalMAStrategy:
         Returns:
             SeasonalMASignal with trading decision
         """
-        # Buffer close price
+        # Buffer close price (deque auto-evicts oldest)
         self._price_history.append(float(tick.close))
-        if len(self._price_history) > self._max_history:
-            self._price_history.pop(0)
 
         # Warmup check
         if len(self._price_history) < self.params.slow_period:
@@ -363,10 +363,16 @@ class SeasonalMAStrategy:
         self.state.entry_time = tick.timestamp
         self.state.entry_season = bias.value
 
+        # Data-driven confidence: scale with MA spread distance.
+        # Stronger crossover (fast_ma further from slow_ma) → higher confidence.
+        # Range: [0.50, 0.85]
+        ma_spread_pct = abs(fast_ma - slow_ma) / slow_ma if slow_ma > 0 else 0.0
+        confidence = min(0.85, max(0.50, 0.50 + ma_spread_pct * 10))
+
         return SeasonalMASignal(
             action=position_type,
             quantity=self.params.quantity,
-            confidence=0.65,
+            confidence=confidence,
             reason=reason,
             fast_ma=fast_ma,
             slow_ma=slow_ma,
@@ -399,7 +405,7 @@ class SeasonalMAStrategy:
         """Calculate simple moving average of close prices."""
         if len(self._price_history) < period:
             return float(self._price_history[-1]) if self._price_history else 0.0
-        window = self._price_history[-period:]
+        window = list(self._price_history)[-period:]
         return float(np.mean(window))
 
     def _get_seasonal_bias(self, timestamp: datetime) -> SeasonalBias:

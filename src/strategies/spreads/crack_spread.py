@@ -53,10 +53,12 @@ Targets:
     Win rate:       60-65%
     Profit factor:  1.8-2.2×
 """
+from collections import deque
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Dict, List, Optional, Tuple
+from typing import Deque, Dict, List, Optional, Tuple
 from datetime import datetime, timedelta
+import random
 import numpy as np
 
 from src.services.market_tick import MarketTick
@@ -219,16 +221,16 @@ class CrackSpreadStrategy:
         self.params = params or CrackSpreadParams()
         self.state = CrackSpreadState()
 
-        # Per-symbol price buffers: list of dicts with timestamp + close
-        self._crude_buffer: List[Dict] = []
-        self._gasoline_buffer: List[Dict] = []
+        # Maximum buffer size (keep 3× lookback to handle misalignment)
+        self._max_buffer = max(200, self.params.lookback * 3)
+
+        # Per-symbol price buffers: deque auto-evicts oldest on append
+        self._crude_buffer: Deque[Dict] = deque(maxlen=self._max_buffer)
+        self._gasoline_buffer: Deque[Dict] = deque(maxlen=self._max_buffer)
 
         # Derived spread series (aligned by position in buffer)
         # Populated by _try_compute_spread() after both buffers have data
         self._spread_series: List[float] = []
-
-        # Maximum buffer size (keep 3× lookback to handle misalignment)
-        self._max_buffer = max(200, self.params.lookback * 3)
 
     # ------------------------------------------------------------------
     # SyntheticEngine interface
@@ -344,12 +346,8 @@ class CrackSpreadStrategy:
         }
         if tick.symbol == self.params.crude_symbol:
             self._crude_buffer.append(entry)
-            if len(self._crude_buffer) > self._max_buffer:
-                self._crude_buffer.pop(0)
         elif tick.symbol == self.params.gasoline_symbol:
             self._gasoline_buffer.append(entry)
-            if len(self._gasoline_buffer) > self._max_buffer:
-                self._gasoline_buffer.pop(0)
 
     def _compute_spread_zscore(self) -> Tuple[Optional[float], Optional[float]]:
         """
@@ -380,8 +378,8 @@ class CrackSpreadStrategy:
         # Since both buffers are updated independently, we take the last
         # `lookback` entries from each buffer — they should be time-aligned
         # for H1 data where both symbols tick at the same candle boundaries.
-        crude_closes = np.array([b["close"] for b in self._crude_buffer[-self.params.lookback:]])
-        gas_closes = np.array([b["close"] for b in self._gasoline_buffer[-self.params.lookback:]])
+        crude_closes = np.array([b["close"] for b in list(self._crude_buffer)[-self.params.lookback:]])
+        gas_closes = np.array([b["close"] for b in list(self._gasoline_buffer)[-self.params.lookback:]])
 
         # Convert gasoline from $/gallon → $/barrel
         gas_barrel_prices = gas_closes * GAL_PER_BBL
@@ -507,13 +505,18 @@ class CrackSpreadStrategy:
         crude_latest = self._crude_buffer[-1]["close"]
         gas_latest = self._gasoline_buffer[-1]["close"]
 
+        # Anti-stop-hunt: randomize stop z-score threshold by +0.05-0.15σ.
+        # Prevents market makers from hunting exact sigma stop levels.
+        stop_sigma_offset = random.uniform(0.05, 0.15)
+        stop_sigma_at_entry = self.params.stop_sigma + stop_sigma_offset
+
         self.state.has_position = True
         self.state.position_type = action
         self.state.entry_price_crude = Decimal(str(crude_latest))
         self.state.entry_price_gasoline = Decimal(str(gas_latest))
         self.state.entry_spread = spread
         self.state.entry_time = timestamp
-        self.state.stop_sigma_at_entry = self.params.stop_sigma
+        self.state.stop_sigma_at_entry = stop_sigma_at_entry
 
         return CrackSpreadSignal(
             action=action,
