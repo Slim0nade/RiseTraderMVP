@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025, Tuniverse Ltd."
 #property link      "https://www.tuniverses.com"
-#property version   "1.00"
+#property version   "1.01"
 #property strict
 
 // Import ZMQ library (requires mql-zmq library installation)
@@ -15,13 +15,28 @@
 // Define a unique magic number for your EA
 #define MAGIC_NUMBER 123456
 
-// Global variables
+// Maximum number of symbols we support streaming simultaneously
+#define MAX_SYMBOLS 16
+
+//+------------------------------------------------------------------+
+//| Input parameters                                                  |
+//+------------------------------------------------------------------+
+extern string SymbolList = "CrudeOIL,USA500,BRENT_OIL,CORN,WHEAT,GBPJPY.,#TSLA,#MICROSOFT,GASOLINE,GOLD.";
+
+//+------------------------------------------------------------------+
+//| Global variables                                                  |
+//+------------------------------------------------------------------+
 Context context("helloworld");
-Socket repSocket(context, ZMQ_REP);      // Renamed for clarity
-Socket pubSocket(context, ZMQ_PUB);      // Renamed for clarity
-string g_symbol = "CrudeOIL";            // Ensure this symbol exists in your MT4
-ENUM_TIMEFRAMES g_timeframe = PERIOD_M1; // Changed to ENUM_TIMEFRAMES for type safety
-datetime g_lastUpdateTime = 0;
+Socket repSocket(context, ZMQ_REP);   // REQ/REP socket for commands (port 5555)
+Socket pubSocket(context, ZMQ_PUB);   // PUB socket for streaming data  (port 5556)
+
+// Multi-symbol state — populated in OnInit() by parsing SymbolList
+string   g_symbols[];          // Active (broker-validated) symbol names
+datetime g_lastUpdateTime[];   // Last M1 bar time seen per symbol (for new-bar detection)
+datetime g_lastSendTime[];     // Last time we sent ANY update for this symbol (for heartbeat)
+int      g_symbolCount = 0;    // Number of active symbols
+
+ENUM_TIMEFRAMES g_timeframe = PERIOD_M1;
 
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
@@ -29,7 +44,7 @@ datetime g_lastUpdateTime = 0;
 int OnInit()
 {
     // Set timer for every 1 second to handle ZMQ requests frequently
-    EventSetTimer(1);  // Changed from 60 to 1 for more responsive request handling
+    EventSetTimer(1);
 
     // Attempt to bind REP socket
     if(!repSocket.bind("tcp://*:5555"))
@@ -42,23 +57,63 @@ int OnInit()
     if(!pubSocket.bind("tcp://*:5556"))
     {
         Print("Error: Unable to bind PUB socket to tcp://*:5556");
-        repSocket.unbind("tcp://*:5555"); // Clean up REP socket if PUB binding fails
+        repSocket.unbind("tcp://*:5555");
         return(INIT_FAILED);
     }
 
-    // Validate the symbol
-    if(!SymbolSelect(g_symbol, true))
+    // Parse SymbolList into g_symbols[], skipping symbols the broker does not carry
+    string parts[];
+    int count = StringSplit(SymbolList, ',', parts);
+    if(count <= 0)
     {
-        Print("Error: Symbol ", g_symbol, " not found or failed to load.");
+        Print("Error: SymbolList is empty or could not be parsed.");
         repSocket.unbind("tcp://*:5555");
         pubSocket.unbind("tcp://*:5556");
         return(INIT_FAILED);
     }
 
-    // Initialize lastBarTime
-    g_lastUpdateTime = iTime(g_symbol, g_timeframe, 0);
+    // Pre-size arrays to maximum
+    ArrayResize(g_symbols,        MAX_SYMBOLS);
+    ArrayResize(g_lastUpdateTime, MAX_SYMBOLS);
+    ArrayResize(g_lastSendTime,   MAX_SYMBOLS);
 
-    Print("MT4 Server Initialized and ZMQ Sockets Bound.");
+    g_symbolCount = 0;
+    for(int i = 0; i < count; i++)
+    {
+        string sym = StringTrimLeft(StringTrimRight(parts[i]));
+        if(StringLen(sym) == 0)
+            continue;
+
+        // Validate: try to select (load) the symbol from the broker feed
+        if(!SymbolSelect(sym, true))
+        {
+            Print("Warning: Symbol '", sym, "' not found on broker — skipping.");
+            continue;
+        }
+
+        if(g_symbolCount >= MAX_SYMBOLS)
+        {
+            Print("Warning: MAX_SYMBOLS (", MAX_SYMBOLS, ") reached — ignoring remaining symbols.");
+            break;
+        }
+
+        g_symbols[g_symbolCount]        = sym;
+        g_lastUpdateTime[g_symbolCount] = iTime(sym, g_timeframe, 0);
+        g_lastSendTime[g_symbolCount]   = TimeCurrent();
+        Print("Registered symbol [", g_symbolCount, "]: ", sym,
+              "  last bar=", TimeToString(g_lastUpdateTime[g_symbolCount]));
+        g_symbolCount++;
+    }
+
+    if(g_symbolCount == 0)
+    {
+        Print("Error: No valid symbols found in SymbolList='", SymbolList, "'");
+        repSocket.unbind("tcp://*:5555");
+        pubSocket.unbind("tcp://*:5556");
+        return(INIT_FAILED);
+    }
+
+    Print("MT4 Multi-Symbol Server initialized. Streaming ", g_symbolCount, " symbol(s).");
     return(INIT_SUCCEEDED);
 }
 
@@ -67,53 +122,84 @@ int OnInit()
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason)
 {
-    // Kill the timer
     EventKillTimer();
 
-    // Attempt to unbind REP socket
     if(!repSocket.unbind("tcp://*:5555"))
-    {
         Print("Warning: Failed to unbind REP socket.");
-    }
 
-    // Attempt to unbind PUB socket
     if(!pubSocket.unbind("tcp://*:5556"))
-    {
         Print("Warning: Failed to unbind PUB socket.");
-    }
 
-    Print("MT4 Server Deinitialized and ZMQ Sockets Closed.");
+    Print("MT4 Multi-Symbol Server deinitialized.");
 }
 
 //+------------------------------------------------------------------+
 //| Expert tick function                                             |
+//| OnTick() fires only for the chart's own symbol.  We detect new  |
+//| bars for the chart symbol here; all other symbols are handled    |
+//| in OnTimer() which runs every second.                            |
 //+------------------------------------------------------------------+
 void OnTick()
 {
-    datetime currentBarTime = iTime(g_symbol, g_timeframe, 0);
-    if(currentBarTime != g_lastUpdateTime)
+    string chartSym = Symbol();
+    for(int i = 0; i < g_symbolCount; i++)
     {
-        sendRealTimeUpdate();
-        g_lastUpdateTime = currentBarTime;
+        if(g_symbols[i] == chartSym)
+        {
+            datetime currentBarTime = iTime(chartSym, g_timeframe, 0);
+            if(currentBarTime != g_lastUpdateTime[i])
+            {
+                sendRealTimeUpdate(i);
+                g_lastUpdateTime[i] = currentBarTime;
+                g_lastSendTime[i]   = TimeCurrent();
+            }
+            break;
+        }
     }
 }
 
 //+------------------------------------------------------------------+
-//| Timer function to handle ZeroMQ requests and send fallback updates|
+//| Timer function — runs every second                               |
+//| Responsibilities:                                                |
+//|  1. Handle incoming ZMQ command requests                         |
+//|  2. Detect new M1 bars for ALL symbols (covers non-chart symbols)|
+//|  3. Send 60-second fallback heartbeat per symbol                 |
+//|  4. Optional 5-minute debug test message                         |
 //+------------------------------------------------------------------+
 void OnTimer()
 {
-    // Handle incoming ZMQ requests
+    // 1. Handle ZMQ command requests
     handleZmqRequests();
 
-    // Send fallback updates every minute
-    if(TimeCurrent() - g_lastUpdateTime >= 60)
+    // 2. Check each symbol for a new M1 bar and send on change.
+    //    Also covers the chart symbol (no double-send risk: OnTick()
+    //    already updated g_lastUpdateTime[i] when it fired).
+    for(int i = 0; i < g_symbolCount; i++)
     {
-        sendRealTimeUpdate();
-        g_lastUpdateTime = TimeCurrent();
+        datetime currentBarTime = iTime(g_symbols[i], g_timeframe, 0);
+        if(currentBarTime == 0)
+            continue; // Symbol has no data yet
+
+        if(currentBarTime != g_lastUpdateTime[i])
+        {
+            sendRealTimeUpdate(i);
+            g_lastUpdateTime[i] = currentBarTime;
+            g_lastSendTime[i]   = TimeCurrent();
+        }
+        else
+        {
+            // 3. Fallback heartbeat: resend if >60 seconds since last SEND
+            //    Uses g_lastSendTime (wall-clock) not g_lastUpdateTime (bar time)
+            //    to avoid feedback loop on stale symbols.
+            if(TimeCurrent() - g_lastSendTime[i] >= 60)
+            {
+                sendRealTimeUpdate(i);
+                g_lastSendTime[i] = TimeCurrent();
+            }
+        }
     }
 
-    // Optional: Send a test message every 5 minutes for debugging
+    // 4. Optional: 5-minute debug test message
     if(TimeMinute(TimeCurrent()) % 5 == 0 && TimeSeconds(TimeCurrent()) == 0)
     {
         sendTestMessage();
@@ -121,13 +207,11 @@ void OnTimer()
 }
 
 //+------------------------------------------------------------------+
-//| Function to handle ZeroMQ requests                              |
+//| Handle ZeroMQ REP requests                                       |
 //+------------------------------------------------------------------+
 void handleZmqRequests()
 {
     ZmqMsg request;
-
-    // Continuously receive all pending requests without blocking
     while(repSocket.recv(request, ZMQ_DONTWAIT))
     {
         string requestString = request.getData();
@@ -135,21 +219,16 @@ void handleZmqRequests()
 
         string response = processRequest(requestString);
 
-        // Send reply
         ZmqMsg replyMsg(response);
         if(!repSocket.send(replyMsg))
-        {
             Print("Error: Failed to send reply for request: ", requestString);
-        }
         else
-        {
             Print("Reply sent: ", response);
-        }
     }
 }
 
 //+------------------------------------------------------------------+
-//| Function to process incoming requests                            |
+//| Process incoming commands (REQ/REP channel)                      |
 //+------------------------------------------------------------------+
 string processRequest(string requestString)
 {
@@ -162,26 +241,22 @@ string processRequest(string requestString)
     }
     else if(command == "login")
     {
-        // Implement actual login logic with security measures
         response = createJsonResponse("OK", "Login successful");
     }
     else if(command == "loadPair")
     {
         string symbol = extractValue(requestString, "symbol");
         if(SymbolSelect(symbol, true))
-        {
             response = createJsonResponse("OK", StringFormat("Symbol %s loaded", symbol));
-        }
         else
-        {
             response = createJsonResponse("ERROR", StringFormat("Failed to load symbol %s", symbol));
-        }
     }
-    else if(command == "iClose" || command == "iOpen" || command == "iHigh" || command == "iLow" || command == "iTime" || command == "iVolume")
+    else if(command == "iClose" || command == "iOpen" || command == "iHigh" ||
+            command == "iLow"   || command == "iTime"  || command == "iVolume")
     {
-        string symbol = extractValue(requestString, "symbol");
+        string symbol      = extractValue(requestString, "symbol");
         string timeframeStr = extractValue(requestString, "timeframe");
-        string timeStr = extractValue(requestString, "time");
+        string timeStr     = extractValue(requestString, "time");
 
         ENUM_TIMEFRAMES timeframe = stringToTimeframe(timeframeStr);
         datetime time = StringToTime(timeStr);
@@ -194,19 +269,12 @@ string processRequest(string requestString)
         else
         {
             double value = 0;
-            if(command == "iClose")
-                value = iClose(symbol, timeframe, shift);
-            else if(command == "iOpen")
-                value = iOpen(symbol, timeframe, shift);
-            else if(command == "iHigh")
-                value = iHigh(symbol, timeframe, shift);
-            else if(command == "iLow")
-                value = iLow(symbol, timeframe, shift);
-            else if(command == "iTime")
-                value = (double)iTime(symbol, timeframe, shift);
-            else if(command == "iVolume")
-                value = (double)iVolume(symbol, timeframe, shift);
-
+            if(command == "iClose")  value = iClose(symbol, timeframe, shift);
+            else if(command == "iOpen")   value = iOpen(symbol, timeframe, shift);
+            else if(command == "iHigh")   value = iHigh(symbol, timeframe, shift);
+            else if(command == "iLow")    value = iLow(symbol, timeframe, shift);
+            else if(command == "iTime")   value = (double)iTime(symbol, timeframe, shift);
+            else if(command == "iVolume") value = (double)iVolume(symbol, timeframe, shift);
             response = createJsonResponse("OK", "", StringFormat("\"return\":%d", (long)value));
         }
     }
@@ -214,25 +282,25 @@ string processRequest(string requestString)
     {
         string ticketStr = extractValue(requestString, "ticket");
         int ticket = StringToInteger(ticketStr);
-       
+
         if(OrderSelect(ticket, SELECT_BY_TICKET))
         {
-           bool result = OrderClose(ticket, OrderLots(), OrderClosePrice(), 3);
-           if(result)
-               response = createJsonResponse("OK", StringFormat("Position %d closed successfully", ticket));
-           else
-               response = createJsonResponse("ERROR", StringFormat("Failed to close position %d. Error: %d", ticket, GetLastError()));
+            bool result = OrderClose(ticket, OrderLots(), OrderClosePrice(), 3);
+            if(result)
+                response = createJsonResponse("OK", StringFormat("Position %d closed successfully", ticket));
+            else
+                response = createJsonResponse("ERROR", StringFormat("Failed to close position %d. Error: %d", ticket, GetLastError()));
         }
         else
         {
-           response = createJsonResponse("ERROR", StringFormat("Position %d not found", ticket));
+            response = createJsonResponse("ERROR", StringFormat("Position %d not found", ticket));
         }
     }
     else if(command == "getOHLCV")
     {
-        string symbol = extractValue(requestString, "symbol");
+        string symbol      = extractValue(requestString, "symbol");
         string timeframeStr = extractValue(requestString, "timeframe");
-        string timeStr = extractValue(requestString, "time");
+        string timeStr     = extractValue(requestString, "time");
 
         ENUM_TIMEFRAMES timeframe = stringToTimeframe(timeframeStr);
         datetime time = StringToTime(timeStr);
@@ -250,14 +318,13 @@ string processRequest(string requestString)
     }
     else if(command == "get_trade_history")
     {
-        // Get optional parameters
         string startTimeStr = extractValue(requestString, "start_time");
-        string endTimeStr = extractValue(requestString, "end_time");
-        string ticketStr = extractValue(requestString, "ticket");
+        string endTimeStr   = extractValue(requestString, "end_time");
+        string ticketStr    = extractValue(requestString, "ticket");
 
         int startTime = (startTimeStr != "") ? StringToInteger(startTimeStr) : 0;
-        int endTime = (endTimeStr != "") ? StringToInteger(endTimeStr) : 0;
-        int ticket = (ticketStr != "") ? StringToInteger(ticketStr) : 0;
+        int endTime   = (endTimeStr   != "") ? StringToInteger(endTimeStr)   : 0;
+        int ticket    = (ticketStr    != "") ? StringToInteger(ticketStr)    : 0;
 
         response = getTradeHistory(startTime, endTime, ticket);
     }
@@ -270,9 +337,7 @@ string processRequest(string requestString)
     {
         string symbol = extractValue(requestString, "symbol");
         if(symbol == "")
-        {
             response = createJsonResponse("ERROR", "Symbol parameter required");
-        }
         else
         {
             string info = getSymbolInfo(symbol);
@@ -286,18 +351,15 @@ string processRequest(string requestString)
     }
     else if(command == "create_instant_order")
     {
-        string symbol = extractValue(requestString, "symbol");
+        string symbol      = extractValue(requestString, "symbol");
         string orderTypeStr = extractValue(requestString, "order_type");
-        string volumeStr = extractValue(requestString, "volume");
+        string volumeStr   = extractValue(requestString, "volume");
         string stopLossStr = extractValue(requestString, "stop_loss");
         string takeProfitStr = extractValue(requestString, "take_profit");
 
-        // Convert strings to appropriate types
         int orderType;
-        if(orderTypeStr == "BUY")
-            orderType = OP_BUY;
-        else if(orderTypeStr == "SELL")
-            orderType = OP_SELL;
+        if(orderTypeStr == "BUY")       orderType = OP_BUY;
+        else if(orderTypeStr == "SELL") orderType = OP_SELL;
         else
         {
             response = createJsonResponse("ERROR", "Invalid order type.");
@@ -305,8 +367,8 @@ string processRequest(string requestString)
             return response;
         }
 
-        double volume = StringToDouble(volumeStr);
-        double stopLoss = StringToDouble(stopLossStr);
+        double volume     = StringToDouble(volumeStr);
+        double stopLoss   = StringToDouble(stopLossStr);
         double takeProfit = StringToDouble(takeProfitStr);
 
         int ticket = createInstantOrder(symbol, orderType, volume, stopLoss, takeProfit);
@@ -317,23 +379,18 @@ string processRequest(string requestString)
     }
     else if(command == "create_pending_order")
     {
-        string symbol = extractValue(requestString, "symbol");
+        string symbol      = extractValue(requestString, "symbol");
         string orderTypeStr = extractValue(requestString, "order_type");
-        string volumeStr = extractValue(requestString, "volume");
-        string priceStr = extractValue(requestString, "price");
+        string volumeStr   = extractValue(requestString, "volume");
+        string priceStr    = extractValue(requestString, "price");
         string stopLossStr = extractValue(requestString, "stop_loss");
         string takeProfitStr = extractValue(requestString, "take_profit");
 
-        // Convert strings to appropriate types
         int orderType;
-        if(orderTypeStr == "BUY_LIMIT")
-            orderType = OP_BUYLIMIT;
-        else if(orderTypeStr == "SELL_LIMIT")
-            orderType = OP_SELLLIMIT;
-        else if(orderTypeStr == "BUY_STOP")
-            orderType = OP_BUYSTOP;
-        else if(orderTypeStr == "SELL_STOP")
-            orderType = OP_SELLSTOP;
+        if(orderTypeStr == "BUY_LIMIT")       orderType = OP_BUYLIMIT;
+        else if(orderTypeStr == "SELL_LIMIT")  orderType = OP_SELLLIMIT;
+        else if(orderTypeStr == "BUY_STOP")    orderType = OP_BUYSTOP;
+        else if(orderTypeStr == "SELL_STOP")   orderType = OP_SELLSTOP;
         else
         {
             response = createJsonResponse("ERROR", "Invalid pending order type.");
@@ -341,9 +398,9 @@ string processRequest(string requestString)
             return response;
         }
 
-        double volume = StringToDouble(volumeStr);
-        double price = StringToDouble(priceStr);
-        double stopLoss = StringToDouble(stopLossStr);
+        double volume     = StringToDouble(volumeStr);
+        double price      = StringToDouble(priceStr);
+        double stopLoss   = StringToDouble(stopLossStr);
         double takeProfit = StringToDouble(takeProfitStr);
 
         int ticket = createPendingOrder(symbol, orderType, volume, price, stopLoss, takeProfit);
@@ -364,34 +421,48 @@ string processRequest(string requestString)
     }
     else if(command == "modify_position")
     {
-        // Modify SL/TP of an open position (for institutional stop-hunting avoidance)
-        string ticketStr = extractValue(requestString, "ticket");
-        string stopLossStr = extractValue(requestString, "stop_loss");
+        string ticketStr     = extractValue(requestString, "ticket");
+        string stopLossStr   = extractValue(requestString, "stop_loss");
         string takeProfitStr = extractValue(requestString, "take_profit");
-        
-        int ticket = StringToInteger(ticketStr);
-        double newStopLoss = StringToDouble(stopLossStr);
+
+        int    ticket        = StringToInteger(ticketStr);
+        double newStopLoss   = StringToDouble(stopLossStr);
         double newTakeProfit = StringToDouble(takeProfitStr);
-        
+
         if(OrderSelect(ticket, SELECT_BY_TICKET))
         {
-            // Only modify market orders (BUY/SELL), not pending orders
             int orderType = OrderType();
             if(orderType == OP_BUY || orderType == OP_SELL)
             {
-                // Use existing values if new values are 0 or not provided
-                double sl = (newStopLoss > 0) ? newStopLoss : OrderStopLoss();
-                double tp = (newTakeProfit > 0) ? newTakeProfit : OrderTakeProfit();
-                
-                bool result = OrderModify(ticket, OrderOpenPrice(), sl, tp, 0, clrNONE);
-                if(result)
-                    response = createJsonResponse("OK", StringFormat("Position %d modified: SL=%.5f, TP=%.5f", ticket, sl, tp));
+                string symbol = OrderSymbol();
+                int digits = (int)MarketInfo(symbol, MODE_DIGITS);
+
+                double sl = (newStopLoss  > 0) ? NormalizeDouble(newStopLoss, digits)  : OrderStopLoss();
+                double tp = (newTakeProfit > 0) ? NormalizeDouble(newTakeProfit, digits) : OrderTakeProfit();
+
+                // Detect no-change scenario (Error 2 prevention)
+                if(NormalizeDouble(sl - OrderStopLoss(), digits) == 0 &&
+                   NormalizeDouble(tp - OrderTakeProfit(), digits) == 0)
+                {
+                    response = createJsonResponse("OK",
+                        StringFormat("Position %d already has SL=%.5f TP=%.5f", ticket, sl, tp));
+                }
                 else
-                    response = createJsonResponse("ERROR", StringFormat("Failed to modify position %d. Error: %d", ticket, GetLastError()));
+                {
+                    bool result = OrderModify(ticket, OrderOpenPrice(), sl, tp, 0, clrNONE);
+                    if(result)
+                        response = createJsonResponse("OK",
+                            StringFormat("Position %d modified: SL=%.5f, TP=%.5f", ticket, sl, tp));
+                    else
+                        response = createJsonResponse("ERROR",
+                            StringFormat("Failed to modify position %d. Error: %d (SL=%.5f->%.5f, TP=%.5f->%.5f)",
+                                ticket, GetLastError(), OrderStopLoss(), sl, OrderTakeProfit(), tp));
+                }
             }
             else
             {
-                response = createJsonResponse("ERROR", StringFormat("Ticket %d is a pending order, not an open position. Use modify_pending_order instead.", ticket));
+                response = createJsonResponse("ERROR",
+                    StringFormat("Ticket %d is a pending order, not an open position.", ticket));
             }
         }
         else
@@ -403,10 +474,9 @@ string processRequest(string requestString)
     {
         string ticketStr = extractValue(requestString, "ticket");
         int ticket = StringToInteger(ticketStr);
-        
+
         if(OrderSelect(ticket, SELECT_BY_TICKET))
         {
-            // Check if it's actually a pending order
             int orderType = OrderType();
             if(orderType >= OP_BUYLIMIT && orderType <= OP_SELLSTOP)
             {
@@ -435,84 +505,79 @@ string processRequest(string requestString)
 }
 
 //+------------------------------------------------------------------+
-//| Function to create a JSON string                                 |
+//| Build a JSON response envelope                                   |
 //+------------------------------------------------------------------+
 string createJsonResponse(string status, string message, string additional = "")
 {
-    if (additional == "")
+    if(additional == "")
         return StringFormat("{\"status\":\"%s\",\"message\":\"%s\"}", status, message);
     else
         return StringFormat("{\"status\":\"%s\",\"message\":\"%s\",%s}", status, message, additional);
 }
 
 //+------------------------------------------------------------------+
-//| Simple function to extract value from JSON-like string           |
+//| Extract a string value from a flat JSON string                   |
 //+------------------------------------------------------------------+
 string extractValue(string jsonString, string key)
 {
     int keyPos = StringFind(jsonString, "\"" + key + "\"");
-    if (keyPos == -1) return "";
+    if(keyPos == -1) return "";
     int colonPos = StringFind(jsonString, ":", keyPos);
-    if (colonPos == -1) return "";
+    if(colonPos == -1) return "";
     int valueStart = colonPos + 1;
     int valueEnd = StringFind(jsonString, ",", valueStart);
-    if (valueEnd == -1) valueEnd = StringFind(jsonString, "}", valueStart);
-    if (valueEnd == -1) return ""; // Prevent error if neither ',' nor '}' is found
+    if(valueEnd == -1) valueEnd = StringFind(jsonString, "}", valueStart);
+    if(valueEnd == -1) return "";
     string value = StringSubstr(jsonString, valueStart, valueEnd - valueStart);
     value = StringTrimLeft(StringTrimRight(value));
-    if (StringLen(value) > 0 && StringGetCharacter(value, 0) == '\"')
+    if(StringLen(value) > 0 && StringGetCharacter(value, 0) == '\"')
         value = StringSubstr(value, 1, StringLen(value) - 2);
     return value;
 }
 
 //+------------------------------------------------------------------+
-//| Function to get open positions                                   |
+//| Return all open positions as a JSON array                        |
 //+------------------------------------------------------------------+
 string getOpenPositions()
 {
     string positions = "";
     for(int i = 0; i < OrdersTotal(); i++)
     {
-        if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+        if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+            continue;
+
+        int orderType = OrderType();
+        if(orderType != OP_BUY && orderType != OP_SELL)
+            continue;
+
+        string orderTypeStr;
+        double currentPrice;
+        if(orderType == OP_BUY)
         {
-            // Only include market orders (BUY/SELL), not pending orders
-            int orderType = OrderType();
-            if(orderType != OP_BUY && orderType != OP_SELL)
-                continue;
-                
-            string orderTypeStr;
-            double currentPrice;
-
-            switch(orderType)
-            {
-                case OP_BUY:
-                    orderTypeStr = "BUY";
-                    currentPrice = MarketInfo(OrderSymbol(), MODE_BID);  // BUY closes at Bid
-                    break;
-                case OP_SELL:
-                    orderTypeStr = "SELL";
-                    currentPrice = MarketInfo(OrderSymbol(), MODE_ASK);  // SELL closes at Ask
-                    break;
-                default:
-                    orderTypeStr = "OTHER";
-                    currentPrice = 0.0;
-                    break;
-            }
-
-            string position = StringFormat(
-                "{\"ticket\":%d,\"symbol\":\"%s\",\"type\":\"%s\",\"lots\":%.2f,\"openPrice\":%.5f,\"curPrice\":%.5f,\"sl\":%.5f,\"tp\":%.5f}",
-                OrderTicket(), OrderSymbol(), orderTypeStr, OrderLots(), OrderOpenPrice(), currentPrice, OrderStopLoss(), OrderTakeProfit()
-            );
-
-            if(positions != "") positions += ",";
-            positions += position;
+            orderTypeStr = "BUY";
+            currentPrice = MarketInfo(OrderSymbol(), MODE_BID);
         }
+        else
+        {
+            orderTypeStr = "SELL";
+            currentPrice = MarketInfo(OrderSymbol(), MODE_ASK);
+        }
+
+        string position = StringFormat(
+            "{\"ticket\":%d,\"symbol\":\"%s\",\"type\":\"%s\",\"lots\":%.2f,"
+            "\"openPrice\":%.5f,\"curPrice\":%.5f,\"sl\":%.5f,\"tp\":%.5f}",
+            OrderTicket(), OrderSymbol(), orderTypeStr, OrderLots(),
+            OrderOpenPrice(), currentPrice, OrderStopLoss(), OrderTakeProfit()
+        );
+
+        if(positions != "") positions += ",";
+        positions += position;
     }
     return "[" + positions + "]";
 }
 
 //+------------------------------------------------------------------+
-//| Get trade history for closed positions                           |
+//| Return closed trade history as a JSON object                     |
 //+------------------------------------------------------------------+
 string getTradeHistory(int startTime = 0, int endTime = 0, int specificTicket = 0)
 {
@@ -524,42 +589,30 @@ string getTradeHistory(int startTime = 0, int endTime = 0, int specificTicket = 
     {
         if(!OrderSelect(i, SELECT_BY_POS, MODE_HISTORY))
             continue;
+        if(startTime > 0 && OrderCloseTime() < startTime) continue;
+        if(endTime   > 0 && OrderCloseTime() > endTime)   continue;
+        if(specificTicket > 0 && OrderTicket() != specificTicket) continue;
+        if(OrderType() != OP_BUY && OrderType() != OP_SELL) continue;
 
-        // Filter by time range if specified
-        if(startTime > 0 && OrderCloseTime() < startTime)
-            continue;
-        if(endTime > 0 && OrderCloseTime() > endTime)
-            continue;
-
-        // Filter by ticket if specified
-        if(specificTicket > 0 && OrderTicket() != specificTicket)
-            continue;
-
-        // Only include market orders (BUY=0, SELL=1)
-        if(OrderType() != OP_BUY && OrderType() != OP_SELL)
-            continue;
-
-        if(!firstTrade)
-            result += ",";
+        if(!firstTrade) result += ",";
         firstTrade = false;
 
         string orderType = (OrderType() == OP_BUY) ? "BUY" : "SELL";
-
         result += "{";
-        result += "\"ticket\":" + IntegerToString(OrderTicket()) + ",";
-        result += "\"symbol\":\"" + OrderSymbol() + "\",";
-        result += "\"type\":\"" + orderType + "\",";
-        result += "\"lots\":" + DoubleToString(OrderLots(), 2) + ",";
-        result += "\"openPrice\":" + DoubleToString(OrderOpenPrice(), 5) + ",";
-        result += "\"closePrice\":" + DoubleToString(OrderClosePrice(), 5) + ",";
-        result += "\"openTime\":" + IntegerToString(OrderOpenTime()) + ",";
-        result += "\"closeTime\":" + IntegerToString(OrderCloseTime()) + ",";
-        result += "\"sl\":" + DoubleToString(OrderStopLoss(), 5) + ",";
-        result += "\"tp\":" + DoubleToString(OrderTakeProfit(), 5) + ",";
-        result += "\"profit\":" + DoubleToString(OrderProfit(), 2) + ",";
-        result += "\"commission\":" + DoubleToString(OrderCommission(), 2) + ",";
-        result += "\"swap\":" + DoubleToString(OrderSwap(), 2) + ",";
-        result += "\"magicNumber\":" + IntegerToString(OrderMagicNumber());
+        result += "\"ticket\":"       + IntegerToString(OrderTicket())          + ",";
+        result += "\"symbol\":\""     + OrderSymbol()                           + "\",";
+        result += "\"type\":\""       + orderType                               + "\",";
+        result += "\"lots\":"         + DoubleToString(OrderLots(), 2)          + ",";
+        result += "\"openPrice\":"    + DoubleToString(OrderOpenPrice(), 5)     + ",";
+        result += "\"closePrice\":"   + DoubleToString(OrderClosePrice(), 5)    + ",";
+        result += "\"openTime\":"     + IntegerToString(OrderOpenTime())        + ",";
+        result += "\"closeTime\":"    + IntegerToString(OrderCloseTime())       + ",";
+        result += "\"sl\":"           + DoubleToString(OrderStopLoss(), 5)      + ",";
+        result += "\"tp\":"           + DoubleToString(OrderTakeProfit(), 5)    + ",";
+        result += "\"profit\":"       + DoubleToString(OrderProfit(), 2)        + ",";
+        result += "\"commission\":"   + DoubleToString(OrderCommission(), 2)    + ",";
+        result += "\"swap\":"         + DoubleToString(OrderSwap(), 2)          + ",";
+        result += "\"magicNumber\":"  + IntegerToString(OrderMagicNumber());
         result += "}";
     }
 
@@ -568,46 +621,46 @@ string getTradeHistory(int startTime = 0, int endTime = 0, int specificTicket = 
 }
 
 //+------------------------------------------------------------------+
-//| Function to get pending orders                                    |
+//| Return pending orders as a JSON array                            |
 //+------------------------------------------------------------------+
 string getPendingOrders()
 {
     string orders = "";
     for(int i = 0; i < OrdersTotal(); i++)
     {
-        if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+        if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+            continue;
+
+        int orderType = OrderType();
+        if(orderType < OP_BUYLIMIT || orderType > OP_SELLSTOP)
+            continue;
+
+        string orderTypeStr;
+        switch(orderType)
         {
-            int orderType = OrderType();
-            
-            // Only include pending orders (BUYLIMIT, SELLLIMIT, BUYSTOP, SELLSTOP)
-            if(orderType < OP_BUYLIMIT || orderType > OP_SELLSTOP)
-                continue;
-            
-            string orderTypeStr;
-            switch(orderType)
-            {
-                case OP_BUYLIMIT: orderTypeStr = "BUY_LIMIT"; break;
-                case OP_SELLLIMIT: orderTypeStr = "SELL_LIMIT"; break;
-                case OP_BUYSTOP: orderTypeStr = "BUY_STOP"; break;
-                case OP_SELLSTOP: orderTypeStr = "SELL_STOP"; break;
-                default: orderTypeStr = "UNKNOWN"; break;
-            }
-
-            string order = StringFormat(
-                "{\"ticket\":%d,\"symbol\":\"%s\",\"type\":\"%s\",\"lots\":%.2f,\"price\":%.5f,\"sl\":%.5f,\"tp\":%.5f,\"comment\":\"%s\",\"expiration\":\"%s\"}",
-                OrderTicket(), OrderSymbol(), orderTypeStr, OrderLots(), OrderOpenPrice(), 
-                OrderStopLoss(), OrderTakeProfit(), OrderComment(), TimeToString(OrderExpiration())
-            );
-
-            if(orders != "") orders += ",";
-            orders += order;
+            case OP_BUYLIMIT:  orderTypeStr = "BUY_LIMIT";  break;
+            case OP_SELLLIMIT: orderTypeStr = "SELL_LIMIT"; break;
+            case OP_BUYSTOP:   orderTypeStr = "BUY_STOP";   break;
+            case OP_SELLSTOP:  orderTypeStr = "SELL_STOP";  break;
+            default:           orderTypeStr = "UNKNOWN";    break;
         }
+
+        string order = StringFormat(
+            "{\"ticket\":%d,\"symbol\":\"%s\",\"type\":\"%s\",\"lots\":%.2f,"
+            "\"price\":%.5f,\"sl\":%.5f,\"tp\":%.5f,\"comment\":\"%s\",\"expiration\":\"%s\"}",
+            OrderTicket(), OrderSymbol(), orderTypeStr, OrderLots(),
+            OrderOpenPrice(), OrderStopLoss(), OrderTakeProfit(),
+            OrderComment(), TimeToString(OrderExpiration())
+        );
+
+        if(orders != "") orders += ",";
+        orders += order;
     }
     return "[" + orders + "]";
 }
 
 //+------------------------------------------------------------------+
-//| Function to get all available symbols                            |
+//| Return all market-watch symbols as a JSON array                  |
 //+------------------------------------------------------------------+
 string getSymbols()
 {
@@ -618,7 +671,6 @@ string getSymbols()
     for(int i = 0; i < totalSymbols; i++)
     {
         string symbol = SymbolName(i, true);
-        Print("Symbol ", i, ": ", symbol);
         if(symbols != "") symbols += ",";
         symbols += "\"" + symbol + "\"";
     }
@@ -628,90 +680,61 @@ string getSymbols()
 }
 
 //+------------------------------------------------------------------+
-//| Function to get detailed symbol specifications                    |
-//| Returns leverage, margin, swap rates, trading hours, etc.        |
+//| Return detailed spec for one symbol as a JSON object             |
 //+------------------------------------------------------------------+
 string getSymbolInfo(string symbol)
 {
-    // Check if symbol exists
     if(!SymbolSelect(symbol, true))
-    {
         return StringFormat("{\"error\":\"Symbol %s not found\"}", symbol);
-    }
 
-    // Get all symbol specifications using MarketInfo()
-    double bid = MarketInfo(symbol, MODE_BID);
-    double ask = MarketInfo(symbol, MODE_ASK);
-    double point = MarketInfo(symbol, MODE_POINT);
-    int digits = (int)MarketInfo(symbol, MODE_DIGITS);
-    double spread = MarketInfo(symbol, MODE_SPREAD);
-    double stopLevel = MarketInfo(symbol, MODE_STOPLEVEL);
-    double lotSize = MarketInfo(symbol, MODE_LOTSIZE);
-    double tickValue = MarketInfo(symbol, MODE_TICKVALUE);
-    double tickSize = MarketInfo(symbol, MODE_TICKSIZE);
-    double minLot = MarketInfo(symbol, MODE_MINLOT);
-    double maxLot = MarketInfo(symbol, MODE_MAXLOT);
-    double lotStep = MarketInfo(symbol, MODE_LOTSTEP);
-    double swapLong = MarketInfo(symbol, MODE_SWAPLONG);
-    double swapShort = MarketInfo(symbol, MODE_SWAPSHORT);
-    int swapType = (int)MarketInfo(symbol, MODE_SWAPTYPE);
-    double marginInit = MarketInfo(symbol, MODE_MARGININIT);
-    double marginMaint = MarketInfo(symbol, MODE_MARGINMAINTENANCE);
+    double bid           = MarketInfo(symbol, MODE_BID);
+    double ask           = MarketInfo(symbol, MODE_ASK);
+    double point         = MarketInfo(symbol, MODE_POINT);
+    int    digits        = (int)MarketInfo(symbol, MODE_DIGITS);
+    double spread        = MarketInfo(symbol, MODE_SPREAD);
+    double stopLevel     = MarketInfo(symbol, MODE_STOPLEVEL);
+    double lotSize       = MarketInfo(symbol, MODE_LOTSIZE);
+    double tickValue     = MarketInfo(symbol, MODE_TICKVALUE);
+    double tickSize      = MarketInfo(symbol, MODE_TICKSIZE);
+    double minLot        = MarketInfo(symbol, MODE_MINLOT);
+    double maxLot        = MarketInfo(symbol, MODE_MAXLOT);
+    double lotStep       = MarketInfo(symbol, MODE_LOTSTEP);
+    double swapLong      = MarketInfo(symbol, MODE_SWAPLONG);
+    double swapShort     = MarketInfo(symbol, MODE_SWAPSHORT);
+    int    swapType      = (int)MarketInfo(symbol, MODE_SWAPTYPE);
+    double marginInit    = MarketInfo(symbol, MODE_MARGININIT);
+    double marginMaint   = MarketInfo(symbol, MODE_MARGINMAINTENANCE);
     double marginRequired = MarketInfo(symbol, MODE_MARGINREQUIRED);
-    int tradeAllowed = (int)MarketInfo(symbol, MODE_TRADEALLOWED);
-    int freezeLevel = (int)MarketInfo(symbol, MODE_FREEZELEVEL);
+    int    tradeAllowed  = (int)MarketInfo(symbol, MODE_TRADEALLOWED);
+    int    freezeLevel   = (int)MarketInfo(symbol, MODE_FREEZELEVEL);
 
-    // Calculate leverage from margin required
-    // Leverage = Contract Size / (Margin Required per lot)
     double leverage = 0;
     if(marginRequired > 0)
-    {
         leverage = (lotSize * bid) / marginRequired;
-    }
 
-    // Calculate margin percentage
     double marginPct = 0;
     if(lotSize > 0 && bid > 0)
-    {
         marginPct = (marginRequired / (lotSize * bid)) * 100;
-    }
 
-    // Swap type description
-    string swapTypeStr = "";
+    string swapTypeStr;
     switch(swapType)
     {
-        case 0: swapTypeStr = "points"; break;
-        case 1: swapTypeStr = "base_currency"; break;
-        case 2: swapTypeStr = "interest"; break;
+        case 0: swapTypeStr = "points";          break;
+        case 1: swapTypeStr = "base_currency";   break;
+        case 2: swapTypeStr = "interest";        break;
         case 3: swapTypeStr = "margin_currency"; break;
-        default: swapTypeStr = "unknown"; break;
+        default: swapTypeStr = "unknown";        break;
     }
 
-    // Build JSON response
     string json = StringFormat(
         "{\"symbol\":\"%s\","
-        "\"bid\":%.5f,"
-        "\"ask\":%.5f,"
-        "\"spread\":%.1f,"
-        "\"digits\":%d,"
-        "\"point\":%.6f,"
-        "\"contract_size\":%.2f,"
-        "\"tick_value\":%.4f,"
-        "\"tick_size\":%.6f,"
-        "\"min_lot\":%.2f,"
-        "\"max_lot\":%.2f,"
-        "\"lot_step\":%.2f,"
-        "\"swap_long\":%.2f,"
-        "\"swap_short\":%.2f,"
-        "\"swap_type\":\"%s\","
-        "\"margin_required\":%.2f,"
-        "\"margin_init\":%.2f,"
-        "\"margin_maintenance\":%.2f,"
-        "\"margin_pct\":%.4f,"
-        "\"leverage\":%.1f,"
-        "\"stop_level\":%.0f,"
-        "\"freeze_level\":%d,"
-        "\"trade_allowed\":%s}",
+        "\"bid\":%.5f,\"ask\":%.5f,\"spread\":%.1f,\"digits\":%d,\"point\":%.6f,"
+        "\"contract_size\":%.2f,\"tick_value\":%.4f,\"tick_size\":%.6f,"
+        "\"min_lot\":%.2f,\"max_lot\":%.2f,\"lot_step\":%.2f,"
+        "\"swap_long\":%.2f,\"swap_short\":%.2f,\"swap_type\":\"%s\","
+        "\"margin_required\":%.2f,\"margin_init\":%.2f,\"margin_maintenance\":%.2f,"
+        "\"margin_pct\":%.4f,\"leverage\":%.1f,"
+        "\"stop_level\":%.0f,\"freeze_level\":%d,\"trade_allowed\":%s}",
         symbol, bid, ask, spread, digits, point,
         lotSize, tickValue, tickSize,
         minLot, maxLot, lotStep,
@@ -727,101 +750,83 @@ string getSymbolInfo(string symbol)
 }
 
 //+------------------------------------------------------------------+
-//| Function to get info for all available symbols                    |
+//| Return info for all market-watch symbols as a JSON array         |
 //+------------------------------------------------------------------+
 string getAllSymbolsInfo()
 {
     string symbols = "";
     int totalSymbols = SymbolsTotal(true);
-
     for(int i = 0; i < totalSymbols; i++)
     {
         string symbol = SymbolName(i, true);
-        string info = getSymbolInfo(symbol);
-
+        string info   = getSymbolInfo(symbol);
         if(symbols != "") symbols += ",";
         symbols += info;
     }
-
     return "[" + symbols + "]";
 }
 
 //+------------------------------------------------------------------+
-//| Function to create an instant order                              |
+//| Place a market order                                             |
 //+------------------------------------------------------------------+
 int createInstantOrder(string symbol, int orderType, double volume, double stopLoss, double takeProfit)
 {
-    double price = (orderType == OP_BUY) ? MarketInfo(symbol, MODE_ASK) : MarketInfo(symbol, MODE_BID);
-    int slippage = 3;
-    string comment = "Instant Order";
+    double price    = (orderType == OP_BUY) ? MarketInfo(symbol, MODE_ASK) : MarketInfo(symbol, MODE_BID);
+    int    slippage = 3;
+    string comment  = "Instant Order";
 
     int ticket = OrderSend(symbol, orderType, volume, price, slippage, stopLoss, takeProfit, comment, MAGIC_NUMBER, 0, clrNONE);
     if(ticket < 0)
-    {
         Print("OrderSend failed with error #", GetLastError());
-    }
     return ticket;
 }
 
 //+------------------------------------------------------------------+
-//| Function to create a pending order                              |
+//| Place a pending order                                            |
 //+------------------------------------------------------------------+
 int createPendingOrder(string symbol, int orderType, double volume, double price, double stopLoss, double takeProfit)
 {
-    int slippage = 3;
-    string comment = "Pending Order";
+    int    slippage = 3;
+    string comment  = "Pending Order";
 
     int ticket = OrderSend(symbol, orderType, volume, price, slippage, stopLoss, takeProfit, comment, MAGIC_NUMBER, 0, clrNONE);
     if(ticket < 0)
-    {
         Print("OrderSend (Pending) failed with error #", GetLastError());
-    }
     return ticket;
 }
 
 //+------------------------------------------------------------------+
-//| Function to convert string timeframe to ENUM_TIMEFRAMES          |
+//| Map a timeframe string to ENUM_TIMEFRAMES                        |
 //+------------------------------------------------------------------+
 ENUM_TIMEFRAMES stringToTimeframe(string timeframeStr)
 {
-    if(timeframeStr == "PERIOD_M1")   return PERIOD_M1;
-    if(timeframeStr == "PERIOD_M5")   return PERIOD_M5;
-    if(timeframeStr == "PERIOD_M15")  return PERIOD_M15;
-    if(timeframeStr == "PERIOD_M30")  return PERIOD_M30;
-    if(timeframeStr == "PERIOD_H1")   return PERIOD_H1;
-    if(timeframeStr == "PERIOD_H4")   return PERIOD_H4;
-    if(timeframeStr == "PERIOD_D1")   return PERIOD_D1;
-    if(timeframeStr == "PERIOD_W1")   return PERIOD_W1;
-    if(timeframeStr == "PERIOD_MN1")  return PERIOD_MN1;
-    return PERIOD_CURRENT; // Default to current timeframe if not recognized
+    if(timeframeStr == "PERIOD_M1")  return PERIOD_M1;
+    if(timeframeStr == "PERIOD_M5")  return PERIOD_M5;
+    if(timeframeStr == "PERIOD_M15") return PERIOD_M15;
+    if(timeframeStr == "PERIOD_M30") return PERIOD_M30;
+    if(timeframeStr == "PERIOD_H1")  return PERIOD_H1;
+    if(timeframeStr == "PERIOD_H4")  return PERIOD_H4;
+    if(timeframeStr == "PERIOD_D1")  return PERIOD_D1;
+    if(timeframeStr == "PERIOD_W1")  return PERIOD_W1;
+    if(timeframeStr == "PERIOD_MN1") return PERIOD_MN1;
+    return PERIOD_CURRENT;
 }
 
 //+------------------------------------------------------------------+
-//| Function to get OHLCV data for a specific bar                     |
+//| Return OHLCV for a specific bar as a JSON fragment               |
 //+------------------------------------------------------------------+
 string getOHLCV(string symbol, ENUM_TIMEFRAMES timeframe, datetime time)
 {
     int shift = iBarShift(symbol, timeframe, time, false);
     if(shift == -1) return "";
-    
-    double open = iOpen(symbol, timeframe, shift);
-    double high = iHigh(symbol, timeframe, shift);
-    double low = iLow(symbol, timeframe, shift);
-    double close = iClose(symbol, timeframe, shift);
-    double volume = iVolume(symbol, timeframe, shift);
+
+    double open    = iOpen(symbol,   timeframe, shift);
+    double high    = iHigh(symbol,   timeframe, shift);
+    double low     = iLow(symbol,    timeframe, shift);
+    double close   = iClose(symbol,  timeframe, shift);
+    double volume  = iVolume(symbol, timeframe, shift);
     datetime barTime = iTime(symbol, timeframe, shift);
 
-    // Convert broker time to UTC
-    datetime utcTime = barTime;
-    datetime pstTime = barTime - TimeGMTOffset();
-    
-    // Debug print
-    //Print("Bar Time (Broker): ", TimeToString(barTime));
-    //Print("GMT Offset: ", TimeGMTOffset());
-    //Print("UTC Time: ", TimeToString(utcTime));
-    //Print("PST Time: ", TimeToString(pstTime));
-
-    // barTime is already in UTC, no conversion needed
     return StringFormat(
         "\"open\":%.5f,\"high\":%.5f,\"low\":%.5f,\"close\":%.5f,\"volume\":%.2f,\"time\":%d",
         open, high, low, close, volume, barTime
@@ -829,37 +834,35 @@ string getOHLCV(string symbol, ENUM_TIMEFRAMES timeframe, datetime time)
 }
 
 //+------------------------------------------------------------------+
-//| Function to get account information                              |
+//| Return account summary as a JSON fragment                        |
 //+------------------------------------------------------------------+
 string getAccountInfo()
 {
     double marginLevel = (AccountMargin() != 0) ? (AccountEquity() / AccountMargin() * 100) : 0;
-    return StringFormat("\"balance\":%.2f,\"equity\":%.2f,\"margin\":%.2f,\"freeMargin\":%.2f,\"marginLevel\":%.2f",
-                        AccountBalance(), AccountEquity(), AccountMargin(), AccountFreeMargin(), marginLevel);
+    return StringFormat(
+        "\"balance\":%.2f,\"equity\":%.2f,\"margin\":%.2f,\"freeMargin\":%.2f,\"marginLevel\":%.2f",
+        AccountBalance(), AccountEquity(), AccountMargin(), AccountFreeMargin(), marginLevel
+    );
 }
 
 //+------------------------------------------------------------------+
-//| New function to get CCI signal                                   |
+//| Return CCI signal string                                         |
 //+------------------------------------------------------------------+
 string getCCISignal(string symbol, ENUM_TIMEFRAMES timeframe)
 {
-    int cciPeriod = 14;
-    double cci = iCCI(symbol, timeframe, cciPeriod, PRICE_TYPICAL, 0);
-
+    double cci = iCCI(symbol, timeframe, 14, PRICE_TYPICAL, 0);
     if(cci < -100) return "BUY";
     else if(cci > 100) return "SELL";
     else return "NONE";
 }
 
 //+------------------------------------------------------------------+
-//| New function to get Bollinger Bands signal                       |
+//| Return Bollinger Bands signal string                             |
 //+------------------------------------------------------------------+
 string getBollingerBandsSignal(string symbol, ENUM_TIMEFRAMES timeframe)
 {
-    int bbPeriod = 20;
-    double deviation = 2.0;
-    double upperBand = iBands(symbol, timeframe, bbPeriod, deviation, 0, PRICE_CLOSE, MODE_UPPER, 0);
-    double lowerBand = iBands(symbol, timeframe, bbPeriod, deviation, 0, PRICE_CLOSE, MODE_LOWER, 0);
+    double upperBand  = iBands(symbol, timeframe, 20, 2.0, 0, PRICE_CLOSE, MODE_UPPER, 0);
+    double lowerBand  = iBands(symbol, timeframe, 20, 2.0, 0, PRICE_CLOSE, MODE_LOWER, 0);
     double closePrice = iClose(symbol, timeframe, 0);
 
     if(closePrice <= lowerBand) return "BUY";
@@ -867,369 +870,258 @@ string getBollingerBandsSignal(string symbol, ENUM_TIMEFRAMES timeframe)
     else return "NONE";
 }
 
-
-
 //+------------------------------------------------------------------+
-//| New function to get calculate VWAP                       |
-//+------------------------------------------------------------------+
-double calculateVWAP()
-{
-    double cumTypicalPrice = 0;
-    double cumVolume = 0;
-    
-    for(int i = 0; i < 20; i++)  // Calculate VWAP for last 20 bars
-    {
-        double typicalPrice = (High[i] + Low[i] + Close[i]) / 3;
-        cumTypicalPrice += typicalPrice * Volume[i];
-        cumVolume += Volume[i];
-    }
-    
-    return cumVolume > 0 ? cumTypicalPrice / cumVolume : Close[0];
-}
-
-//+------------------------------------------------------------------+
-//| New function to get MACD signal                                   |
+//| Return MACD signal string                                        |
 //+------------------------------------------------------------------+
 string getMACDSignal(string symbol, ENUM_TIMEFRAMES timeframe)
 {
-    int fastEMA = 12;
-    int slowEMA = 26;
-    int signalSMA = 9;
-    double macd = iMACD(symbol, timeframe, fastEMA, slowEMA, signalSMA, PRICE_CLOSE, MODE_MAIN, 0);
-    double signal = iMACD(symbol, timeframe, fastEMA, slowEMA, signalSMA, PRICE_CLOSE, MODE_SIGNAL, 0);
+    double macd   = iMACD(symbol, timeframe, 12, 26, 9, PRICE_CLOSE, MODE_MAIN,   0);
+    double signal = iMACD(symbol, timeframe, 12, 26, 9, PRICE_CLOSE, MODE_SIGNAL, 0);
 
-    if(macd > signal) return "BUY";
+    if(macd > signal)      return "BUY";
     else if(macd < signal) return "SELL";
     else return "NONE";
 }
 
 //+------------------------------------------------------------------+
-//| New function to combine signals                                  |
+//| Combine CCI + BB + MACD into a signals JSON fragment             |
 //+------------------------------------------------------------------+
 string getTradingSignals(string symbol, ENUM_TIMEFRAMES timeframe)
 {
-    string cciSignal = getCCISignal(symbol, timeframe);
-    string bbSignal = getBollingerBandsSignal(symbol, timeframe);
-    string macdSignal = getMACDSignal(symbol, timeframe);
-
-    string signals = StringFormat("{\"cci_signal\":\"%s\",\"bb_signal\":\"%s\",\"macd_signal\":\"%s\"}", 
-                                  cciSignal, bbSignal, macdSignal);
-    return signals;
+    return StringFormat(
+        "{\"cci_signal\":\"%s\",\"bb_signal\":\"%s\",\"macd_signal\":\"%s\"}",
+        getCCISignal(symbol, timeframe),
+        getBollingerBandsSignal(symbol, timeframe),
+        getMACDSignal(symbol, timeframe)
+    );
 }
 
 //+------------------------------------------------------------------+
-//| Function to check if market is open                               |
+//| Calculate VWAP over the last 20 bars for the given symbol        |
+//| Uses iHigh/iLow/iClose/iVolume so it works for any symbol, not  |
+//| just the chart symbol.                                           |
 //+------------------------------------------------------------------+
-//bool IsMarketOpen(string symbol)
-//{
-    // Get current server time
-//    datetime serverTime = TimeCurrent();
-    
-    // Check if it's weekend
-//    int dayOfWeek = TimeDayOfWeek(serverTime);
-//    if(dayOfWeek == 0 || dayOfWeek == 6)
-//        return false;
-        
-    // Check if symbol is actually trading
-//    double currentBid = MarketInfo(symbol, MODE_BID);
- //   double currentAsk = MarketInfo(symbol, MODE_ASK);
-    
-    // If either bid or ask is 0 or invalid, market is likely closed
-//    if(currentBid == 0 || currentAsk == 0 || currentBid == EMPTY_VALUE || currentAsk == EMPTY_VALUE)
- //       return false;
-        
-    // Check if symbol is selected/available
-//    if(!SymbolSelect(symbol, true))
-//        return false;
-        
-    // If we got here, market should be open
-//    return true;
-//}
+double calculateVWAP(string symbol, ENUM_TIMEFRAMES timeframe)
+{
+    double cumTypicalPrice = 0;
+    double cumVolume       = 0;
 
+    for(int i = 0; i < 20; i++)
+    {
+        double typicalPrice = (iHigh(symbol, timeframe, i) +
+                               iLow(symbol,  timeframe, i) +
+                               iClose(symbol, timeframe, i)) / 3.0;
+        double vol = (double)iVolume(symbol, timeframe, i);
+        cumTypicalPrice += typicalPrice * vol;
+        cumVolume       += vol;
+    }
+
+    return (cumVolume > 0) ? cumTypicalPrice / cumVolume : iClose(symbol, timeframe, 0);
+}
+
+//+------------------------------------------------------------------+
+//| IsMarketOpen — checks broker session hours for the given symbol  |
+//+------------------------------------------------------------------+
 bool IsMarketOpen(string symbol)
 {
-    // Get current server time
     datetime serverTime = TimeCurrent();
-    
-    // Check if it's weekend
-    int dayOfWeek = TimeDayOfWeek(serverTime);
-    if(dayOfWeek == 0 || dayOfWeek == 6)
-    {
-        Print("Market closed: Weekend (Day ", dayOfWeek, " - ", 
-              dayOfWeek == 0 ? "Sunday" : "Saturday", 
-              "), except for specific Sunday hours");
-    }
-        
-    // Get current hour and minute
-    int hour = TimeHour(serverTime);
-    int minute = TimeMinute(serverTime);
-    int currentTime = hour * 100 + minute;  // Convert to HHMM format
-    
-    Print("Current server time: ", TimeToStr(serverTime), 
-          " (Day: ", dayOfWeek, 
-          ", Hour: ", hour, 
-          ", Minute: ", minute, 
+    int dayOfWeek  = TimeDayOfWeek(serverTime);
+    int hour       = TimeHour(serverTime);
+    int minute     = TimeMinute(serverTime);
+    int currentTime = hour * 100 + minute; // HHMM format
+
+    Print("Current server time: ", TimeToStr(serverTime),
+          " (Day: ", dayOfWeek,
           ", HHMM: ", currentTime, ")");
-    
-    // Check trading sessions based on day of week
+
     switch(dayOfWeek)
     {
         case 1: // Monday
         case 2: // Tuesday
         case 3: // Wednesday
         case 4: // Thursday
-            // Trading hours: 00:00-21:59, 23:01-24:00
-            if((currentTime >= 0 && currentTime <= 2159) || 
+            if((currentTime >= 0 && currentTime <= 2159) ||
                (currentTime >= 2301 && currentTime <= 2400))
             {
-                Print("Market should be open: Regular trading day within valid hours");
-                
-                // Additional safety checks
-                double currentBid = MarketInfo(symbol, MODE_BID);
-                double currentAsk = MarketInfo(symbol, MODE_ASK);
-                
-                Print("Current Bid: ", currentBid, ", Ask: ", currentAsk);
-                
-                if(currentBid == 0 || currentAsk == 0 || currentBid == EMPTY_VALUE || currentAsk == EMPTY_VALUE)
+                double bid = MarketInfo(symbol, MODE_BID);
+                double ask = MarketInfo(symbol, MODE_ASK);
+                if(bid == 0 || ask == 0 || bid == EMPTY_VALUE || ask == EMPTY_VALUE)
                 {
-                    Print("Market closed: Invalid Bid/Ask prices despite being within trading hours");
+                    Print("Market closed: Invalid Bid/Ask for ", symbol);
                     return false;
                 }
-                
                 if(!SymbolSelect(symbol, true))
                 {
-                    Print("Market closed: Symbol selection failed");
+                    Print("Market closed: SymbolSelect failed for ", symbol);
                     return false;
                 }
-                
                 return true;
             }
-            else
-            {
-                Print("Market closed: Outside trading hours for weekday (", currentTime, 
-                      "). Valid hours are 00:00-21:59 and 23:01-24:00");
-            }
             break;
-            
+
         case 5: // Friday
-            // Trading hours: 00:00-21:59
             if(currentTime >= 0 && currentTime <= 2159)
             {
-                Print("Market should be open: Friday within valid hours");
-                
-                // Additional safety checks
-                double currentBid = MarketInfo(symbol, MODE_BID);
-                double currentAsk = MarketInfo(symbol, MODE_ASK);
-                
-                Print("Current Bid: ", currentBid, ", Ask: ", currentAsk);
-                
-                if(currentBid == 0 || currentAsk == 0 || currentBid == EMPTY_VALUE || currentAsk == EMPTY_VALUE)
+                double bid = MarketInfo(symbol, MODE_BID);
+                double ask = MarketInfo(symbol, MODE_ASK);
+                if(bid == 0 || ask == 0 || bid == EMPTY_VALUE || ask == EMPTY_VALUE)
                 {
-                    Print("Market closed: Invalid Bid/Ask prices despite being within trading hours");
+                    Print("Market closed: Invalid Bid/Ask for ", symbol);
                     return false;
                 }
-                
                 if(!SymbolSelect(symbol, true))
                 {
-                    Print("Market closed: Symbol selection failed");
+                    Print("Market closed: SymbolSelect failed for ", symbol);
                     return false;
                 }
-                
                 return true;
             }
-            else
-            {
-                Print("Market closed: Outside trading hours for Friday (", currentTime, 
-                      "). Valid hours are 00:00-21:59");
-            }
             break;
-            
+
         case 0: // Sunday
-            // Trading hours: 23:01-24:00
             if(currentTime >= 2301 && currentTime <= 2400)
             {
-                Print("Market should be open: Sunday within valid hours");
-                
-                // Additional safety checks
-                double currentBid = MarketInfo(symbol, MODE_BID);
-                double currentAsk = MarketInfo(symbol, MODE_ASK);
-                
-                Print("Current Bid: ", currentBid, ", Ask: ", currentAsk);
-                
-                if(currentBid == 0 || currentAsk == 0 || currentBid == EMPTY_VALUE || currentAsk == EMPTY_VALUE)
+                double bid = MarketInfo(symbol, MODE_BID);
+                double ask = MarketInfo(symbol, MODE_ASK);
+                if(bid == 0 || ask == 0 || bid == EMPTY_VALUE || ask == EMPTY_VALUE)
                 {
-                    Print("Market closed: Invalid Bid/Ask prices despite being within trading hours");
+                    Print("Market closed: Invalid Bid/Ask for ", symbol);
                     return false;
                 }
-                
                 if(!SymbolSelect(symbol, true))
                 {
-                    Print("Market closed: Symbol selection failed");
+                    Print("Market closed: SymbolSelect failed for ", symbol);
                     return false;
                 }
-                
                 return true;
-            }
-            else
-            {
-                Print("Market closed: Outside trading hours for Sunday (", currentTime, 
-                      "). Valid hours are 23:01-24:00");
             }
             break;
     }
-    
-    // Additional safety checks for logging purposes
-    double finalBid = MarketInfo(symbol, MODE_BID);
-    double finalAsk = MarketInfo(symbol, MODE_ASK);
-    Print("Final check - Bid: ", finalBid, ", Ask: ", finalAsk);
-    
-    if(!SymbolSelect(symbol, true))
-    {
-        Print("Final check - Symbol selection failed");
-    }
-    
-    Print("Market closed: No valid trading session found");
+
+    Print("Market closed: No valid trading session for ", symbol, " at HHMM=", currentTime);
     return false;
 }
 
 //+------------------------------------------------------------------+
-//| Function to send real-time updates including price data and signals|
+//| Send a real-time streaming update for g_symbols[symbolIndex]    |
+//|                                                                  |
+//| All indicator calls use explicit (symbol, timeframe, ...) forms  |
+//| so this function works correctly for any symbol, not just the    |
+//| chart symbol.  The only remaining chart-level dependency was     |
+//| the Fibonacci high/low using High[]/Low[] arrays — those now     |
+//| use iHigh()/iLow() with the correct symbol argument.            |
 //+------------------------------------------------------------------+
-void sendRealTimeUpdate()
+void sendRealTimeUpdate(int symbolIndex)
 {
+    string symbol = g_symbols[symbolIndex];
 
-    // Add market open check at the start
-    bool isMarketOpen = IsMarketOpen(g_symbol);
-          
-    // Ensure there are enough bars to calculate indicators
-    int requiredBars = MathMax(50, 26); // 50 for MA_50 and 26 for MACD slow EMA
-    if(Bars < requiredBars)
+    // Market-open check
+    bool isMarketOpen = IsMarketOpen(symbol);
+
+    // Require at least 50 bars for all indicators
+    int availBars = iBars(symbol, g_timeframe);
+    int requiredBars = 200; // MA_200 needs 200 bars
+    if(availBars < requiredBars)
     {
-        Print("Not enough bars to calculate all indicators. Required: ", requiredBars, ", Available: ", Bars);
+        Print("Not enough bars for ", symbol, ". Required: ", requiredBars, ", Available: ", availBars);
         return;
     }
-    
-    // Calculate Technical Indicators
-    double MA_20 = iMA(g_symbol, g_timeframe, 20, 0, MODE_SMA, PRICE_CLOSE, 0);
-    double MA_50 = iMA(g_symbol, g_timeframe, 50, 0, MODE_SMA, PRICE_CLOSE, 0);
-    
-    // Calculate MA_200
-    double MA_200 = iMA(g_symbol, g_timeframe, 200, 0, MODE_SMA, PRICE_CLOSE, 0);
-    
-    // Calculate RSI
-    double RSI_14 = iRSI(g_symbol, g_timeframe, 14, PRICE_CLOSE, 0);
-    
-    // Calculate MACD Components
-    double MACD_main = iMACD(g_symbol, g_timeframe, 12, 26, 9, PRICE_CLOSE, MODE_MAIN, 0);
-    double MACD_signal = iMACD(g_symbol, g_timeframe, 12, 26, 9, PRICE_CLOSE, MODE_SIGNAL, 0);
-    // double MACD_hist = iMACD(g_symbol, g_timeframe, 12, 26, 9, PRICE_CLOSE, MODE_HIST, 0); // Uncomment if needed
-    
-    // Calculate Bollinger Bands
-    double BB_upper = iBands(g_symbol, g_timeframe, 20, 2.0, 0, PRICE_CLOSE, MODE_UPPER, 0);
-    double BB_middle = iBands(g_symbol, g_timeframe, 20, 2.0, 0, PRICE_CLOSE, MODE_MAIN, 0);
-    double BB_lower = iBands(g_symbol, g_timeframe, 20, 2.0, 0, PRICE_CLOSE, MODE_LOWER, 0);
-    
-    // Retrieve Price Data
-    string priceData = getOHLCV(g_symbol, g_timeframe, TimeCurrent());
-    string signals = getTradingSignals(g_symbol, g_timeframe);
-    
-    // Check if priceData is valid
+
+    // ---- Technical Indicators (all with explicit symbol parameter) ----
+    double MA_20   = iMA(symbol, g_timeframe, 20,  0, MODE_SMA, PRICE_CLOSE, 0);
+    double MA_50   = iMA(symbol, g_timeframe, 50,  0, MODE_SMA, PRICE_CLOSE, 0);
+    double MA_200  = iMA(symbol, g_timeframe, 200, 0, MODE_SMA, PRICE_CLOSE, 0);
+    double RSI_14  = iRSI(symbol, g_timeframe, 14, PRICE_CLOSE, 0);
+    double MACD_main   = iMACD(symbol, g_timeframe, 12, 26, 9, PRICE_CLOSE, MODE_MAIN,   0);
+    double MACD_signal = iMACD(symbol, g_timeframe, 12, 26, 9, PRICE_CLOSE, MODE_SIGNAL, 0);
+    double BB_upper    = iBands(symbol, g_timeframe, 20, 2.0, 0, PRICE_CLOSE, MODE_UPPER, 0);
+    double BB_middle   = iBands(symbol, g_timeframe, 20, 2.0, 0, PRICE_CLOSE, MODE_MAIN,  0);
+    double BB_lower    = iBands(symbol, g_timeframe, 20, 2.0, 0, PRICE_CLOSE, MODE_LOWER, 0);
+    double ATR         = iATR(symbol, g_timeframe, 14, 0);
+    double SAR         = iSAR(symbol, g_timeframe, 0.02, 0.2, 0);
+    double VWAP        = calculateVWAP(symbol, g_timeframe);
+
+    // OHLCV for current bar
+    string priceData = getOHLCV(symbol, g_timeframe, TimeCurrent());
     if(StringLen(priceData) == 0)
     {
-        Print("Invalid price data. Skipping update.");
+        Print("Invalid price data for ", symbol, ". Skipping update.");
         return;
     }
-    
-    // Calculate additional indicators
-    double ATR = iATR(g_symbol, g_timeframe, 14, 0);  // 14-period ATR
-    double SAR = iSAR(g_symbol, g_timeframe, 0.02, 0.2, 0);  // Parabolic SAR
-    double VWAP = calculateVWAP();  // You'll need to implement this
-    
-    
-    // Calculate Fibonacci levels
-    double high = High[iHighest(g_symbol, g_timeframe, MODE_HIGH, 20, 0)];
-    double low = Low[iLowest(g_symbol, g_timeframe, MODE_LOW, 20, 0)];
-    
-    double fib_236 = high - ((high - low) * 0.236);
-    double fib_382 = high - ((high - low) * 0.382);
-    double fib_500 = high - ((high - low) * 0.500);
-    double fib_618 = high - ((high - low) * 0.618);
-    double fib_786 = high - ((high - low) * 0.786);
-        
-    // Check if all indicators have valid values
-    if(MA_20 == EMPTY_VALUE || MA_50 == EMPTY_VALUE || RSI_14 == EMPTY_VALUE ||
+
+    // Validate indicators
+    if(MA_20 == EMPTY_VALUE || MA_50 == EMPTY_VALUE || MA_200 == EMPTY_VALUE ||
+       RSI_14 == EMPTY_VALUE ||
        MACD_main == EMPTY_VALUE || MACD_signal == EMPTY_VALUE ||
-       BB_upper == EMPTY_VALUE || BB_middle == EMPTY_VALUE || BB_lower == EMPTY_VALUE)
+       BB_upper == EMPTY_VALUE  || BB_middle == EMPTY_VALUE || BB_lower == EMPTY_VALUE)
     {
-        Print("One or more indicators returned EMPTY_VALUE. Skipping update.");
+        Print("One or more indicators returned EMPTY_VALUE for ", symbol, ". Skipping update.");
         return;
     }
-    
-    // Prepare TA Indicators JSON
+
+    // ---- Fibonacci levels (20-bar swing high/low) ----
+    // Use iHigh/iLow with explicit symbol so non-chart symbols work correctly
+    int highIdx = iHighest(symbol, g_timeframe, MODE_HIGH, 20, 0);
+    int lowIdx  = iLowest(symbol,  g_timeframe, MODE_LOW,  20, 0);
+    double swingHigh = iHigh(symbol, g_timeframe, highIdx);
+    double swingLow  = iLow(symbol,  g_timeframe, lowIdx);
+
+    double fib_236 = swingHigh - ((swingHigh - swingLow) * 0.236);
+    double fib_382 = swingHigh - ((swingHigh - swingLow) * 0.382);
+    double fib_500 = swingHigh - ((swingHigh - swingLow) * 0.500);
+    double fib_618 = swingHigh - ((swingHigh - swingLow) * 0.618);
+    double fib_786 = swingHigh - ((swingHigh - swingLow) * 0.786);
+
+    // ---- Signals ----
+    string signals = getTradingSignals(symbol, g_timeframe);
+
+    // ---- Compose TA indicators JSON fragment ----
     string taIndicators = StringFormat(
-        "\"MA_20\":%.5f,\"MA_50\":%.5f,\"MA_200\":%.5f,\"RSI_14\":%.2f,\"MACD\":%.5f,\"MACD_signal\":%.5f,\"BB_upper\":%.5f,\"BB_middle\":%.5f,\"BB_lower\":%.5f,\"ATR\":%.5f,\"SAR\":%.5f,\"VWAP\":%.5f,\"FIB_236\":%.5f,\"FIB_382\":%.5f,\"FIB_500\":%.5f,\"FIB_618\":%.5f,\"FIB_786\":%.5f,\"FIB_HIGH\":%.5f,\"FIB_LOW\":%.5f",
-        MA_20,
-        MA_50,
-        MA_200,
+        "\"MA_20\":%.5f,\"MA_50\":%.5f,\"MA_200\":%.5f,"
+        "\"RSI_14\":%.2f,"
+        "\"MACD\":%.5f,\"MACD_signal\":%.5f,"
+        "\"BB_upper\":%.5f,\"BB_middle\":%.5f,\"BB_lower\":%.5f,"
+        "\"ATR\":%.5f,\"SAR\":%.5f,\"VWAP\":%.5f,"
+        "\"FIB_236\":%.5f,\"FIB_382\":%.5f,\"FIB_500\":%.5f,"
+        "\"FIB_618\":%.5f,\"FIB_786\":%.5f,"
+        "\"FIB_HIGH\":%.5f,\"FIB_LOW\":%.5f",
+        MA_20, MA_50, MA_200,
         RSI_14,
-        MACD_main,
-        MACD_signal,
-        BB_upper,
-        BB_middle,
-        BB_lower,
-        ATR,
-        SAR,
-        VWAP,
+        MACD_main, MACD_signal,
+        BB_upper, BB_middle, BB_lower,
+        ATR, SAR, VWAP,
         fib_236, fib_382, fib_500, fib_618, fib_786,
-        high, low
+        swingHigh, swingLow
     );
-    
-    // Modify the JSON message to include new indicators
-    //string taIndicators = StringFormat(
-     //   "\"MA_20\":%.5f,\"MA_50\":%.5f,\"RSI_14\":%.2f,\"MACD\":%.5f,\"MACD_signal\":%.5f," 
-     //   "\"BB_upper\":%.5f,\"BB_middle\":%.5f,\"BB_lower\":%.5f,"
-     //   "\"ATR\":%.5f,\"SAR\":%.5f,\"VWAP\":%.5f",
-     //   ma20, ma50, rsi, macd, macdSignal,
-     //   bbUpper, bbMiddle, bbLower,
-     //   atr, sar, vwap
-   // );
-    
-    // Construct the JSON message
+
+    // ---- Full message ----
     string message = StringFormat(
-        "{\"type\":\"real_time_update\",\"symbol\":\"%s\",\"timeframe\":%d,\"market_open\":%s,\"price_data\":{%s},\"signals\":%s,\"ta_indicators\":{%s}}",
-        g_symbol,
-        g_timeframe,
-        isMarketOpen ? "true" : "false",  // Add market_open status
+        "{\"type\":\"real_time_update\",\"symbol\":\"%s\",\"timeframe\":%d,"
+        "\"market_open\":%s,\"price_data\":{%s},\"signals\":%s,\"ta_indicators\":{%s}}",
+        symbol,
+        (int)g_timeframe,
+        isMarketOpen ? "true" : "false",
         priceData,
         signals,
         taIndicators
     );
-    
-    // Send the message via ZeroMQ PUB socket
+
     ZmqMsg updateMsg(message);
     if(!pubSocket.send(updateMsg))
-    {
-        Print("Error: Failed to send real-time update.");
-    }
+        Print("Error: Failed to send real-time update for ", symbol);
     else
-    {
-        Print("Sent real-time update: ", message);
-    }
+        Print("Sent update for ", symbol, ": ", StringSubstr(message, 0, 120), "...");
 }
 
 //+------------------------------------------------------------------+
-//| Function to send test messages (optional, for debugging)         |
+//| Periodic debug heartbeat                                         |
 //+------------------------------------------------------------------+
 void sendTestMessage()
 {
     string message = "{\"type\":\"test_message\",\"content\":\"Hello from MT4!\"}";
     ZmqMsg testMsg(message);
     if(!pubSocket.send(testMsg))
-    {
         Print("Error: Failed to send test message.");
-    }
     else
-    {
         Print("Sent test message: ", message);
-    }
 }

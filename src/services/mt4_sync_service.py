@@ -7,7 +7,8 @@ to the database for dashboard display.
 Runs on a configurable interval (default: 60 seconds).
 """
 import asyncio
-from datetime import datetime
+import time
+from datetime import datetime, timezone
 from typing import List, Optional
 
 import structlog
@@ -28,6 +29,39 @@ from src.database.models.market_data import MarketData
 from src.database.repositories.market_data_repository import MarketDataRepository
 
 logger = structlog.get_logger(__name__)
+
+# MT4 sometimes appends a trailing dot to forex pair symbols (e.g., "GBPJPY.")
+# or prefixes equities with '#' (e.g., "#TSLA").
+# Map these to the canonical DB symbol names used across all data sources.
+SYMBOL_NORMALIZATION = {
+    # Trailing-dot forex pairs
+    "GBPJPY.": "GBPJPY",
+    "EURUSD.": "EURUSD",
+    "GBPUSD.": "GBPUSD",
+    "USDJPY.": "USDJPY",
+    "AUDUSD.": "AUDUSD",
+    "USDCAD.": "USDCAD",
+    "USDCHF.": "USDCHF",
+    "NZDUSD.": "NZDUSD",
+    "XAUUSD.": "XAUUSD",
+    # MT4 equity prefixes → canonical names matching yfinance/backfill data
+    "#TSLA": "TSLA",
+    "#MICROSOFT": "MSFT",
+    # MT4 precious metals
+    "GOLD.": "XAUUSD",
+}
+
+# Valid MT4 timeframe integer-to-string mapping.
+# Any value NOT in this map is rejected with a warning.
+TIMEFRAME_MAP = {
+    1: "M1",
+    5: "M5",
+    15: "M15",
+    30: "M30",
+    60: "H1",
+    240: "H4",
+    1440: "D1",
+}
 
 
 class MT4SyncService:
@@ -68,6 +102,15 @@ class MT4SyncService:
         self.running = False
         self._sync_task: Optional[asyncio.Task] = None
         self._stream_task: Optional[asyncio.Task] = None
+
+        # Write buffer for batching market-data DB writes.
+        # Rows accumulate here and are flushed when the buffer reaches
+        # BUFFER_MAX_SIZE rows OR BUFFER_FLUSH_INTERVAL seconds have elapsed.
+        self._write_buffer: list[dict] = []
+        self._buffer_lock = asyncio.Lock()
+        self._last_flush_time: float = time.time()
+        self.BUFFER_FLUSH_INTERVAL: int = 5   # seconds
+        self.BUFFER_MAX_SIZE: int = 50         # rows
 
         logger.info(
             "mt4_sync_service_initialized",
@@ -517,6 +560,47 @@ class MT4SyncService:
             logger.error("archive_closed_positions_failed", error=str(e), exc_info=True)
             raise
 
+    def _normalize_symbol(self, raw_symbol: str) -> str:
+        """
+        Normalize MT4 symbol names to DB convention.
+
+        MT4 commonly appends a trailing dot to forex pair symbols
+        (e.g. "GBPJPY." instead of "GBPJPY").  The explicit mapping
+        in SYMBOL_NORMALIZATION covers known cases; for everything else
+        a simple rstrip('.') is applied as a safe fallback.
+        """
+        # Explicit mapping takes priority.
+        if raw_symbol in SYMBOL_NORMALIZATION:
+            return SYMBOL_NORMALIZATION[raw_symbol]
+        # Generic: strip trailing dots (common MT4 convention for all forex pairs).
+        return raw_symbol.rstrip(".")
+
+    async def _flush_write_buffer(self):
+        """
+        Batch-write all buffered market-data rows in a single DB transaction.
+
+        Uses the per-row upsert inside one session so the round-trip cost is
+        paid once for all accumulated rows rather than once per message.
+        """
+        async with self._buffer_lock:
+            if not self._write_buffer:
+                return
+
+            batch = self._write_buffer.copy()
+            self._write_buffer.clear()
+            self._last_flush_time = time.time()
+
+        try:
+            async with self.async_session() as session:
+                market_data_repo = MarketDataRepository(session)
+                for row in batch:
+                    await market_data_repo.upsert(row)
+                await session.commit()
+
+            logger.info("flushed_write_buffer", count=len(batch))
+        except Exception as e:
+            logger.error("flush_write_buffer_failed", error=str(e), exc_info=True)
+
     async def _stream_loop(self):
         """Listen to MT4 real-time stream and save market data."""
         logger.info("mt4_stream_loop_started")
@@ -536,11 +620,22 @@ class MT4SyncService:
                 message = await self.mt4_client.receive_event(timeout_ms=1000)
 
                 if message:
-                    # Process message
+                    # Process message — appends to write buffer
                     await self._process_stream_message(message)
+
+                # Periodic flush: after every receive attempt (message or timeout),
+                # check whether the buffer is ready to be written.
+                elapsed = time.time() - self._last_flush_time
+                buffer_full = len(self._write_buffer) >= self.BUFFER_MAX_SIZE
+                time_due = elapsed >= self.BUFFER_FLUSH_INTERVAL
+                if buffer_full or (time_due and self._write_buffer):
+                    await self._flush_write_buffer()
 
             except asyncio.CancelledError:
                 logger.info("mt4_stream_loop_cancelled")
+                # Flush any remaining buffered rows before exiting.
+                if self._write_buffer:
+                    await self._flush_write_buffer()
                 break
 
             except Exception as e:
@@ -553,9 +648,17 @@ class MT4SyncService:
                 await asyncio.sleep(2)
 
     async def _process_stream_message(self, message: dict):
-        """Process a single stream message and save market data if present."""
+        """
+        Process a single stream message and append market data to the write buffer.
+
+        Validation rules (all violations are logged and the message is skipped):
+        - Message type must be "real_time_update"
+        - price_data must be present
+        - symbol field must be present (no CrudeOIL default)
+        - timeframe must map to a known value in TIMEFRAME_MAP
+        """
         try:
-            # Check if this is a real_time_update with price_data
+            # Only handle real-time candle updates.
             msg_type = message.get("type")
             if msg_type != "real_time_update":
                 return
@@ -564,58 +667,74 @@ class MT4SyncService:
             if not price_data:
                 return
 
-            symbol = message.get("symbol", "CrudeOIL")
-            timeframe = message.get("timeframe", 1)  # 1 = M1
+            # --- Issue 1: Reject messages without an explicit symbol ---
+            raw_symbol = message.get("symbol")
+            if not raw_symbol:
+                logger.warning(
+                    "stream_message_missing_symbol_skipped",
+                    message_type=msg_type,
+                )
+                return
 
-            # Convert timeframe number to string
-            timeframe_map = {
-                1: "M1",
-                5: "M5",
-                15: "M15",
-                30: "M30",
-                60: "H1",
-                240: "H4",
-                1440: "D1",
-            }
-            timeframe_str = timeframe_map.get(timeframe, "M1")
+            # --- Issue 2: Normalize the symbol name ---
+            symbol = self._normalize_symbol(raw_symbol)
+
+            # --- Issue 4: Reject unknown timeframes ---
+            raw_timeframe = message.get("timeframe", 1)
+            timeframe_str = TIMEFRAME_MAP.get(raw_timeframe)
+            if timeframe_str is None:
+                logger.warning(
+                    "stream_message_unknown_timeframe_skipped",
+                    symbol=symbol,
+                    raw_timeframe=raw_timeframe,
+                    known_timeframes=list(TIMEFRAME_MAP.keys()),
+                )
+                return
+
+            # --- Issue 6: Use UTC for candle timestamp ---
+            candle_time = datetime.fromtimestamp(
+                price_data.get("time", 0), tz=timezone.utc
+            )
 
             # Extract OHLC data
-            candle_time = datetime.fromtimestamp(price_data.get("time", 0))
-            open_price = str(price_data.get("open", 0.0))
-            high_price = str(price_data.get("high", 0.0))
-            low_price = str(price_data.get("low", 0.0))
-            close_price = str(price_data.get("close", 0.0))
+            open_val = float(price_data.get("open", 0.0))
+            high_val = float(price_data.get("high", 0.0))
+            low_val = float(price_data.get("low", 0.0))
+            close_val = float(price_data.get("close", 0.0))
             volume = price_data.get("volume", 0)
 
-            # Create market data record
+            # --- Issue 5: Calculate real change / change_percent from candle data ---
+            change = close_val - open_val
+            change_pct = ((close_val - open_val) / open_val * 100) if open_val != 0 else 0.0
+
+            # Build the market-data row
             market_data_dict = {
                 "time": candle_time,
                 "symbol": symbol,
-                "import_symbol": symbol,  # For MT4 live data, use the same symbol
+                "import_symbol": raw_symbol,
                 "timeframe": timeframe_str,
-                "source": "MT4",  # MT4 is the valid enum value
-                "open": open_price,
-                "high": high_price,
-                "low": low_price,
-                "last": close_price,
-                "change": "0.0",  # Can be calculated if needed
-                "change_percent": "0.0",  # Can be calculated if needed
+                "source": "MT4",
+                "open": str(open_val),
+                "high": str(high_val),
+                "low": str(low_val),
+                "last": str(close_val),
+                "change": str(change),
+                "change_percent": str(change_pct),
                 "volume": volume,
             }
 
-            # Save to database using a new session
-            async with self.async_session() as session:
-                market_data_repo = MarketDataRepository(session)
-                await market_data_repo.upsert(market_data_dict)
-                await session.commit()
+            # --- Issue 3: Append to buffer instead of writing immediately ---
+            async with self._buffer_lock:
+                self._write_buffer.append(market_data_dict)
 
-                logger.debug(
-                    "market_data_saved",
-                    symbol=symbol,
-                    timeframe=timeframe_str,
-                    time=candle_time.isoformat(),
-                    close=close_price,
-                )
+            logger.debug(
+                "market_data_buffered",
+                symbol=symbol,
+                timeframe=timeframe_str,
+                time=candle_time.isoformat(),
+                close=str(close_val),
+                buffer_size=len(self._write_buffer),
+            )
 
         except Exception as e:
             logger.error(

@@ -418,6 +418,10 @@ class MT4Client:
         command_type = command.command
         correlation_id = command.correlation_id
         request_data = command.model_dump(mode='json')
+        # Convert Decimal-serialized strings back to numbers for MT4
+        for key in ('stop_loss', 'take_profit'):
+            if key in request_data and isinstance(request_data[key], str):
+                request_data[key] = float(request_data[key])
 
         # Check circuit breaker first (T091 - fail fast if open) - only if enabled
         if self.circuit_breaker and not self.circuit_breaker.can_proceed():

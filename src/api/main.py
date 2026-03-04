@@ -32,6 +32,7 @@ from .routes import agents, trading, market_data, forecasts, performance, strate
 from src.services.mt4_sync_service import get_mt4_sync_service
 from src.services.stealth_stop_manager import StealthStopManager, DynamicTrailConfig
 from src.services.price_alert_service import get_price_alert_service
+from src.services.candle_aggregator_service import CandleAggregatorService
 from src.api.mcp_endpoint import create_mcp_app
 
 # Configure structured logging
@@ -49,6 +50,9 @@ _stealth_stop_task: asyncio.Task | None = None
 # Global price alert monitoring task
 _price_alert_task: asyncio.Task | None = None
 
+# Global candle aggregator task (M1 → H1 real-time aggregation)
+_candle_aggregator_task: asyncio.Task | None = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -57,7 +61,7 @@ async def lifespan(app: FastAPI):
 
     Handles startup and shutdown events.
     """
-    global _stealth_stop_manager, _stealth_stop_task, _price_alert_task
+    global _stealth_stop_manager, _stealth_stop_task, _price_alert_task, _candle_aggregator_task
     
     # Startup
     logger.info("application_starting", version=settings.app_version)
@@ -138,6 +142,16 @@ async def lifespan(app: FastAPI):
         else:
             logger.info("price_alert_service_disabled")
 
+        # Start Candle Aggregator Service (M1 → H1 real-time aggregation)
+        # Runs every 60s regardless of MT4 connection status — it reads from
+        # the DB (populated by mt4_sync_service) and writes H1 candles back.
+        try:
+            aggregator = CandleAggregatorService()
+            _candle_aggregator_task = asyncio.create_task(aggregator.run())
+            logger.info("candle_aggregator_service_scheduled")
+        except Exception as e:
+            logger.warning("candle_aggregator_service_start_failed", error=str(e))
+
     except Exception as e:
         logger.error("startup_failed", error=str(e), exc_info=True)
         raise
@@ -170,6 +184,15 @@ async def lifespan(app: FastAPI):
                     pass
             logger.info("stealth_stop_manager_stopped")
         
+        # Stop Candle Aggregator Service
+        if _candle_aggregator_task:
+            _candle_aggregator_task.cancel()
+            try:
+                await _candle_aggregator_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("candle_aggregator_service_stopped")
+
         # Stop MT4 sync service
         mt4_sync = get_mt4_sync_service()
         await mt4_sync.stop()

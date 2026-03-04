@@ -1,5 +1,5 @@
 # MT4 Symbol Universe & Leverage Map
-## Last Updated: 2026-02-22
+## Last Updated: 2026-03-03
 
 ## Account Status
 - Balance: $10,041 | Equity: $10,245
@@ -74,6 +74,39 @@
 | #TSLA | 3.3x | 30.2% | CHECK (was false) |
 | Most US stocks | ~3x | ~30% | VARIES |
 | European stocks | ~3x | ~30% | VARIES |
+
+---
+
+## EA SYMBOLIST (Validated 2026-03-03)
+
+Current EA config (`RiseTraderMT4Server.mq4`):
+```
+SymbolList = "CrudeOIL,USA500,BRENT_OIL,CORN,WHEAT,GBPJPY.,#TSLA,#MICROSOFT,GASOLINE,GOLD."
+```
+
+All 10 symbols confirmed available on broker via MCP `get_symbols` (174 total symbols returned).
+
+### Symbol Normalization (mt4_sync_service.py)
+| MT4 Symbol | Canonical DB Name |
+|-----------|------------------|
+| `#TSLA` | `TSLA` |
+| `#MICROSOFT` | `MSFT` |
+| `GOLD.` | `XAUUSD` |
+| `GBPJPY.` | `GBPJPY` |
+| Others | Same as MT4 name |
+
+### Backfill Sources (backfill_historical_data.py)
+All routed to Dukascopy (HistData defunct as of Mar 2026):
+- XAUUSD, GBPJPY, BRENT_OIL, USA500, CrudeOIL → Dukascopy bi5
+- CORN, WHEAT, GASOLINE → NOT on Dukascopy free feed (MT4 live only, no historical backfill)
+
+### Candle Aggregator Tracked Symbols
+```python
+TRACKED_SYMBOLS = [
+    "CrudeOIL", "USA500", "BRENT_OIL", "CORN", "WHEAT",
+    "GBPJPY", "TSLA", "MSFT", "GASOLINE", "XAUUSD",
+]
+```
 
 ---
 
@@ -156,14 +189,19 @@ For 8 uncorrelated positions at 0.01 lots each:
 6. **NATURAL_GAS at 9.3x** — Weather-driven volatility, seasonal patterns
 7. **Contract size mismatches** — CRITICAL for spread trading; HO/GAS are 100,000 vs Crude 1,000
 
-## STRATEGIES NOT YET IMPLEMENTED (From Research Docs)
+## STRATEGIES STATUS (Updated 2026-03-03)
 
-1. **Crack Spread** (CrudeOIL vs HEATING_OIL/GASOLINE) — 60-65% win rate per academic research
-2. **Seasonality Overlay** — Month-of-year filter for all commodity strategies (68-72% reliability)
-3. **Volatility Regime Filter** — ATR percentile rank to switch between trend/mean-reversion
-4. **Carry Trade** — GBPJPY. long with positive swap
-5. **Bond Duration Play** — 10Y_T-NOTES in rate-cutting cycle
-6. **WTI-Brent Spread** — Mean-reversion between CrudeOIL and BRENT_OIL
-7. **Agriculture Seasonal** — CORN/WHEAT/SOYBEAN planting/harvest cycle trades
-8. **Dr. Copper Macro** — COPPER as leading indicator for global growth trades
-9. **Cross-Asset Hedging** — DOLLAR_INDX inverse to commodities
+### Implemented (Phase 2 complete):
+1. **Crack Spread** — CrudeOIL vs GASOLINE, hedge ratio 0.42, z-score ±1.5σ
+2. **WTI-Brent Spread** — BRENT_OIL − CrudeOIL, 20-period mean reversion
+3. **Seasonal MA** — CORN/WHEAT, fast=10 slow=30, seasonal calendar filters
+4. **GBPJPY Carry** — 50-SMA trend + 20-SMA pullback, 2×ATR stop, long-only
+5. **Correlation Blocking** — corr>0.7 reduces size 50%
+
+### Not Yet Implemented:
+6. **Seasonality Overlay** — Month-of-year filter for all commodity strategies (68-72% reliability)
+7. **Volatility Regime Filter** — ATR percentile rank to switch between trend/mean-reversion
+8. **Bond Duration Play** — 10Y_T-NOTES in rate-cutting cycle
+9. **Agriculture Seasonal** — SOYBEAN planting/harvest cycle (CORN/WHEAT done)
+10. **Dr. Copper Macro** — COPPER as leading indicator for global growth trades
+11. **Cross-Asset Hedging** — DOLLAR_INDX inverse to commodities
