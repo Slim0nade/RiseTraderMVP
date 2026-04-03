@@ -36,6 +36,7 @@ Strategy logic
 
 Author: Claude (RiseTrader Phase 2 - Spread Builder)
 """
+import random
 from collections import deque
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -127,6 +128,8 @@ class SeasonalMAState:
     entry_price: Optional[Decimal] = None
     entry_time: Optional[datetime] = None
     entry_season: Optional[str] = None    # Season label at entry for logging
+    stop_loss: Optional[float] = None     # ATR-based stop level for stop-hit check
+    take_profit: Optional[float] = None   # ATR-based take-profit level
 
 
 @dataclass
@@ -307,11 +310,54 @@ class SeasonalMAStrategy:
         slow_ma: float,
         bias: SeasonalBias,
     ) -> SeasonalMASignal:
-        """Manage open position — exit on opposite crossover or seasonal reversal."""
+        """
+        Manage open position.
 
+        Checks (in priority order):
+          1. Stop-loss hit  — close immediately to cap loss
+          2. Take-profit hit — close to realise target gain
+          3. MA crossover reversal — primary exit signal
+          4. Seasonal bias flip — optional exit when hold_through_neutral=False
+
+        Args:
+            tick:     Current market tick
+            fast_ma:  Fast SMA value
+            slow_ma:  Slow SMA value
+            bias:     Current seasonal bias
+
+        Returns:
+            SeasonalMASignal with close action, or hold signal.
+        """
         position_type = self.state.position_type
+        current_price = float(tick.close)
 
-        # Exit if MA crossover reverses
+        # --- Stop-loss check (safety net for unbounded loss) ---
+        if self.state.stop_loss is not None:
+            if position_type == "buy" and current_price <= self.state.stop_loss:
+                return self._close_position(
+                    tick,
+                    f"Stop-loss hit: price({current_price:.4f}) <= sl({self.state.stop_loss:.4f})"
+                )
+            if position_type == "sell" and current_price >= self.state.stop_loss:
+                return self._close_position(
+                    tick,
+                    f"Stop-loss hit: price({current_price:.4f}) >= sl({self.state.stop_loss:.4f})"
+                )
+
+        # --- Take-profit check ---
+        if self.state.take_profit is not None:
+            if position_type == "buy" and current_price >= self.state.take_profit:
+                return self._close_position(
+                    tick,
+                    f"Take-profit hit: price({current_price:.4f}) >= tp({self.state.take_profit:.4f})"
+                )
+            if position_type == "sell" and current_price <= self.state.take_profit:
+                return self._close_position(
+                    tick,
+                    f"Take-profit hit: price({current_price:.4f}) <= tp({self.state.take_profit:.4f})"
+                )
+
+        # --- Exit if MA crossover reverses ---
         if position_type == "buy" and fast_ma < slow_ma:
             return self._close_position(
                 tick,
@@ -356,12 +402,53 @@ class SeasonalMAStrategy:
         bias: SeasonalBias,
         reason: str,
     ) -> SeasonalMASignal:
-        """Open a new position."""
+        """
+        Open a new position with ATR-based stop loss and take profit.
+
+        Stop loss:   2 × ATR from entry, pushed away from entry by a random
+                     anti-stop-hunt offset (0.05–0.15 % of price, ~5-15 pip
+                     equivalent).
+        Take profit: 3 × ATR from entry (risk/reward ≥ 1.5).
+
+        Args:
+            position_type: 'buy' or 'sell'
+            tick:          Current market tick (entry price is tick.close)
+            fast_ma:       Fast SMA value for diagnostics
+            slow_ma:       Slow SMA value for diagnostics
+            bias:          Active seasonal bias
+            reason:        Human-readable signal reason string
+
+        Returns:
+            SeasonalMASignal with stop_loss and take_profit populated.
+            If the price history is too short for ATR (< 15 bars), the signal
+            is returned without SL/TP so the caller can still record the entry.
+        """
         self.state.has_position = True
         self.state.position_type = position_type
         self.state.entry_price = tick.close
         self.state.entry_time = tick.timestamp
         self.state.entry_season = bias.value
+
+        entry = float(tick.close)
+
+        # ATR-based stops — requires at least atr_period + 1 bars.
+        stop_loss: Optional[float] = None
+        take_profit: Optional[float] = None
+
+        atr = self._compute_atr()
+        if atr is not None and atr > 1e-9:
+            # Anti-stop-hunt offset: 0.05–0.15 % of price (≈5-15 pip equivalent)
+            offset = random.uniform(0.0005, 0.0015) * entry
+            if position_type == "buy":
+                stop_loss = entry - (2.0 * atr) - offset
+                take_profit = entry + (3.0 * atr)
+            else:  # sell
+                stop_loss = entry + (2.0 * atr) + offset
+                take_profit = entry - (3.0 * atr)
+
+        # Store on state so _manage_position() can detect stop/TP hits
+        self.state.stop_loss = stop_loss
+        self.state.take_profit = take_profit
 
         # Data-driven confidence: scale with MA spread distance.
         # Stronger crossover (fast_ma further from slow_ma) → higher confidence.
@@ -374,13 +461,15 @@ class SeasonalMAStrategy:
             quantity=self.params.quantity,
             confidence=confidence,
             reason=reason,
+            stop_loss=stop_loss,
+            take_profit=take_profit,
             fast_ma=fast_ma,
             slow_ma=slow_ma,
             seasonal_bias=bias.value,
         )
 
     def _close_position(self, tick: MarketTick, reason: str) -> SeasonalMASignal:
-        """Close current position."""
+        """Close current position and clear all position state."""
         position_type = self.state.position_type
         close_action = "close_long" if position_type == "buy" else "close_short"
 
@@ -389,6 +478,8 @@ class SeasonalMAStrategy:
         self.state.entry_price = None
         self.state.entry_time = None
         self.state.entry_season = None
+        self.state.stop_loss = None
+        self.state.take_profit = None
 
         return SeasonalMASignal(
             action=close_action,
@@ -418,6 +509,33 @@ class SeasonalMAStrategy:
             return True
         hour = timestamp.hour
         return self.params.trading_start_hour <= hour < self.params.trading_end_hour
+
+    # ATR period for stop/TP calculation — standard 14-bar Wilder ATR.
+    _ATR_PERIOD: int = 14
+
+    def _compute_atr(self) -> Optional[float]:
+        """
+        Compute ATR(14) from the current price history deque using
+        Wilder's simple average of true ranges.
+
+        The deque stores only close prices, so True Range is approximated as
+        High-Low (i.e. abs(close[i] - close[i-1])).  For H1 data on CORN/WHEAT
+        this is a reasonable approximation since intra-bar gaps are small.
+
+        Requires at least _ATR_PERIOD + 1 bars in the deque.
+
+        Returns:
+            ATR value in price units, or None when the buffer is too short.
+            Range: positive float, typically 0.01–5 % of price for grains.
+        """
+        prices = list(self._price_history)
+        if len(prices) < self._ATR_PERIOD + 1:
+            return None
+
+        # Use the last (ATR_PERIOD + 1) closes so we get ATR_PERIOD true ranges
+        window = prices[-(self._ATR_PERIOD + 1):]
+        true_ranges = [abs(window[i] - window[i - 1]) for i in range(1, len(window))]
+        return float(np.mean(true_ranges))
 
     def _no_signal(
         self,

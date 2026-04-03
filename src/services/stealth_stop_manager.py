@@ -1410,7 +1410,11 @@ class StealthStopManager:
         
         for symbol in symbols:
             # Get ATR for this symbol
-            atr = await self.get_atr(symbol)
+            try:
+                atr = await self.get_atr(symbol)
+            except InsufficientDataError as e:
+                logger.warning(f"Skipping {symbol}: {e}")
+                continue
             if atr is None:
                 logger.warning(f"Could not get ATR for {symbol}")
                 continue

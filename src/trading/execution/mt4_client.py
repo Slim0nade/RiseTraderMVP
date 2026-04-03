@@ -263,6 +263,9 @@ class MT4Client:
         # Pending messages for graceful shutdown (T095)
         self._pending_messages: List[Dict] = []
 
+        # Lock to serialize ZMQ REQ/REP send→recv cycles (prevents EFSM errors)
+        self._socket_lock = asyncio.Lock()
+
         logger.info(
             "mt4_client_initialized",
             host=host,
@@ -443,134 +446,145 @@ class MT4Client:
 
         timeout = timeout_ms or self.timeout_ms
 
-        try:
-            # Serialize command
-            command_json = json.dumps(request_data)
+        # Serialize all ZMQ send→recv cycles to prevent EFSM errors from
+        # concurrent callers (mt4_sync_service + stealth_stop_manager)
+        async with self._socket_lock:
+            try:
+                # Serialize command
+                command_json = json.dumps(request_data)
 
-            # Log request with timestamp (T110)
-            request_time = MT4RequestLogger.log_request(
-                command_type=command_type,
-                correlation_id=correlation_id,
-                magic_number=self.magic_number,
-                request_data=request_data,
-                encrypted=self.encryption_manager is not None
-            )
+                # Log request with timestamp (T110)
+                request_time = MT4RequestLogger.log_request(
+                    command_type=command_type,
+                    correlation_id=correlation_id,
+                    magic_number=self.magic_number,
+                    request_data=request_data,
+                    encrypted=self.encryption_manager is not None
+                )
 
-            # Send command
-            await self._req_socket.send_string(command_json)
+                # Send command
+                await self._req_socket.send_string(command_json)
 
-            # Poll for response with timeout
-            if await self._req_socket.poll(timeout=timeout) == 0:
-                # Log timeout (T110)
-                MT4RequestLogger.log_timeout(
+                # Poll for response with timeout
+                if await self._req_socket.poll(timeout=timeout) == 0:
+                    # Log timeout (T110)
+                    MT4RequestLogger.log_timeout(
+                        command_type=command_type,
+                        correlation_id=correlation_id,
+                        magic_number=self.magic_number,
+                        request_time=request_time,
+                        timeout_ms=timeout
+                    )
+                    record_zmq_error(command_type=command_type, error_type="timeout")
+
+                    # Record failure in circuit breaker (T091) - only if enabled
+                    if self.circuit_breaker:
+                        self.circuit_breaker.record_failure()
+
+                    # Socket is stuck in SEND state (sent but never recv'd) - reset
+                    # before raising so the next caller gets a clean socket
+                    try:
+                        await self._reset_req_socket()
+                        logger.info("mt4_socket_reset_after_timeout", command_type=command_type)
+                    except Exception:
+                        pass  # Best effort, will be retried on next call
+
+                    raise TimeoutError(f"MT4 command timeout after {timeout}ms")
+
+                # Receive response
+                response_json = await self._req_socket.recv_string()
+                response = json.loads(response_json)
+
+                # Determine success (handle both old and new response formats - T110)
+                # Old format: {"status": "OK", ...}
+                # New format: {"success": true, ...}
+                is_success = response.get("success", False) or response.get("status") == "OK"
+
+                # Log response (T110)
+                MT4RequestLogger.log_response(
+                    command_type=command_type,
+                    correlation_id=correlation_id,
+                    magic_number=self.magic_number,
+                    response_data=response,
+                    request_time=request_time,
+                    success=is_success,
+                    error_code=response.get("error_code"),
+                    error_message=response.get("error_message") or response.get("message")
+                )
+
+                # Record success in circuit breaker (T091) - only if enabled
+                if self.circuit_breaker:
+                    self.circuit_breaker.record_success()
+
+                # Reset reconnect attempt counter on success (T092)
+                self.reconnect_attempt = 0
+
+                return response
+
+            except zmq.ZMQError as e:
+                # Log ZMQ error (T110)
+                MT4RequestLogger.log_zmq_error(
                     command_type=command_type,
                     correlation_id=correlation_id,
                     magic_number=self.magic_number,
                     request_time=request_time,
-                    timeout_ms=timeout
+                    error_type="zmq_error",
+                    error_details=str(e)
                 )
-                record_zmq_error(command_type=command_type, error_type="timeout")
+                record_zmq_error(command_type=command_type, error_type="zmq_error")
 
                 # Record failure in circuit breaker (T091) - only if enabled
                 if self.circuit_breaker:
                     self.circuit_breaker.record_failure()
 
-                raise TimeoutError(f"MT4 command timeout after {timeout}ms")
+                # Check for EFSM (finite state machine) error - socket is in bad state
+                # This happens when send/receive cycle is interrupted
+                error_str = str(e).lower()
+                if "state" in error_str or "efsm" in error_str or "operation cannot be accomplished" in error_str:
+                    logger.warning(
+                        "mt4_socket_state_error",
+                        command_type=command_type,
+                        error=str(e),
+                        recovery="attempting socket reset"
+                    )
+                    # Attempt socket recovery for next call
+                    try:
+                        await self._reset_req_socket()
+                    except Exception as reset_error:
+                        logger.error("mt4_socket_reset_failed_in_send", error=str(reset_error))
 
-            # Receive response
-            response_json = await self._req_socket.recv_string()
-            response = json.loads(response_json)
+                raise ConnectionError(f"ZMQ error: {e}")
 
-            # Determine success (handle both old and new response formats - T110)
-            # Old format: {"status": "OK", ...}
-            # New format: {"success": true, ...}
-            is_success = response.get("success", False) or response.get("status") == "OK"
-
-            # Log response (T110)
-            MT4RequestLogger.log_response(
-                command_type=command_type,
-                correlation_id=correlation_id,
-                magic_number=self.magic_number,
-                response_data=response,
-                request_time=request_time,
-                success=is_success,
-                error_code=response.get("error_code"),
-                error_message=response.get("error_message") or response.get("message")
-            )
-
-            # Record success in circuit breaker (T091) - only if enabled
-            if self.circuit_breaker:
-                self.circuit_breaker.record_success()
-
-            # Reset reconnect attempt counter on success (T092)
-            self.reconnect_attempt = 0
-
-            return response
-
-        except zmq.ZMQError as e:
-            # Log ZMQ error (T110)
-            MT4RequestLogger.log_zmq_error(
-                command_type=command_type,
-                correlation_id=correlation_id,
-                magic_number=self.magic_number,
-                request_time=request_time,
-                error_type="zmq_error",
-                error_details=str(e)
-            )
-            record_zmq_error(command_type=command_type, error_type="zmq_error")
-
-            # Record failure in circuit breaker (T091) - only if enabled
-            if self.circuit_breaker:
-                self.circuit_breaker.record_failure()
-
-            # Check for EFSM (finite state machine) error - socket is in bad state
-            # This happens when send/receive cycle is interrupted
-            error_str = str(e).lower()
-            if "state" in error_str or "efsm" in error_str or "operation cannot be accomplished" in error_str:
-                logger.warning(
-                    "mt4_socket_state_error",
+            except json.JSONDecodeError as e:
+                # Log JSON decode error (T110)
+                MT4RequestLogger.log_zmq_error(
                     command_type=command_type,
-                    error=str(e),
-                    recovery="attempting socket reset"
+                    correlation_id=correlation_id,
+                    magic_number=self.magic_number,
+                    request_time=request_time,
+                    error_type="json_decode_error",
+                    error_details=str(e)
                 )
-                # Attempt socket recovery for next call
-                try:
-                    await self._reset_req_socket()
-                except Exception as reset_error:
-                    logger.error("mt4_socket_reset_failed_in_send", error=str(reset_error))
+                record_zmq_error(command_type=command_type, error_type="json_error")
 
-            raise ConnectionError(f"ZMQ error: {e}")
+                # Record failure in circuit breaker (T091) - only if enabled
+                if self.circuit_breaker:
+                    self.circuit_breaker.record_failure()
 
-        except json.JSONDecodeError as e:
-            # Log JSON decode error (T110)
-            MT4RequestLogger.log_zmq_error(
-                command_type=command_type,
-                correlation_id=correlation_id,
-                magic_number=self.magic_number,
-                request_time=request_time,
-                error_type="json_decode_error",
-                error_details=str(e)
-            )
-            record_zmq_error(command_type=command_type, error_type="json_error")
+                raise
 
-            # Record failure in circuit breaker (T091) - only if enabled
-            if self.circuit_breaker:
-                self.circuit_breaker.record_failure()
-
-            raise
-
-        except Exception as e:
-            # Log unknown error (T110)
-            MT4RequestLogger.log_zmq_error(
-                command_type=command_type,
-                correlation_id=correlation_id,
-                magic_number=self.magic_number,
-                request_time=request_time,
-                error_type="unknown_error",
-                error_details=str(e)
-            )
-            record_zmq_error(command_type=command_type, error_type="unknown")
-            raise
+            except Exception as e:
+                # Log unknown error (T110)
+                MT4RequestLogger.log_zmq_error(
+                    command_type=command_type,
+                    correlation_id=correlation_id,
+                    magic_number=self.magic_number,
+                    request_time=request_time,
+                    error_type="unknown_error",
+                    error_details=str(e)
+                )
+                record_zmq_error(command_type=command_type, error_type="unknown")
+                raise
 
     async def create_instant_order(
         self,

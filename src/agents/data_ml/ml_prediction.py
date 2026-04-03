@@ -1,17 +1,18 @@
 """
-MLPredictionAgent - Ensemble ML Forecasting
+MLPredictionAgent - Real ML Reversal Forecasting
 
 Responsibilities:
-- Load ML models from MLflow registry
-- Generate real-time price forecasts
-- Ensemble prediction (XGBoost, Transformer, LSTM)
-- Emit forecast_updated events
+- Load trained XGBoost reversal models from disk
+- Generate real-time reversal predictions via ReversalPredictor
+- Emit forecast_updated events with reversal probabilities
+- Graceful degradation: if model missing, ML weight stays 0.0
 
 Performance Target: <50ms inference time
 """
 
 import asyncio
 import time
+from pathlib import Path
 from typing import Dict, Any, Optional, List
 
 import numpy as np
@@ -22,20 +23,19 @@ from ..event_bus import Event, EventPriority
 
 logger = structlog.get_logger(__name__)
 
+# Default model directory relative to project root
+DEFAULT_MODELS_DIR = Path(__file__).parent.parent.parent.parent / "models" / "reversal_classifier"
+
 
 class MLPredictionAgent(BaseAgent):
     """
-    Generates ML-powered price forecasts
+    Generates ML-powered reversal predictions using trained XGBoost models.
 
-    Ensemble Models:
-    1. XGBoost - Gradient boosting (weight: 0.4)
-    2. Transformer - Attention-based time series (weight: 0.35)
-    3. LSTM - Recurrent neural network (weight: 0.25)
+    Loads per-symbol models from disk (models/reversal_classifier/{symbol}_{timeframe}/)
+    and delegates inference to ReversalPredictor with full feature parity.
 
-    Forecast Horizons:
-    - 5 minutes
-    - 15 minutes
-    - 60 minutes (1 hour)
+    Graceful degradation: if no model file exists for a symbol, predictions are skipped
+    and the forecast_updated event is not emitted (ML weight stays 0.0 in signal generator).
     """
 
     def __init__(self, agent_id: str, event_bus, agent_registry, config: Dict[str, Any]):
@@ -47,62 +47,57 @@ class MLPredictionAgent(BaseAgent):
             priority=5,  # Data/ML layer
         )
 
-        # Model configuration
-        self.models_config = config.get("models", [])
+        # Configuration
         self.forecast_horizons = config.get("forecast_horizons", [5, 15, 60])
-        self.ensemble_method = config.get("ensemble_method", "weighted_average")
         self.confidence_threshold = config.get("confidence_threshold", 0.6)
-        self.mlflow_tracking = config.get("mlflow_tracking", False)
+        self.models_dir = Path(config.get("models_dir", str(DEFAULT_MODELS_DIR)))
 
-        # Model weights
-        self.model_weights = {}
-        for model_config in self.models_config:
-            model_type = model_config.get("type")
-            weight = model_config.get("weight", 0.33)
-            self.model_weights[model_type] = weight
+        # Timeframes to load models for (H1 primary, M30 secondary)
+        self.model_timeframes = config.get("model_timeframes", ["H1"])
+        # Weights for multi-timeframe ensemble
+        self.timeframe_weights = config.get("timeframe_weights", {"H1": 1.0})
 
-        # Loaded models (placeholder - would load from MLflow)
-        self.models: Dict[str, Any] = {}
+        # Loaded predictors keyed by "{symbol}_{timeframe}"
+        self._predictors: Dict[str, Any] = {}
+        # Symbols that have no model (avoid repeated warnings)
+        self._missing_models: set = set()
 
-        # Feature buffer for inference
+        # Feature buffer for tick tracking (minimum bars before prediction)
         self.feature_buffer: Dict[str, List[Dict[str, Any]]] = {}
-        self.feature_window = 100  # Number of bars for features
+        self.feature_window = 100
 
         # Stats
         self.predictions_made = 0
         self.high_confidence_predictions = 0
         self.low_confidence_predictions = 0
+        self.model_load_failures = 0
 
     async def initialize(self) -> None:
-        """Load ML models and subscribe to events"""
+        """Load ML models and subscribe to events."""
         self.subscribe_to_event("new_tick")
 
-        try:
-            # Load models from MLflow (placeholder)
-            await self._load_models()
+        # Discover and load available models
+        await self._load_models()
 
-            self.logger.info(
-                "ml_prediction_agent_initialized",
-                models=list(self.models.keys()),
-                horizons=self.forecast_horizons,
-                ensemble_method=self.ensemble_method,
-            )
-
-        except Exception as e:
-            self.logger.error("initialization_failed", error=str(e), exc_info=True)
-            # Don't raise - allow agent to start without models
+        self.logger.info(
+            "ml_prediction_agent_initialized",
+            loaded_models=list(self._predictors.keys()),
+            models_dir=str(self.models_dir),
+            timeframes=self.model_timeframes,
+        )
 
     async def cleanup(self) -> None:
-        """Cleanup resources"""
+        """Cleanup resources."""
         self.logger.info(
             "ml_prediction_agent_cleanup",
             predictions_made=self.predictions_made,
             high_confidence=self.high_confidence_predictions,
             low_confidence=self.low_confidence_predictions,
+            load_failures=self.model_load_failures,
         )
 
     async def process_event(self, event: Event) -> None:
-        """Process incoming events"""
+        """Process incoming events."""
         try:
             if event.event_type == "new_tick":
                 await self._on_new_tick(event.data)
@@ -117,27 +112,38 @@ class MLPredictionAgent(BaseAgent):
 
     async def _on_new_tick(self, tick_data: Dict[str, Any]) -> None:
         """
-        Generate forecast on new tick
+        Generate forecast on new tick.
 
-        Updates feature buffer and runs inference
+        Updates feature buffer and runs inference if enough data.
         """
         start_time = time.time()
 
         symbol = tick_data.get("symbol")
+        if not symbol:
+            return
 
-        # Initialize buffer for symbol
+        # Check if any model exists for this symbol
+        has_model = any(
+            f"{symbol}_{tf}" in self._predictors
+            for tf in self.model_timeframes
+        )
+        if not has_model:
+            if symbol not in self._missing_models:
+                self.logger.debug("no_model_for_symbol", symbol=symbol)
+                self._missing_models.add(symbol)
+            return
+
+        # Track ticks in buffer
         if symbol not in self.feature_buffer:
             self.feature_buffer[symbol] = []
 
-        # Add tick to buffer
         self.feature_buffer[symbol].append(tick_data)
 
-        # Keep only recent history
         if len(self.feature_buffer[symbol]) > self.feature_window:
             self.feature_buffer[symbol] = self.feature_buffer[symbol][-self.feature_window:]
 
         # Generate forecast if we have enough data
-        if len(self.feature_buffer[symbol]) >= 20:  # Minimum bars
+        if len(self.feature_buffer[symbol]) >= 20:
             await self._generate_forecast(symbol)
 
         inference_time = time.time() - start_time
@@ -151,43 +157,78 @@ class MLPredictionAgent(BaseAgent):
 
     async def _generate_forecast(self, symbol: str) -> None:
         """
-        Generate ensemble forecast
+        Generate reversal forecast using trained models.
 
-        Args:
-            symbol: Trading symbol
+        For each available timeframe model, runs ReversalPredictor and
+        ensembles results if multiple timeframes are available.
         """
-        ticks = self.feature_buffer[symbol]
+        from src.api.dependencies import get_db_context
 
-        # Extract features
-        features = self._extract_features(ticks)
+        timeframe_results = {}
 
-        # Run each model
-        model_predictions = {}
+        async with get_db_context() as session:
+            for tf in self.model_timeframes:
+                key = f"{symbol}_{tf}"
+                if key not in self._predictors:
+                    continue
 
-        for model_type, weight in self.model_weights.items():
-            if model_type in self.models:
-                prediction = await self._predict_with_model(model_type, features)
-                model_predictions[model_type] = prediction
+                predictor = self._predictors[key]
 
-        # Ensemble predictions
-        ensemble_result = self._ensemble_predictions(model_predictions)
+                # Update session for this prediction cycle
+                predictor.session = session
+                predictor.feature_extractor.session = session
+
+                try:
+                    result = await predictor.predict(
+                        symbol=symbol,
+                        timeframe=tf,
+                    )
+
+                    if result.get("error"):
+                        continue
+
+                    timeframe_results[tf] = result
+
+                except Exception as e:
+                    self.logger.error(
+                        "prediction_failed",
+                        symbol=symbol,
+                        timeframe=tf,
+                        error=str(e),
+                    )
+
+        if not timeframe_results:
+            return
+
+        # Ensemble across timeframes (or use single result)
+        ensemble = self._ensemble_timeframes(timeframe_results)
 
         # Check confidence threshold
-        if ensemble_result["confidence"] < self.confidence_threshold:
+        if ensemble["confidence"] < self.confidence_threshold:
             self.low_confidence_predictions += 1
-            # Don't emit low confidence predictions
             return
 
         self.predictions_made += 1
         self.high_confidence_predictions += 1
 
-        # Emit forecast
+        # Emit forecast with reversal probabilities
         forecast_data = {
             "symbol": symbol,
-            "prediction": ensemble_result["prediction"],
-            "confidence": ensemble_result["confidence"],
-            "model_predictions": model_predictions,
-            "horizons": self.forecast_horizons,
+            "prediction": ensemble["prediction"],
+            "confidence": ensemble["confidence"],
+            "valley_prob": ensemble["valley_prob"],
+            "peak_prob": ensemble["peak_prob"],
+            "neutral_prob": ensemble["neutral_prob"],
+            "signal": ensemble["signal"],
+            "timeframe_results": {
+                tf: {
+                    "valley_prob": r["valley_prob"],
+                    "peak_prob": r["peak_prob"],
+                    "signal": r["signal"],
+                    "confidence": r["confidence"],
+                }
+                for tf, r in timeframe_results.items()
+            },
             "timestamp": time.time(),
         }
 
@@ -207,250 +248,142 @@ class MLPredictionAgent(BaseAgent):
         self.logger.debug(
             "forecast_generated",
             symbol=symbol,
-            prediction=ensemble_result["prediction"],
-            confidence=ensemble_result["confidence"],
+            signal=ensemble["signal"],
+            confidence=ensemble["confidence"],
+            valley_prob=ensemble["valley_prob"],
+            peak_prob=ensemble["peak_prob"],
         )
 
-    def _extract_features(self, ticks: List[Dict[str, Any]]) -> np.ndarray:
+    def _ensemble_timeframes(
+        self, timeframe_results: Dict[str, Dict]
+    ) -> Dict[str, float]:
         """
-        Extract features for ML model
+        Ensemble predictions from multiple timeframes.
 
-        Features:
-        - Price changes (returns)
-        - Moving averages
-        - Volatility
-        - Volume
-        - Technical indicators
-
-        Args:
-            ticks: Recent tick data
-
-        Returns:
-            Feature array (n_features,)
+        Uses weighted average based on self.timeframe_weights.
+        Falls back to single-timeframe result if only one available.
         """
-        closes = np.array([t["close"] for t in ticks])
-        highs = np.array([t["high"] for t in ticks])
-        lows = np.array([t["low"] for t in ticks])
-        volumes = np.array([t.get("volume", 0) for t in ticks])
+        if len(timeframe_results) == 1:
+            tf, result = next(iter(timeframe_results.items()))
+            # Map reversal probs to a directional prediction score
+            # valley_prob → buy pressure, peak_prob → sell pressure
+            prediction = result["valley_prob"] - result["peak_prob"]
+            # Shift from [-1,1] to [0,1] range for compatibility
+            prediction = (prediction + 1.0) / 2.0
+            return {
+                "prediction": prediction,
+                "confidence": result["confidence"],
+                "valley_prob": result["valley_prob"],
+                "peak_prob": result["peak_prob"],
+                "neutral_prob": result["neutral_prob"],
+                "signal": result["signal"],
+            }
 
-        features = []
+        # Weighted average across timeframes
+        total_weight = 0.0
+        valley_sum = 0.0
+        peak_sum = 0.0
+        neutral_sum = 0.0
+        conf_sum = 0.0
 
-        # Price returns (different periods)
-        for period in [1, 5, 10, 20]:
-            if len(closes) >= period + 1:
-                returns = (closes[-1] - closes[-(period + 1)]) / closes[-(period + 1)]
-                features.append(returns)
-            else:
-                features.append(0.0)
+        for tf, result in timeframe_results.items():
+            w = self.timeframe_weights.get(tf, 0.5)
+            valley_sum += result["valley_prob"] * w
+            peak_sum += result["peak_prob"] * w
+            neutral_sum += result["neutral_prob"] * w
+            conf_sum += result["confidence"] * w
+            total_weight += w
 
-        # Moving averages
-        for period in [5, 10, 20, 50]:
-            if len(closes) >= period:
-                ma = np.mean(closes[-period:])
-                ma_ratio = closes[-1] / ma - 1  # Normalized
-                features.append(ma_ratio)
-            else:
-                features.append(0.0)
+        if total_weight == 0:
+            return {
+                "prediction": 0.5,
+                "confidence": 0.0,
+                "valley_prob": 0.0,
+                "peak_prob": 0.0,
+                "neutral_prob": 1.0,
+                "signal": "WAIT",
+            }
 
-        # Volatility (standard deviation of returns)
-        if len(closes) >= 20:
-            returns = np.diff(closes[-20:]) / closes[-20:-1]
-            volatility = np.std(returns)
-            features.append(volatility)
+        valley_prob = valley_sum / total_weight
+        peak_prob = peak_sum / total_weight
+        neutral_prob = neutral_sum / total_weight
+        confidence = conf_sum / total_weight
+
+        prediction = (valley_prob - peak_prob + 1.0) / 2.0
+
+        # Determine ensemble signal
+        if peak_prob > 0.65:
+            signal = "SHORT"
+        elif valley_prob > 0.65:
+            signal = "LONG"
         else:
-            features.append(0.0)
-
-        # High-Low range
-        if len(highs) >= 10:
-            hl_range = np.mean(highs[-10:] - lows[-10:])
-            hl_normalized = hl_range / closes[-1]
-            features.append(hl_normalized)
-        else:
-            features.append(0.0)
-
-        # Volume (normalized)
-        if len(volumes) >= 10 and np.mean(volumes[-10:]) > 0:
-            volume_ratio = volumes[-1] / np.mean(volumes[-10:])
-            features.append(volume_ratio)
-        else:
-            features.append(1.0)
-
-        # RSI (Relative Strength Index)
-        if len(closes) >= 14:
-            rsi = self._calculate_rsi(closes, period=14)
-            features.append(rsi / 100.0)  # Normalize to [0, 1]
-        else:
-            features.append(0.5)
-
-        return np.array(features)
-
-    def _calculate_rsi(self, prices: np.ndarray, period: int = 14) -> float:
-        """
-        Calculate RSI indicator
-
-        Args:
-            prices: Price array
-            period: RSI period
-
-        Returns:
-            RSI value (0-100)
-        """
-        if len(prices) < period + 1:
-            return 50.0
-
-        # Calculate price changes
-        deltas = np.diff(prices)
-
-        # Separate gains and losses
-        gains = np.where(deltas > 0, deltas, 0)
-        losses = np.where(deltas < 0, -deltas, 0)
-
-        # Average gains and losses
-        avg_gain = np.mean(gains[-period:])
-        avg_loss = np.mean(losses[-period:])
-
-        if avg_loss == 0:
-            return 100.0
-
-        rs = avg_gain / avg_loss
-        rsi = 100 - (100 / (1 + rs))
-
-        return rsi
-
-    async def _predict_with_model(self, model_type: str, features: np.ndarray) -> Dict[str, Any]:
-        """
-        Run inference with specific model
-
-        In production, this would use actual trained models.
-        For now, we simulate predictions.
-
-        Args:
-            model_type: Model type (xgboost, transformer, lstm)
-            features: Input features
-
-        Returns:
-            Prediction result with score and confidence
-        """
-        # Simulate model inference
-        # In production: model.predict(features.reshape(1, -1))
-
-        if model_type == "xgboost":
-            # Simulate XGBoost prediction (fast, tree-based)
-            score = 0.5 + (features[0] * 0.3)  # Use first feature (1-period return)
-            confidence = 0.75
-
-        elif model_type == "transformer":
-            # Simulate Transformer prediction (attention-based)
-            score = 0.5 + (features[0] * 0.25 + features[4] * 0.15)
-            confidence = 0.70
-
-        elif model_type == "lstm":
-            # Simulate LSTM prediction (recurrent)
-            score = 0.5 + (features[0] * 0.2 + features[1] * 0.1)
-            confidence = 0.65
-
-        else:
-            score = 0.5
-            confidence = 0.5
-
-        # Clip to [0, 1]
-        score = np.clip(score, 0.0, 1.0)
+            signal = "WAIT"
 
         return {
-            "score": score,
+            "prediction": prediction,
             "confidence": confidence,
+            "valley_prob": valley_prob,
+            "peak_prob": peak_prob,
+            "neutral_prob": neutral_prob,
+            "signal": signal,
         }
-
-    def _ensemble_predictions(self, model_predictions: Dict[str, Dict[str, Any]]) -> Dict[str, float]:
-        """
-        Combine predictions from multiple models
-
-        Methods:
-        - weighted_average: Weight by model weight and confidence
-        - voting: Majority vote
-        - stacking: Meta-model (not implemented)
-
-        Args:
-            model_predictions: Dict of model_type -> {score, confidence}
-
-        Returns:
-            Ensemble result with prediction and confidence
-        """
-        if not model_predictions:
-            return {"prediction": 0.5, "confidence": 0.0}
-
-        if self.ensemble_method == "weighted_average":
-            weighted_sum = 0.0
-            total_weight = 0.0
-
-            for model_type, prediction in model_predictions.items():
-                weight = self.model_weights.get(model_type, 0.33)
-                score = prediction.get("score", 0.5)
-                confidence = prediction.get("confidence", 0.5)
-
-                weighted_sum += score * weight * confidence
-                total_weight += weight * confidence
-
-            if total_weight == 0:
-                return {"prediction": 0.5, "confidence": 0.0}
-
-            ensemble_prediction = weighted_sum / total_weight
-
-            # Average confidence
-            avg_confidence = np.mean([p["confidence"] for p in model_predictions.values()])
-
-            return {
-                "prediction": ensemble_prediction,
-                "confidence": avg_confidence,
-            }
-
-        elif self.ensemble_method == "voting":
-            # Simple majority vote
-            votes = [1 if p["score"] > 0.5 else 0 for p in model_predictions.values()]
-            majority = np.mean(votes)
-
-            avg_confidence = np.mean([p["confidence"] for p in model_predictions.values()])
-
-            return {
-                "prediction": majority,
-                "confidence": avg_confidence,
-            }
-
-        else:
-            # Default to simple average
-            avg_prediction = np.mean([p["score"] for p in model_predictions.values()])
-            avg_confidence = np.mean([p["confidence"] for p in model_predictions.values()])
-
-            return {
-                "prediction": avg_prediction,
-                "confidence": avg_confidence,
-            }
 
     async def _load_models(self) -> None:
         """
-        Load ML models from MLflow registry
+        Load trained XGBoost models from disk.
 
-        In production, this would:
-        1. Connect to MLflow tracking server
-        2. Load latest models for each type
-        3. Verify model signatures
-        4. Warm up models with dummy inference
+        Scans models/reversal_classifier/ for {symbol}_{timeframe}/model.json files.
+        Models that fail to load are logged and skipped (graceful degradation).
         """
-        for model_config in self.models_config:
-            model_type = model_config.get("type")
-            version = model_config.get("version", "latest")
+        from src.ml.inference.reversal_predictor import ReversalPredictor
+        from src.api.dependencies import get_db_context
 
-            # Placeholder - in production, load actual models
-            # model = mlflow.pyfunc.load_model(f"models:/{model_type}/{version}")
-
-            self.models[model_type] = {
-                "type": model_type,
-                "version": version,
-                "loaded": True,
-            }
-
-            self.logger.info(
-                "model_loaded",
-                model_type=model_type,
-                version=version,
+        if not self.models_dir.exists():
+            self.logger.warning(
+                "models_dir_not_found",
+                path=str(self.models_dir),
             )
+            return
+
+        async with get_db_context() as session:
+            # Scan for model directories
+            for model_dir in sorted(self.models_dir.iterdir()):
+                if not model_dir.is_dir():
+                    continue
+
+                model_file = model_dir / "model.json"
+                if not model_file.exists():
+                    continue
+
+                dir_name = model_dir.name  # e.g., "CrudeOIL_H1"
+                parts = dir_name.rsplit("_", 1)
+                if len(parts) != 2:
+                    continue
+
+                symbol, timeframe = parts
+
+                # Only load requested timeframes
+                if timeframe not in self.model_timeframes:
+                    continue
+
+                try:
+                    predictor = ReversalPredictor(
+                        session=session,
+                        model_path=model_dir,
+                    )
+                    self._predictors[dir_name] = predictor
+
+                    self.logger.info(
+                        "model_loaded",
+                        symbol=symbol,
+                        timeframe=timeframe,
+                        model_dir=str(model_dir),
+                    )
+
+                except Exception as e:
+                    self.model_load_failures += 1
+                    self.logger.error(
+                        "model_load_failed",
+                        model_dir=str(model_dir),
+                        error=str(e),
+                    )

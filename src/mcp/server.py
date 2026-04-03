@@ -860,6 +860,178 @@ class RiseTraderMCP:
                         "required": ["job_id"]
                     }
                 ),
+
+                # ML Pipeline
+                Tool(
+                    name="compute_indicators",
+                    description="Compute technical indicators (RSI, MACD, ATR, Bollinger Bands, MAs) for symbols and store in DB. Required before training ML models.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "symbols": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Trading symbols (e.g., ['CrudeOIL', 'XAUUSD'])"
+                            },
+                            "timeframes": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Timeframes (e.g., ['H1', 'M30'])",
+                                "default": ["H1"]
+                            },
+                            "force": {
+                                "type": "boolean",
+                                "description": "Recompute even if indicators exist (default: false)",
+                                "default": False
+                            }
+                        },
+                        "required": ["symbols"]
+                    }
+                ),
+                Tool(
+                    name="train_reversal_models",
+                    description="Full ML training pipeline: compute indicators → ZigZag labeling → train XGBoost/LSTM reversal classifiers → save best model to disk. Returns F1 scores and model path.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "symbol": {
+                                "type": "string",
+                                "description": "Trading symbol (e.g., 'CrudeOIL')"
+                            },
+                            "timeframe": {
+                                "type": "string",
+                                "description": "Candle timeframe (e.g., 'H1')",
+                                "default": "H1"
+                            },
+                            "skip_indicators": {
+                                "type": "boolean",
+                                "description": "Skip indicator computation (assume already computed)",
+                                "default": False
+                            },
+                            "skip_labels": {
+                                "type": "boolean",
+                                "description": "Skip ZigZag labeling (assume already labeled)",
+                                "default": False
+                            },
+                            "model_configs": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Config names to train (e.g., ['XGB-default', 'LSTM-default']). Default: all 4 configs."
+                            }
+                        },
+                        "required": ["symbol"]
+                    }
+                ),
+                Tool(
+                    name="run_ml_backtest",
+                    description="Backtest ML reversal model predictions for P&L evaluation. Uses the trained model to predict peaks/valleys and generates buy/sell signals. Compare results against baseline strategies.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "symbol": {
+                                "type": "string",
+                                "description": "Trading symbol (e.g., 'CrudeOIL')"
+                            },
+                            "start_date": {
+                                "type": "string",
+                                "description": "Start date (YYYY-MM-DD)"
+                            },
+                            "end_date": {
+                                "type": "string",
+                                "description": "End date (YYYY-MM-DD)"
+                            },
+                            "timeframe": {
+                                "type": "string",
+                                "description": "Candle timeframe (e.g., 'H1')",
+                                "default": "H1"
+                            },
+                            "model_type": {
+                                "type": "string",
+                                "enum": ["xgboost", "lstm"],
+                                "description": "Model type to use (default: xgboost)",
+                                "default": "xgboost"
+                            },
+                            "min_confidence": {
+                                "type": "number",
+                                "description": "Minimum prediction confidence threshold (default: 0.55)",
+                                "default": 0.55
+                            },
+                            "initial_capital": {
+                                "type": "number",
+                                "description": "Starting capital (default: 10000)",
+                                "default": 10000
+                            }
+                        },
+                        "required": ["symbol", "start_date", "end_date"]
+                    }
+                ),
+
+                # =========================================================
+                # INFORMED FLOW DETECTION TOOLS
+                # =========================================================
+                Tool(
+                    name="detect_informed_flow",
+                    description=(
+                        "Detect potential informed-flow (pre-announcement unusual activity) for a symbol. "
+                        "Runs PriceVelocityDetector (M1 velocity anomaly), TickClusteringDetector (tick burst), "
+                        "CrossAssetMonitor (correlation shifts), and NewsFeedService (news catalyst check). "
+                        "Returns a composite InformedFlowStatus with overall_confidence, per-detector flags, "
+                        "and a BUY/SELL/HOLD recommendation."
+                    ),
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "symbol": {
+                                "type": "string",
+                                "description": "MT4 trading symbol (e.g., 'CrudeOIL', 'XAUUSD')"
+                            }
+                        },
+                        "required": ["symbol"]
+                    }
+                ),
+                Tool(
+                    name="get_trump_posts",
+                    description=(
+                        "Return recent market-relevant posts from the TruthSocialMonitor. "
+                        "Posts are pre-filtered for oil/market keywords and classified with "
+                        "bullish/bearish/neutral sentiment. Returns an empty list when the monitor "
+                        "is disabled (TRUTH_SOCIAL_ENABLED != 'true') or no posts match."
+                    ),
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "hours_back": {
+                                "type": "integer",
+                                "description": "Look-back window in hours (default: 24)",
+                                "default": 24
+                            }
+                        }
+                    }
+                ),
+                Tool(
+                    name="check_news_catalyst",
+                    description=(
+                        "Check whether a news catalyst exists for a symbol within a recent time window. "
+                        "Queries NewsAPI.org (primary) and Finnhub (fallback). Returns has_catalyst flag, "
+                        "article count, and a list of articles with headline, source, published_at, and url. "
+                        "Results are cached per symbol for 5 minutes."
+                    ),
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "symbol": {
+                                "type": "string",
+                                "description": "MT4 trading symbol (e.g., 'CrudeOIL', 'XAUUSD')"
+                            },
+                            "minutes_back": {
+                                "type": "integer",
+                                "description": "Look-back window in minutes (default: 30)",
+                                "default": 30
+                            }
+                        },
+                        "required": ["symbol"]
+                    }
+                ),
             ]
 
         # =====================================================================
@@ -954,6 +1126,22 @@ class RiseTraderMCP:
                     result = await self._list_optimization_jobs(**arguments)
                 elif name == "get_optimization_job_results":
                     result = await self._get_optimization_job_results(**arguments)
+
+                # ML Pipeline
+                elif name == "compute_indicators":
+                    result = await self._compute_indicators(**arguments)
+                elif name == "train_reversal_models":
+                    result = await self._train_reversal_models(**arguments)
+                elif name == "run_ml_backtest":
+                    result = await self._run_ml_backtest(**arguments)
+
+                # Informed Flow Detection
+                elif name == "detect_informed_flow":
+                    result = await self._detect_informed_flow(**arguments)
+                elif name == "get_trump_posts":
+                    result = await self._get_trump_posts(**arguments)
+                elif name == "check_news_catalyst":
+                    result = await self._check_news_catalyst(**arguments)
                 else:
                     result = {"error": f"Unknown tool: {name}"}
 
@@ -3019,6 +3207,381 @@ class RiseTraderMCP:
 
         except Exception as e:
             logger.error(f"Clear position alerts failed: {e}", exc_info=True)
+            return {"success": False, "error": str(e)}
+
+    # =========================================================================
+    # ML Pipeline Tools
+    # =========================================================================
+
+    async def _compute_indicators(
+        self,
+        symbols: List[str],
+        timeframes: Optional[List[str]] = None,
+        force: bool = False,
+    ) -> Dict[str, Any]:
+        """Compute technical indicators for symbols and store in DB."""
+        timeframes = timeframes or ["H1"]
+        try:
+            from src.database.config import initialize_database, get_database
+            from src.services.indicator_compute_service import IndicatorComputeService
+
+            initialize_database()
+            db = get_database()
+
+            async with db.get_session() as session:
+                service = IndicatorComputeService(session)
+                results = await service.compute_batch(symbols, timeframes, force=force)
+
+            return {
+                "success": True,
+                "results": results,
+                "total_symbols": len(symbols),
+                "total_timeframes": len(timeframes),
+            }
+        except Exception as e:
+            logger.error(f"Compute indicators failed: {e}", exc_info=True)
+            return {"success": False, "error": str(e)}
+
+    async def _train_reversal_models(
+        self,
+        symbol: str,
+        timeframe: str = "H1",
+        skip_indicators: bool = False,
+        skip_labels: bool = False,
+        model_configs: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Run full ML training pipeline for a symbol."""
+        try:
+            from src.database.config import initialize_database, get_database
+            from src.services.reversal_training_service import (
+                ReversalTrainingService,
+                DEFAULT_MODEL_CONFIGS,
+            )
+
+            initialize_database()
+            db = get_database()
+
+            # Filter configs by name if specified
+            active_configs = DEFAULT_MODEL_CONFIGS
+            if model_configs:
+                active_configs = [c for c in DEFAULT_MODEL_CONFIGS if c["name"] in model_configs]
+                if not active_configs:
+                    return {"success": False, "error": f"No matching configs: {model_configs}"}
+
+            async with db.get_session() as session:
+                service = ReversalTrainingService(session)
+                result = await service.train_pipeline(
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    skip_indicators=skip_indicators,
+                    skip_labels=skip_labels,
+                    model_configs=active_configs,
+                )
+
+            return {"success": True, **result}
+
+        except Exception as e:
+            logger.error(f"Train reversal models failed: {e}", exc_info=True)
+            return {"success": False, "error": str(e)}
+
+    async def _run_ml_backtest(
+        self,
+        symbol: str,
+        start_date: str,
+        end_date: str,
+        timeframe: str = "H1",
+        model_type: str = "xgboost",
+        min_confidence: float = 0.55,
+        initial_capital: float = 10000,
+    ) -> Dict[str, Any]:
+        """Backtest ML model predictions for P&L evaluation."""
+        # Delegate to existing backtest infrastructure with ml_reversal strategy
+        strategy_params = {
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "model_type": model_type,
+            "min_confidence": min_confidence,
+        }
+
+        payload = {
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "start_date": start_date,
+            "end_date": end_date,
+            "strategy": "ml_reversal",
+            "strategy_params": strategy_params,
+            "initial_capital": initial_capital,
+        }
+
+        try:
+            import time as _time
+            start_time = _time.time()
+
+            result = await self._api_call(
+                "POST",
+                "/api/backtesting/vectorized/run",
+                json=payload,
+                timeout=120,
+            )
+
+            elapsed = _time.time() - start_time
+
+            if result.get("success"):
+                return {
+                    "success": True,
+                    "status": "completed",
+                    "strategy": "ml_reversal",
+                    "model_type": model_type,
+                    "min_confidence": min_confidence,
+                    "elapsed_seconds": round(elapsed, 2),
+                    "execution_time_ms": result.get("execution_time_ms"),
+                    "candles_processed": result.get("candles_processed"),
+                    "total_trades": result.get("total_trades"),
+                    "initial_capital": result.get("initial_capital"),
+                    "final_capital": result.get("final_capital"),
+                    "total_return_pct": result.get("total_return_pct"),
+                    "metrics": {
+                        "sharpe_ratio": result.get("sharpe_ratio"),
+                        "sortino_ratio": result.get("sortino_ratio"),
+                        "max_drawdown_pct": result.get("max_drawdown_pct"),
+                        "win_rate": result.get("win_rate"),
+                        "profit_factor": result.get("profit_factor"),
+                        "winning_trades": result.get("winning_trades"),
+                        "losing_trades": result.get("losing_trades"),
+                        "avg_trade_pnl": result.get("avg_trade_pnl"),
+                    },
+                    "trades": result.get("trades", [])[:10],
+                    "message": f"ML backtest completed in {result.get('execution_time_ms', 0):.0f}ms",
+                }
+            else:
+                return {
+                    "success": False,
+                    "status": "failed",
+                    "error": result.get("detail", "Unknown error"),
+                    "elapsed_seconds": round(elapsed, 2),
+                }
+
+        except Exception as e:
+            logger.error(f"ML backtest failed: {e}", exc_info=True)
+            return {"success": False, "error": str(e)}
+
+    # =========================================================================
+    # INFORMED FLOW DETECTION METHODS
+    # =========================================================================
+
+    async def _detect_informed_flow(self, symbol: str) -> Dict[str, Any]:
+        """Run all informed-flow detectors for the given symbol and return a composite status.
+
+        Args:
+            symbol: MT4 symbol string (e.g. 'CrudeOIL').
+
+        Returns:
+            Dict with keys:
+                symbol (str), timestamp (str ISO-8601 UTC),
+                overall_confidence (float 0.0-1.0),
+                has_price_velocity (bool), has_tick_cluster (bool),
+                has_cross_asset_signal (bool), has_news_catalyst (bool),
+                recommendation (str: 'BUY'|'SELL'|'HOLD'),
+                alerts (list of dicts, one per firing detector),
+                cross_asset_correlations (dict 'SYM1/SYM2' -> float).
+            On error: {"success": False, "error": str}.
+        """
+        try:
+            # Lazy imports to avoid circular dependencies at module load time.
+            from src.services.informed_flow.price_velocity_detector import PriceVelocityDetector  # noqa: PLC0415
+            from src.services.informed_flow.tick_clustering_detector import TickClusteringDetector  # noqa: PLC0415
+            from src.services.informed_flow.cross_asset_monitor import CrossAssetMonitor  # noqa: PLC0415
+            from src.services.news.news_feed_service import NewsFeedService  # noqa: PLC0415
+            from src.services.informed_flow.schemas import InformedFlowStatus  # noqa: PLC0415
+            from datetime import datetime, timezone  # noqa: PLC0415
+
+            velocity_detector = PriceVelocityDetector()
+            tick_detector = TickClusteringDetector()
+            cross_monitor = CrossAssetMonitor()
+            news_service = NewsFeedService()
+
+            # --- Run detectors concurrently ---
+            velocity_alert, tick_result, cross_alerts, has_catalyst = await asyncio.gather(
+                velocity_detector.detect_from_db(symbol, timeframe="M1", limit=120),
+                tick_detector.analyze_from_db(symbol, timeframe="M1", limit=120),
+                cross_monitor.check_all_pairs(),
+                news_service.has_catalyst(symbol, window_minutes=30),
+                return_exceptions=True,
+            )
+
+            # Treat exceptions from individual detectors as non-firing (degrade gracefully).
+            if isinstance(velocity_alert, Exception):
+                logger.warning(f"velocity detector failed: {velocity_alert}")
+                velocity_alert = None
+            if isinstance(tick_result, Exception):
+                logger.warning(f"tick detector failed: {tick_result}")
+                tick_result = None
+            if isinstance(cross_alerts, Exception):
+                logger.warning(f"cross asset monitor failed: {cross_alerts}")
+                cross_alerts = []
+            if isinstance(has_catalyst, Exception):
+                logger.warning(f"news feed failed: {has_catalyst}")
+                has_catalyst = False
+
+            # --- Assemble composite status ---
+            firing_alerts = []
+            confidences = []
+
+            if velocity_alert is not None:
+                firing_alerts.append({
+                    "detector": "price_velocity",
+                    "alert_type": velocity_alert.alert_type,
+                    "confidence": velocity_alert.confidence,
+                    "direction": velocity_alert.direction,
+                    "price_change_pct": velocity_alert.price_change_pct,
+                    "z_score": velocity_alert.z_score,
+                    "details": velocity_alert.details,
+                    "timestamp": velocity_alert.timestamp.isoformat(),
+                })
+                confidences.append(velocity_alert.confidence)
+
+            has_tick_cluster = tick_result is not None and tick_result.is_anomaly
+            if has_tick_cluster:
+                confidences.append(tick_result.confidence)
+                firing_alerts.append({
+                    "detector": "tick_cluster",
+                    "alert_type": "tick_cluster",
+                    "confidence": tick_result.confidence,
+                    "direction": tick_result.price_direction,
+                    "tick_z_score": tick_result.tick_z_score,
+                    "tick_count": tick_result.tick_count,
+                    "baseline_mean": tick_result.baseline_mean,
+                })
+
+            # Cross-asset: flag if any pair exceeded its threshold.
+            has_cross_asset = any(a.threshold_exceeded for a in (cross_alerts or []))
+            cross_corr_summary = cross_monitor.summarise_alerts(cross_alerts or [])
+
+            # --- Overall confidence: mean of firing detector confidences ---
+            if confidences:
+                overall_confidence = round(sum(confidences) / len(confidences), 4)
+            else:
+                overall_confidence = 0.0
+
+            # --- Recommendation: follow the highest-confidence velocity direction ---
+            recommendation = "HOLD"
+            if velocity_alert is not None and velocity_alert.confidence >= 0.6:
+                recommendation = "BUY" if velocity_alert.direction == "up" else "SELL"
+            elif has_tick_cluster and tick_result.confidence >= 0.6:
+                recommendation = "BUY" if tick_result.price_direction == "up" else "SELL"
+
+            return {
+                "success": True,
+                "symbol": symbol,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "overall_confidence": overall_confidence,
+                "has_price_velocity": velocity_alert is not None,
+                "has_tick_cluster": has_tick_cluster,
+                "has_cross_asset_signal": has_cross_asset,
+                "has_news_catalyst": bool(has_catalyst),
+                "recommendation": recommendation,
+                "alerts": firing_alerts,
+                "cross_asset_correlations": cross_corr_summary,
+            }
+
+        except Exception as e:
+            logger.error(f"detect_informed_flow failed: {e}", exc_info=True)
+            return {"success": False, "error": str(e)}
+
+    async def _get_trump_posts(self, hours_back: int = 24) -> Dict[str, Any]:
+        """Return recent market-relevant posts from TruthSocialMonitor.
+
+        Args:
+            hours_back: Look-back window in hours. Range: [0, ∞). Default 24.
+
+        Returns:
+            Dict with keys:
+                posts (list of dicts), count (int), hours_back (int),
+                enabled (bool — False when TRUTH_SOCIAL_ENABLED != 'true').
+            Each post dict has: post_text, timestamp (ISO-8601), sentiment,
+                keywords_found (list), confidence (float 0.0-1.0).
+        """
+        try:
+            # Lazy import to avoid circular dependencies at module load time.
+            from src.services.social.truth_social_monitor import TruthSocialMonitor  # noqa: PLC0415
+
+            monitor = TruthSocialMonitor()
+            posts = monitor.get_recent_posts(hours_back=hours_back)
+
+            serialized = [
+                {
+                    "post_text": p.post_text,
+                    "timestamp": p.timestamp.isoformat(),
+                    "sentiment": p.sentiment,
+                    "keywords_found": p.keywords_found,
+                    "confidence": p.confidence,
+                }
+                for p in posts
+            ]
+
+            return {
+                "success": True,
+                "enabled": monitor.enabled,
+                "hours_back": hours_back,
+                "count": len(serialized),
+                "posts": serialized,
+            }
+
+        except Exception as e:
+            logger.error(f"get_trump_posts failed: {e}", exc_info=True)
+            return {"success": False, "error": str(e)}
+
+    async def _check_news_catalyst(
+        self,
+        symbol: str,
+        minutes_back: int = 30,
+    ) -> Dict[str, Any]:
+        """Check whether a recent news catalyst exists for the symbol.
+
+        Args:
+            symbol: MT4 symbol string (e.g. 'CrudeOIL').
+            minutes_back: Look-back window in minutes. Range: [1, ∞). Default 30.
+
+        Returns:
+            Dict with keys:
+                has_catalyst (bool), article_count (int), symbol (str),
+                minutes_back (int), articles (list of dicts).
+            Each article dict has: headline, source, published_at (ISO-8601),
+                relevance_score (float), url (str).
+            On error: {"success": False, "error": str}.
+        """
+        try:
+            # Lazy import to avoid circular dependencies at module load time.
+            from src.services.news.news_feed_service import NewsFeedService  # noqa: PLC0415
+
+            service = NewsFeedService()
+            articles = await service.get_recent_news(
+                symbols=[symbol],
+                lookback_minutes=minutes_back,
+            )
+
+            serialized = [
+                {
+                    "headline": a.headline,
+                    "source": a.source,
+                    "published_at": a.published_at.isoformat(),
+                    "relevance_score": a.relevance_score,
+                    "url": a.url,
+                }
+                for a in articles
+            ]
+
+            return {
+                "success": True,
+                "symbol": symbol,
+                "minutes_back": minutes_back,
+                "has_catalyst": len(articles) > 0,
+                "article_count": len(articles),
+                "articles": serialized,
+            }
+
+        except Exception as e:
+            logger.error(f"check_news_catalyst failed: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
 
     async def run(self):

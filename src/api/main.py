@@ -33,6 +33,7 @@ from src.services.mt4_sync_service import get_mt4_sync_service
 from src.services.stealth_stop_manager import StealthStopManager, DynamicTrailConfig
 from src.services.price_alert_service import get_price_alert_service
 from src.services.candle_aggregator_service import CandleAggregatorService
+from src.services.live_trading_service import get_live_trading_service
 from src.api.mcp_endpoint import create_mcp_app
 
 # Configure structured logging
@@ -152,6 +153,14 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning("candle_aggregator_service_start_failed", error=str(e))
 
+        # Start Live Trading Service (autonomous signal → risk → execute loop)
+        # Controlled by LIVE_TRADING_ENABLED env var (default: false)
+        try:
+            live_svc = get_live_trading_service()
+            await live_svc.start()
+        except Exception as e:
+            logger.warning("live_trading_service_start_failed", error=str(e))
+
     except Exception as e:
         logger.error("startup_failed", error=str(e), exc_info=True)
         raise
@@ -192,6 +201,15 @@ async def lifespan(app: FastAPI):
             except asyncio.CancelledError:
                 pass
             logger.info("candle_aggregator_service_stopped")
+
+        # Stop Live Trading Service
+        try:
+            live_svc = get_live_trading_service()
+            live_svc.stop()
+            await live_svc.wait_stopped()
+            logger.info("live_trading_service_stopped")
+        except Exception as e:
+            logger.warning("live_trading_service_stop_failed", error=str(e))
 
         # Stop MT4 sync service
         mt4_sync = get_mt4_sync_service()

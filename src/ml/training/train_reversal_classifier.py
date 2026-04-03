@@ -7,24 +7,33 @@ using ZigZag-labeled historical data.
 Features:
 - Walk-forward validation for time-series
 - Class imbalance handling (SMOTE, class weights)
-- MLflow experiment tracking
+- MLflow experiment tracking (optional — gracefully degrades if MLflow unavailable)
 - Hyperparameter tuning with Optuna (optional)
 - Model versioning and deployment
+- LSTM support with sequence windowing for temporal patterns
 """
 import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple, Any
 
+import os
+# Fix oneDNN matmul primitive error on some CPUs (must be set before torch import)
+os.environ["DNNL_DEFAULT_FPMATH_MODE"] = "STRICT"
+os.environ["TORCH_MKLDNN_ENABLED"] = "0"
+os.environ["ONEDNN_PRIMITIVE_CACHE_CAPACITY"] = "0"
+
 import numpy as np
+import torch
+# Disable MKL-DNN (oneDNN) backend to avoid matmul primitive errors
+torch.backends.mkldnn.enabled = False
+import torch.nn as nn
 import xgboost as xgb
 from imblearn.over_sampling import SMOTE
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.metrics import (
-    classification_report,
     confusion_matrix,
     precision_recall_fscore_support,
-    roc_auc_score
 )
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,10 +41,162 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.database.config import get_database
 from src.database.models.training_runs import TrainingRun, TrainingStatus
 from src.ml.features.reversal_features import ReversalFeatureExtractor
-from src.ml.tracking.mlflow_tracker import MLflowTracker
-from src.ml.models.xgboost_forecaster import XGBoostForecaster
 
 logger = logging.getLogger(__name__)
+
+
+# Default LSTM lookback window for sequence creation
+LSTM_LOOKBACK = 20
+
+
+class LSTMClassifier(nn.Module):
+    """
+    LSTM classifier for reversal prediction (3 classes: valley, neither, peak).
+
+    Wraps a bidirectional LSTM with attention into a classifier that outputs
+    class probabilities via softmax. Uses CrossEntropyLoss for training.
+    """
+
+    def __init__(
+        self,
+        input_size: int,
+        hidden_size: int = 128,
+        num_layers: int = 2,
+        dropout: float = 0.2,
+        num_classes: int = 3,
+    ):
+        super().__init__()
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+        self.lstm = nn.LSTM(
+            input_size=input_size,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            dropout=dropout if num_layers > 1 else 0,
+            bidirectional=True,
+            batch_first=True,
+        )
+
+        # Attention layer
+        lstm_out_size = hidden_size * 2  # bidirectional
+        self.attention = nn.Linear(lstm_out_size, 1)
+
+        # Classification head
+        self.fc = nn.Sequential(
+            nn.Linear(lstm_out_size, 64),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(64, num_classes),
+        )
+
+        self.to(self.device)
+
+    def forward(self, x):
+        # x: (batch, seq_len, features)
+        lstm_out, _ = self.lstm(x)
+        # Attention-weighted sum
+        attn_weights = torch.softmax(self.attention(lstm_out), dim=1)
+        context = torch.sum(attn_weights * lstm_out, dim=1)
+        return self.fc(context)
+
+    def fit(self, X_train, y_train, eval_set=None, verbose=False,
+            epochs=50, lr=0.001, batch_size=64):
+        """
+        Train the LSTM classifier. Mimics XGBoost's fit() interface.
+
+        Args:
+            X_train: 3D numpy array (samples, lookback, features)
+            y_train: 1D numpy array of class labels (0, 1, 2)
+            eval_set: list of (X_val, y_val) tuples
+            epochs: max training epochs
+            lr: learning rate
+            batch_size: mini-batch size
+        """
+        self.train()
+        optimizer = torch.optim.Adam(self.parameters(), lr=lr)
+        # Class weights to handle imbalance
+        class_counts = np.bincount(y_train.astype(int), minlength=3).astype(float)
+        class_counts[class_counts == 0] = 1.0
+        weights = 1.0 / class_counts
+        weights = weights / weights.sum() * len(weights)
+        class_weights = torch.FloatTensor(weights).to(self.device)
+        criterion = nn.CrossEntropyLoss(weight=class_weights)
+
+        X_t = torch.FloatTensor(X_train).to(self.device)
+        y_t = torch.LongTensor(y_train.astype(int)).to(self.device)
+
+        X_val_t, y_val_t = None, None
+        if eval_set:
+            X_val_t = torch.FloatTensor(eval_set[0][0]).to(self.device)
+            y_val_t = torch.LongTensor(eval_set[0][1].astype(int)).to(self.device)
+
+        best_val_loss = float('inf')
+        patience, patience_limit = 0, 10
+
+        for epoch in range(epochs):
+            self.train()
+            epoch_loss = 0
+            n_batches = 0
+
+            indices = torch.randperm(len(X_t))
+            for i in range(0, len(X_t), batch_size):
+                batch_idx = indices[i:i + batch_size]
+                bx, by = X_t[batch_idx], y_t[batch_idx]
+
+                optimizer.zero_grad()
+                out = self(bx)
+                loss = criterion(out, by)
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.parameters(), 1.0)
+                optimizer.step()
+
+                epoch_loss += loss.item()
+                n_batches += 1
+
+            # Validation early stopping
+            if X_val_t is not None:
+                self.eval()
+                with torch.no_grad():
+                    val_out = self(X_val_t)
+                    val_loss = criterion(val_out, y_val_t).item()
+                if val_loss < best_val_loss:
+                    best_val_loss = val_loss
+                    patience = 0
+                else:
+                    patience += 1
+                    if patience >= patience_limit:
+                        break
+
+    def predict(self, X):
+        """Predict class labels. X is 3D numpy array."""
+        self.eval()
+        X_t = torch.FloatTensor(X).to(self.device)
+        with torch.no_grad():
+            logits = self(X_t)
+            return logits.argmax(dim=1).cpu().numpy()
+
+
+def create_sequences(X: np.ndarray, y: np.ndarray, lookback: int) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Convert 2D feature matrix into 3D sequences for LSTM.
+
+    Args:
+        X: (N, F) feature matrix
+        y: (N,) labels
+        lookback: number of timesteps per sequence
+
+    Returns:
+        X_seq: (N - lookback, lookback, F)
+        y_seq: (N - lookback,) — label for the last timestep in each window
+    """
+    X_seq, y_seq = [], []
+    for i in range(lookback, len(X)):
+        X_seq.append(X[i - lookback:i])
+        y_seq.append(y[i])
+    return np.array(X_seq), np.array(y_seq)
 
 
 class ReversalClassifierTrainer:
@@ -55,12 +216,12 @@ class ReversalClassifierTrainer:
     def __init__(
         self,
         session: AsyncSession,
-        mlflow_tracker: Optional[MLflowTracker] = None,
-        enable_mlflow: bool = True
+        mlflow_tracker: Optional[Any] = None,
+        enable_mlflow: bool = False
     ):
         self.session = session
-        self.mlflow_tracker = mlflow_tracker or MLflowTracker()
-        self.enable_mlflow = enable_mlflow
+        self.mlflow_tracker = mlflow_tracker
+        self.enable_mlflow = enable_mlflow and mlflow_tracker is not None
         self.feature_extractor = ReversalFeatureExtractor(session)
 
     async def train(
@@ -126,7 +287,7 @@ class ReversalClassifierTrainer:
                 raise ValueError("No training data available")
 
             logger.info(f"Extracted {len(X)} samples with {len(feature_names)} features")
-            logger.info(f"Class distribution: {np.bincount(y + 1)}")  # +1 to handle -1, 0, 1
+            logger.info(f"Class distribution: valleys={np.sum(y == -1)}, neither={np.sum(y == 0)}, peaks={np.sum(y == 1)}")
 
             # 2. Train model
             if walk_forward:
@@ -139,6 +300,9 @@ class ReversalClassifierTrainer:
                     X, y, feature_names, model_type, hyperparameters,
                     use_smote, run
                 )
+
+            # Include feature names in results for model persistence
+            results['feature_names'] = feature_names
 
             # 3. Update training run with results
             run.status = TrainingStatus.COMPLETED
@@ -285,32 +449,68 @@ class ReversalClassifierTrainer:
         model_type: str,
         hyperparameters: Optional[Dict]
     ) -> Tuple[Any, Dict]:
-        """Train a single model instance."""
+        """Train a single model instance (XGBoost or LSTM)."""
 
-        if model_type == 'xgboost':
-            model = self._create_xgboost_classifier(hyperparameters)
-        else:
-            raise ValueError(f"Unsupported model type: {model_type}")
-
-        # Map labels from {-1, 0, 1} to {0, 1, 2} for XGBoost
+        # Map labels from {-1, 0, 1} to {0, 1, 2}
         y_train_mapped = y_train + 1  # -1→0, 0→1, 1→2
         y_val_mapped = y_val + 1
 
-        # Train
-        model.fit(
-            X_train, y_train_mapped,
-            eval_set=[(X_val, y_val_mapped)],
-            verbose=False
-        )
+        if model_type == 'xgboost':
+            model = self._create_xgboost_classifier(hyperparameters)
 
-        # Predict
-        y_pred = model.predict(X_val)
+            model.fit(
+                X_train, y_train_mapped,
+                eval_set=[(X_val, y_val_mapped)],
+                verbose=False
+            )
+
+            y_pred = model.predict(X_val)
+
+        elif model_type == 'lstm':
+            lookback = (hyperparameters or {}).get('lookback', LSTM_LOOKBACK)
+            hidden_size = (hyperparameters or {}).get('hidden_size', 128)
+            num_layers = (hyperparameters or {}).get('num_layers', 2)
+            dropout = (hyperparameters or {}).get('dropout', 0.2)
+            epochs = (hyperparameters or {}).get('epochs', 50)
+            lr = (hyperparameters or {}).get('learning_rate', 0.001)
+
+            # Create sequences for LSTM (2D → 3D)
+            X_train_seq, y_train_seq = create_sequences(X_train, y_train_mapped, lookback)
+            X_val_seq, y_val_seq = create_sequences(X_val, y_val_mapped, lookback)
+
+            if len(X_train_seq) == 0 or len(X_val_seq) == 0:
+                raise ValueError(
+                    f"Not enough data for LSTM lookback={lookback}. "
+                    f"Train: {len(X_train)} samples, Val: {len(X_val)} samples"
+                )
+
+            model = LSTMClassifier(
+                input_size=X_train.shape[1],
+                hidden_size=hidden_size,
+                num_layers=num_layers,
+                dropout=dropout,
+            )
+
+            model.fit(
+                X_train_seq, y_train_seq,
+                eval_set=[(X_val_seq, y_val_seq)],
+                epochs=epochs,
+                lr=lr,
+            )
+
+            y_pred = model.predict(X_val_seq)
+            # Use only the matching validation labels (after sequence windowing)
+            y_val_mapped = y_val_seq
+
+        else:
+            raise ValueError(f"Unsupported model type: {model_type}")
 
         # Map predictions back to {-1, 0, 1}
         y_pred = y_pred - 1
+        y_val_orig = y_val_mapped - 1
 
         # Calculate metrics
-        metrics = self._calculate_classification_metrics(y_val, y_pred)
+        metrics = self._calculate_classification_metrics(y_val_orig, y_pred)
 
         return model, metrics
 
@@ -422,39 +622,43 @@ class ReversalClassifierTrainer:
         metrics: Dict,
         run: TrainingRun
     ) -> str:
-        """Save trained model to MLflow registry."""
+        """Save trained model to MLflow registry (if tracker available)."""
 
-        self.mlflow_tracker.start_run(run_name=run.run_name)
+        if self.mlflow_tracker is None:
+            return f"v{run.id}"
 
         try:
+            self.mlflow_tracker.start_run(run_name=run.run_name)
+
             # Log parameters
             self.mlflow_tracker.log_params(run.hyperparameters)
 
-            # Log metrics
-            self.mlflow_tracker.log_metrics(metrics)
+            # Log metrics (filter out non-numeric values like confusion_matrix)
+            numeric_metrics = {
+                k: v for k, v in metrics.items()
+                if isinstance(v, (int, float)) and not np.isnan(v)
+            }
+            self.mlflow_tracker.log_metrics(numeric_metrics)
 
             # Log model
-            import mlflow.xgboost
-            mlflow.xgboost.log_model(model, "model")
-
-            # Log feature names
-            self.mlflow_tracker.log_artifact_text(
-                '\n'.join(feature_names),
-                'feature_names.txt'
-            )
+            self.mlflow_tracker.log_model(model, "model")
 
             # Get MLflow run ID
             run.mlflow_run_id = self.mlflow_tracker.get_run_id()
 
-            # Get model version
-            model_version = f"v{run.id}"  # Simple versioning
-
+            model_version = f"v{run.id}"
             logger.info(f"Model saved to MLflow: {model_version}")
-
             return model_version
 
+        except Exception as e:
+            logger.warning(f"MLflow save failed (non-fatal): {e}")
+            return f"v{run.id}"
+
         finally:
-            self.mlflow_tracker.end_run()
+            try:
+                self.mlflow_tracker.end_run()
+            except Exception:
+                pass
 
 
 # Standalone training function

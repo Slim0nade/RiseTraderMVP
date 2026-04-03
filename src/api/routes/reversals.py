@@ -11,10 +11,42 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
 
+from pathlib import Path
+
 from src.database.config import get_session
-from src.ml.inference.reversal_predictor import get_predictor, clear_predictor_cache
+from src.ml.inference.reversal_predictor import ReversalPredictor
 
 logger = logging.getLogger(__name__)
+
+# Model directory and predictor cache
+MODELS_DIR = Path(__file__).resolve().parent.parent.parent.parent / "models" / "reversal_classifier"
+_predictor_cache: Dict[str, ReversalPredictor] = {}
+
+
+async def _get_predictor(session: AsyncSession, symbol: str, timeframe: str) -> ReversalPredictor:
+    """Get or create a cached ReversalPredictor for a symbol/timeframe."""
+    cache_key = f"{symbol}_{timeframe}"
+
+    if cache_key not in _predictor_cache:
+        model_dir = MODELS_DIR / cache_key
+        if not (model_dir / "model.json").exists():
+            raise FileNotFoundError(f"No trained model found for {symbol} {timeframe}")
+
+        predictor = ReversalPredictor(session=session, model_path=model_dir)
+        _predictor_cache[cache_key] = predictor
+
+    # Update session for the current request
+    predictor = _predictor_cache[cache_key]
+    predictor.session = session
+    predictor.feature_extractor.session = session
+    return predictor
+
+
+def _clear_predictor_cache():
+    """Clear all cached predictors."""
+    global _predictor_cache
+    _predictor_cache = {}
+    logger.info("Predictor cache cleared")
 
 router = APIRouter(prefix="/api/v1/reversals", tags=["Reversal Predictions"])
 
@@ -52,11 +84,11 @@ class BatchPredictionRequest(BaseModel):
 
 class ModelInfoResponse(BaseModel):
     """Response model for model information."""
-    model_type: str
+    model_loaded: bool
     threshold_peak: float
     threshold_valley: float
-    feature_count: int | str
-    feature_names: Optional[List[str]]
+    feature_count: int
+    metadata: Optional[Dict] = None
 
 
 # API Endpoints
@@ -98,13 +130,8 @@ async def predict_reversal(
     ```
     """
     try:
-        # Get predictor (cached by model version)
-        predictor = await get_predictor(
-            session=session,
-            model_version=request.model_version
-        )
+        predictor = await _get_predictor(session, request.symbol, request.timeframe)
 
-        # Make prediction
         result = await predictor.predict(
             symbol=request.symbol,
             timeframe=request.timeframe,
@@ -145,10 +172,7 @@ async def predict_reversal_batch(
     ```
     """
     try:
-        predictor = await get_predictor(
-            session=session,
-            model_version=request.model_version
-        )
+        predictor = await _get_predictor(session, request.symbol, request.timeframe)
 
         results = await predictor.predict_batch(
             symbol=request.symbol,
@@ -164,9 +188,10 @@ async def predict_reversal_batch(
         raise HTTPException(status_code=500, detail=f"Batch prediction failed: {str(e)}")
 
 
-@router.get("/model/info", response_model=ModelInfoResponse)
+@router.get("/model/info")
 async def get_model_info(
-    model_version: str = Query('latest', description="Model version"),
+    symbol: str = Query("CrudeOIL", description="Trading symbol"),
+    timeframe: str = Query("H1", description="Timeframe"),
     session: AsyncSession = Depends(get_session)
 ):
     """
@@ -176,17 +201,14 @@ async def get_model_info(
 
     Example:
     ```
-    GET /api/v1/reversals/model/info?model_version=latest
+    GET /api/v1/reversals/model/info?symbol=CrudeOIL&timeframe=H1
     ```
     """
     try:
-        predictor = await get_predictor(
-            session=session,
-            model_version=model_version
-        )
+        predictor = await _get_predictor(session, symbol, timeframe)
 
         info = predictor.get_model_info()
-        return ModelInfoResponse(**info)
+        return info
 
     except Exception as e:
         logger.error(f"Failed to get model info: {str(e)}")
@@ -209,14 +231,10 @@ async def reload_model(
     ```
     """
     try:
-        # Clear cache
-        clear_predictor_cache()
+        _clear_predictor_cache()
 
         # Load fresh model
-        predictor = await get_predictor(
-            session=session,
-            model_version=model_version
-        )
+        predictor = await _get_predictor(session, "CrudeOIL", "H1")
 
         info = predictor.get_model_info()
 
@@ -252,10 +270,7 @@ async def update_thresholds(
     ```
     """
     try:
-        predictor = await get_predictor(
-            session=session,
-            model_version=model_version
-        )
+        predictor = await _get_predictor(session, "CrudeOIL", "H1")
 
         predictor.set_thresholds(peak=peak_threshold, valley=valley_threshold)
 

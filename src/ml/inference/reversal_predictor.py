@@ -1,26 +1,26 @@
 """
 Reversal Predictor - Real-time inference for reversal classification
 
-Loads trained model from MLflow registry and predicts reversal probabilities
+Loads trained XGBoost model from disk and predicts reversal probabilities
 for live market data WITHOUT using ZigZag (which repaints).
 
 Usage:
-    predictor = ReversalPredictor(session, model_version='v123')
+    predictor = ReversalPredictor(session, model_path=Path('models/reversal_classifier/CrudeOIL_H1'))
     result = await predictor.predict('CrudeOIL', 'H1', current_time)
 
-    if result['peak_prob'] > 0.75:
+    if result['peak_prob'] > 0.65:
         # High confidence peak - consider SHORT
-    elif result['valley_prob'] > 0.75:
+    elif result['valley_prob'] > 0.65:
         # High confidence valley - consider LONG
 """
+import json
 import logging
 from datetime import datetime
-from typing import Dict, Optional, List
 from pathlib import Path
+from typing import Dict, Optional, List
 
 import numpy as np
-import mlflow
-import mlflow.xgboost
+import xgboost as xgb
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.ml.features.reversal_features import ReversalFeatureExtractor
@@ -32,56 +32,85 @@ class ReversalPredictor:
     """
     Real-time reversal prediction service.
 
-    Loads trained model and predicts reversal probabilities
+    Loads trained XGBoost model from disk and predicts reversal probabilities
     for current market conditions.
     """
 
     def __init__(
         self,
         session: AsyncSession,
-        model_uri: Optional[str] = None,
         model_path: Optional[Path] = None,
-        threshold_peak: float = 0.75,
-        threshold_valley: float = 0.75
+        threshold_peak: float = 0.65,
+        threshold_valley: float = 0.65
     ):
         """
         Initialize reversal predictor.
 
         Args:
-            session: Database session
-            model_uri: MLflow model URI (e.g., 'models:/reversal_classifier/v1')
-            model_path: Alternative: direct path to saved model
-            threshold_peak: Probability threshold for peak signals (default 0.75)
-            threshold_valley: Probability threshold for valley signals (default 0.75)
+            session: Database session for feature extraction
+            model_path: Path to model directory containing model.json + feature_names.txt
+            threshold_peak: Probability threshold for peak signals
+            threshold_valley: Probability threshold for valley signals
         """
         self.session = session
         self.threshold_peak = threshold_peak
         self.threshold_valley = threshold_valley
         self.feature_extractor = ReversalFeatureExtractor(session)
-
-        # Load model
-        if model_uri:
-            self.model = mlflow.xgboost.load_model(model_uri)
-            logger.info(f"Loaded model from MLflow: {model_uri}")
-        elif model_path:
-            self.model = mlflow.xgboost.load_model(str(model_path))
-            logger.info(f"Loaded model from path: {model_path}")
-        else:
-            raise ValueError("Must provide either model_uri or model_path")
-
-        # Load feature names if available
+        self.model = None
+        self.booster = None
         self.feature_names = None
-        try:
-            if model_uri:
-                # Try to load feature names from MLflow artifacts
-                client = mlflow.tracking.MlflowClient()
-                run_id = model_uri.split('/')[-1]  # Extract run ID
-                artifact_path = client.download_artifacts(run_id, 'feature_names.txt')
-                with open(artifact_path, 'r') as f:
-                    self.feature_names = [line.strip() for line in f.readlines()]
-                logger.info(f"Loaded {len(self.feature_names)} feature names")
-        except Exception as e:
-            logger.warning(f"Could not load feature names: {e}")
+        self.metadata = None
+
+        if model_path:
+            self._load_from_disk(model_path)
+
+    def _load_from_disk(self, model_dir: Path) -> None:
+        """
+        Load XGBoost model from disk directory.
+
+        Expects:
+          - model_dir/model.json (XGBoost native format)
+          - model_dir/feature_names.txt (one feature per line)
+          - model_dir/metadata.json (optional, training info)
+        """
+        model_dir = Path(model_dir)
+        model_file = model_dir / "model.json"
+
+        if not model_file.exists():
+            raise FileNotFoundError(f"Model file not found: {model_file}")
+
+        # Load XGBoost model — booster format saved by get_booster().save_model()
+        # Use Booster directly for predict_proba via DMatrix
+        self.booster = xgb.Booster()
+        self.booster.load_model(str(model_file))
+        self.model = True  # Flag that model is loaded (booster used directly)
+        logger.info(f"Loaded XGBoost booster from {model_file}")
+
+        # Load feature names (supports both .json and .txt formats)
+        feature_json = model_dir / "feature_names.json"
+        feature_txt = model_dir / "feature_names.txt"
+        if feature_json.exists():
+            with open(feature_json, "r") as f:
+                self.feature_names = json.load(f)
+            logger.info(f"Loaded {len(self.feature_names)} feature names from JSON")
+        elif feature_txt.exists():
+            with open(feature_txt, "r") as f:
+                self.feature_names = [line.strip() for line in f if line.strip()]
+            logger.info(f"Loaded {len(self.feature_names)} feature names from TXT")
+
+        # Load metadata (optional)
+        metadata_file = model_dir / "metadata.json"
+        if metadata_file.exists():
+            with open(metadata_file, "r") as f:
+                self.metadata = json.load(f)
+            logger.info(
+                f"Model metadata: {self.metadata.get('model_name', 'unknown')}, "
+                f"F1={self.metadata.get('reversal_f1', 'N/A')}"
+            )
+
+    def is_loaded(self) -> bool:
+        """Check if a model is loaded and ready for predictions."""
+        return self.booster is not None
 
     async def predict(
         self,
@@ -110,6 +139,9 @@ class ReversalPredictor:
                 'timestamp': '2024-01-01T12:00:00'
             }
         """
+        if not self.is_loaded():
+            return self._empty_prediction(current_time or datetime.utcnow())
+
         if current_time is None:
             current_time = datetime.utcnow()
 
@@ -128,15 +160,16 @@ class ReversalPredictor:
             return self._empty_prediction(current_time)
 
         # Verify feature consistency
-        if self.feature_names and feature_names != self.feature_names:
+        if self.feature_names and len(feature_names) != len(self.feature_names):
             logger.warning(
-                f"Feature mismatch! Expected {len(self.feature_names)}, "
+                f"Feature count mismatch! Expected {len(self.feature_names)}, "
                 f"got {len(feature_names)}"
             )
 
-        # Predict probabilities
+        # Predict probabilities via DMatrix → booster
         # Model expects labels {0, 1, 2} for {valley, neutral, peak}
-        probs = self.model.predict_proba(X)[0]
+        dmatrix = xgb.DMatrix(X, feature_names=self.feature_names)
+        probs = self.booster.predict(dmatrix)[0]
 
         valley_prob = float(probs[0])
         neutral_prob = float(probs[1])
@@ -169,31 +202,11 @@ class ReversalPredictor:
         times: List[datetime],
         lookback_bars: int = 100
     ) -> List[Dict[str, float]]:
-        """
-        Predict reversals for multiple time points.
-
-        Useful for backtesting or generating historical signals.
-
-        Args:
-            symbol: Trading symbol
-            timeframe: Candle timeframe
-            times: List of timestamps to predict for
-            lookback_bars: Number of bars for feature calculation
-
-        Returns:
-            List of prediction dicts
-        """
+        """Predict reversals for multiple time points."""
         results = []
-
         for t in times:
-            result = await self.predict(
-                symbol=symbol,
-                timeframe=timeframe,
-                current_time=t,
-                lookback_bars=lookback_bars
-            )
+            result = await self.predict(symbol, timeframe, t, lookback_bars)
             results.append(result)
-
         return results
 
     def _generate_signal(
@@ -208,16 +221,13 @@ class ReversalPredictor:
         Returns:
             (signal, confidence) tuple where signal is 'LONG', 'SHORT', or 'WAIT'
         """
-        # Check if peak probability exceeds threshold
         if peak_prob > self.threshold_peak:
             return 'SHORT', peak_prob
 
-        # Check if valley probability exceeds threshold
         if valley_prob > self.threshold_valley:
             return 'LONG', valley_prob
 
-        # No clear signal
-        return 'WAIT', neutral_prob
+        return 'WAIT', max(valley_prob, peak_prob)
 
     def _empty_prediction(self, current_time: datetime) -> Dict[str, float]:
         """Return empty prediction when no data available."""
@@ -240,54 +250,9 @@ class ReversalPredictor:
     def get_model_info(self) -> Dict:
         """Get information about the loaded model."""
         return {
-            'model_type': type(self.model).__name__,
+            'model_loaded': self.is_loaded(),
             'threshold_peak': self.threshold_peak,
             'threshold_valley': self.threshold_valley,
-            'feature_count': len(self.feature_names) if self.feature_names else 'unknown',
-            'feature_names': self.feature_names
+            'feature_count': len(self.feature_names) if self.feature_names else 0,
+            'metadata': self.metadata,
         }
-
-
-# Singleton predictor instance (for API use)
-_predictor_cache: Dict[str, ReversalPredictor] = {}
-
-
-async def get_predictor(
-    session: AsyncSession,
-    model_version: str = 'latest',
-    model_uri: Optional[str] = None
-) -> ReversalPredictor:
-    """
-    Get or create predictor instance.
-
-    Caches predictor by model version to avoid reloading.
-
-    Args:
-        session: Database session
-        model_version: Model version to load (e.g., 'v1', 'latest')
-        model_uri: Explicit MLflow URI (overrides model_version)
-
-    Returns:
-        ReversalPredictor instance
-    """
-    cache_key = model_uri or model_version
-
-    if cache_key not in _predictor_cache:
-        if model_uri is None:
-            model_uri = f"models:/reversal_classifier/{model_version}"
-
-        _predictor_cache[cache_key] = ReversalPredictor(
-            session=session,
-            model_uri=model_uri
-        )
-
-        logger.info(f"Created new predictor: {cache_key}")
-
-    return _predictor_cache[cache_key]
-
-
-def clear_predictor_cache():
-    """Clear predictor cache (useful for testing or model updates)."""
-    global _predictor_cache
-    _predictor_cache = {}
-    logger.info("Predictor cache cleared")

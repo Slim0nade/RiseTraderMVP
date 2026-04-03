@@ -19,6 +19,7 @@ from src.strategies.agriculture.seasonal_ma import SeasonalMAStrategy, create_se
 from src.strategies.carry.gbpjpy_carry import GBPJPYCarryStrategy, create_gbpjpy_carry_strategy
 from src.strategies.crisis.vix_regime import VixRegimeStrategy, create_vix_regime_strategy
 from src.strategies.crisis.crash_portfolio import CrashPortfolioStrategy, create_crash_portfolio_strategy
+from src.strategies.ml.ml_reversal import MLReversalStrategy, create_ml_reversal_strategy
 
 
 @dataclass
@@ -168,6 +169,14 @@ class SyntheticEngine:
             self._crash_portfolio_strategy = create_crash_portfolio_strategy(**init_params)
             if 'quantity' in self.params:
                 self._crash_portfolio_strategy.params.quantity = self.params['quantity']
+
+        # Initialize ML Reversal strategy if selected
+        self._ml_reversal_strategy: Optional[MLReversalStrategy] = None
+        if strategy == "ml_reversal":
+            init_params = {k: v for k, v in self.params.items() if k != 'quantity'}
+            self._ml_reversal_strategy = create_ml_reversal_strategy(**init_params)
+            if 'quantity' in self.params:
+                self._ml_reversal_strategy.params.quantity = self.params['quantity']
 
         # Price history for indicators
         self.price_history: List[Decimal] = []
@@ -348,6 +357,22 @@ class SyntheticEngine:
                 "trading_start_hour": 8,
                 "trading_end_hour": 20,
             },
+            # ── Phase 4: ML-based strategies ───────────────────────────────────
+            "ml_reversal": {
+                # ML reversal classifier: XGBoost/LSTM predicts peaks/valleys.
+                # Loads trained model from models/reversal_classifier/{symbol}_{timeframe}/
+                # ATR-based stops with anti-stop-hunt offset.
+                "symbol": "CrudeOIL",
+                "timeframe": "H1",
+                "model_dir": "",              # Empty = auto-detect from symbol+timeframe
+                "model_type": "xgboost",
+                "atr_period": 14,
+                "atr_stop_multiplier": 2.0,
+                "atr_tp_multiplier": 3.0,
+                "min_confidence": 0.55,
+                "lookback_bars": 250,
+                "quantity": Decimal("1.0"),
+            },
         }
         return defaults.get(strategy, {})
 
@@ -391,6 +416,8 @@ class SyntheticEngine:
             return self._vix_regime_handler(tick)
         elif self.strategy == "crash_portfolio":
             return self._crash_portfolio_handler(tick)
+        elif self.strategy == "ml_reversal":
+            return self._ml_reversal_handler(tick)
         else:
             return SyntheticSignal(
                 action=None,
@@ -986,6 +1013,32 @@ class SyntheticEngine:
             take_profit=signal.take_profit,
         )
 
+    def _ml_reversal_handler(self, tick: MarketTick) -> SyntheticSignal:
+        """
+        ML Reversal strategy handler.
+
+        Uses trained XGBoost/LSTM classifier to predict peaks and valleys.
+        Valley → buy, Peak → sell. ATR-based stop loss with random offset.
+        """
+        if self._ml_reversal_strategy is None:
+            return SyntheticSignal(
+                action=None,
+                quantity=Decimal("0.0"),
+                confidence=0.0,
+                reason="ML reversal strategy not initialized",
+            )
+        signal = self._ml_reversal_strategy.process_tick(tick)
+        self.has_position = self._ml_reversal_strategy.has_position
+        self.entry_price = self._ml_reversal_strategy.entry_price
+        return SyntheticSignal(
+            action=signal.action,
+            quantity=signal.quantity,
+            confidence=signal.confidence,
+            reason=signal.reason,
+            stop_loss=signal.stop_loss,
+            take_profit=signal.take_profit,
+        )
+
     def reset(self) -> None:
         """Reset engine state for new backtest."""
         self.price_history.clear()
@@ -1013,6 +1066,8 @@ class SyntheticEngine:
             self._vix_regime_strategy.reset()
         if self._crash_portfolio_strategy is not None:
             self._crash_portfolio_strategy.reset()
+        if self._ml_reversal_strategy is not None:
+            self._ml_reversal_strategy.reset()
 
     def get_state(self) -> Dict:
         """

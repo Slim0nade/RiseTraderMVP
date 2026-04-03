@@ -239,6 +239,14 @@ class StrategyOptimizer:
             "atr_stop_multiplier": [2.0, 2.5, 3.0, 3.5],
             "atr_trail_multiplier": [1.5, 2.0, 2.5],
         },
+        # ── Phase 4 strategies ─────────────────────────────────────────────
+        "ml_reversal": {
+            # ML reversal classifier (XGBoost/LSTM).
+            # Tunable: confidence threshold, ATR stop/TP multipliers.
+            "min_confidence": [0.50, 0.55, 0.60, 0.65, 0.70],
+            "atr_stop_multiplier": [1.5, 2.0, 2.5, 3.0],
+            "atr_tp_multiplier": [2.0, 2.5, 3.0, 4.0],
+        },
     }
     
     # Optimization targets
@@ -258,6 +266,44 @@ class StrategyOptimizer:
         self.session = session
         self.engine = VectorizedBacktestEngine(session)
     
+    async def _run_single_backtest(
+        self,
+        symbol: str,
+        timeframe: str,
+        start_date: datetime,
+        end_date: datetime,
+        strategy: str,
+        params: Dict[str, Any],
+        initial_capital: float = 10000.0,
+    ) -> VectorizedBacktestResult:
+        """
+        Run a single backtest with the given parameters.
+
+        Used by OptimizationJobService for async job-based optimization.
+
+        Args:
+            symbol: Trading symbol.
+            timeframe: Candle timeframe.
+            start_date: Backtest start date.
+            end_date: Backtest end date.
+            strategy: Strategy name.
+            params: Strategy parameters dict.
+            initial_capital: Starting capital.
+
+        Returns:
+            VectorizedBacktestResult from the engine.
+        """
+        config = VectorizedBacktestConfig(
+            symbol=symbol,
+            timeframe=timeframe,
+            start_date=start_date,
+            end_date=end_date,
+            strategy=strategy,
+            strategy_params=params,
+            initial_capital=initial_capital,
+        )
+        return await self.engine.run(config)
+
     async def optimize(
         self,
         symbol: str,

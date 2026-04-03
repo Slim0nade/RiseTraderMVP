@@ -16,7 +16,7 @@ Label Values:
 """
 import numpy as np
 import pandas as pd
-from typing import Tuple, Optional
+from typing import Dict, Tuple, Optional
 from dataclasses import dataclass
 import logging
 
@@ -30,6 +30,51 @@ class ZigZagConfig:
     deviation: int = 5   # Minimum deviation in points (pips * 10)
     backstep: int = 3    # Bars to look back for swing confirmation
     point: float = 0.01  # Point size (0.01 for most pairs, 0.0001 for JPY)
+
+
+# Timeframe-specific defaults: shorter TFs need tighter params (more swings),
+# longer TFs need wider params (fewer, higher-confidence reversals).
+TIMEFRAME_CONFIGS: Dict[str, ZigZagConfig] = {
+    "M15": ZigZagConfig(depth=8,  deviation=3, backstep=2, point=0.01),
+    "H1":  ZigZagConfig(depth=12, deviation=5, backstep=3, point=0.01),
+    "H4":  ZigZagConfig(depth=16, deviation=8, backstep=4, point=0.01),
+    "D1":  ZigZagConfig(depth=20, deviation=12, backstep=5, point=0.01),
+}
+
+# Symbol-specific point sizes (overrides config.point)
+SYMBOL_POINT_SIZES: Dict[str, float] = {
+    "CrudeOIL": 0.01,
+    "BRENT_OIL": 0.01,
+    "XAUUSD": 0.01,
+    "GBPJPY": 0.001,
+    "USA500": 0.01,
+    "CORN": 0.01,
+    "WHEAT": 0.01,
+}
+
+
+def get_config_for_timeframe(
+    timeframe: str,
+    symbol: Optional[str] = None,
+    override: Optional[ZigZagConfig] = None,
+) -> ZigZagConfig:
+    """
+    Return a ZigZagConfig tuned for the given timeframe and symbol.
+
+    Falls back to H1 defaults if the timeframe is not in TIMEFRAME_CONFIGS.
+    If an override is provided, it is returned as-is.
+    """
+    if override is not None:
+        return override
+    cfg = TIMEFRAME_CONFIGS.get(timeframe, TIMEFRAME_CONFIGS["H1"])
+    if symbol and symbol in SYMBOL_POINT_SIZES:
+        cfg = ZigZagConfig(
+            depth=cfg.depth,
+            deviation=cfg.deviation,
+            backstep=cfg.backstep,
+            point=SYMBOL_POINT_SIZES[symbol],
+        )
+    return cfg
 
 
 class ZigZagLabeler:

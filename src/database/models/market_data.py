@@ -37,7 +37,7 @@ class MarketData(Base, TimestampMixin):
     symbol: Mapped[str] = mapped_column(String, nullable=False)
     import_symbol: Mapped[str] = mapped_column(String, nullable=False)
     timeframe: Mapped[str] = mapped_column(ENUM('M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1', 'W1', 'MN1', name='timeframe', create_type=False), nullable=False)
-    source: Mapped[str] = mapped_column(ENUM('BARCHART', 'MT4', 'BC', 'CSV', 'DUKASCOPY', 'HISTDATA', name='datasource', create_type=False), nullable=False)
+    source: Mapped[str] = mapped_column(ENUM('BARCHART', 'MT4', 'BC', 'CSV', 'DUKASCOPY', 'HISTDATA', 'TWELVEDATA', name='datasource', create_type=False), nullable=False)
 
     # OHLCV data
     open: Mapped[Decimal] = mapped_column(Numeric, nullable=False)

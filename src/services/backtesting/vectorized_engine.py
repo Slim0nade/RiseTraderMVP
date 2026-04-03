@@ -409,6 +409,27 @@ class VectorizedBacktestEngine:
             df["vah"] = vah_arr
             df["val"] = val_arr
 
+        elif strategy == "ml_reversal":
+            # ================================================================
+            # ML REVERSAL STRATEGY - XGBoost/LSTM PREDICTIONS
+            # Compute all ML features vectorized, then predict in batch
+            # ================================================================
+            from src.ml.features.reversal_features import compute_features_from_ohlcv
+
+            # Reset index so compute_features_from_ohlcv gets 'time' column
+            df_reset = df.reset_index()
+            df_features = compute_features_from_ohlcv(df_reset)
+
+            # Copy computed feature columns back to main df
+            for col in df_features.columns:
+                if col not in ("time", "open", "high", "low", "close", "volume"):
+                    df[col] = df_features[col].values
+
+            # ATR for stop/TP sizing
+            atr_period = params.get("atr_period", 14)
+            if "atr" not in df.columns or df["atr"].isna().all():
+                df["atr"] = self._calculate_atr_vectorized(df, atr_period)
+
         else:
             # Default: simple MA
             df["fast_ma"] = df["close"].rolling(window=10).mean()
@@ -580,6 +601,102 @@ class VectorizedBacktestEngine:
 
             df.loc[buy_signal, "signal"] = 1
             df.loc[sell_signal, "signal"] = -1
+
+        elif strategy == "ml_reversal":
+            # ================================================================
+            # ML REVERSAL SIGNALS - XGBoost batch prediction
+            # ================================================================
+            from src.ml.features.reversal_features import get_feature_columns
+            from pathlib import Path
+            import json
+
+            min_confidence = params.get("min_confidence", 0.55)
+            model_type = params.get("model_type", "xgboost")
+            symbol = params.get("symbol", config.symbol)
+            timeframe = params.get("timeframe", config.timeframe)
+            atr_sl_mult = params.get("atr_stop_multiplier", 2.0)
+            atr_tp_mult = params.get("atr_tp_multiplier", 3.0)
+
+            # Load model from disk
+            model_dir = Path(__file__).resolve().parent.parent.parent.parent / "models" / "reversal_classifier" / f"{symbol}_{timeframe}"
+
+            if model_type == "xgboost" and (model_dir / "model.json").exists():
+                import xgboost as xgb
+
+                # Use raw Booster API to avoid n_classes_ restore issue
+                booster = xgb.Booster()
+                booster.load_model(str(model_dir / "model.json"))
+
+                # Load feature names
+                feature_names_file = model_dir / "feature_names.json"
+                if feature_names_file.exists():
+                    with open(feature_names_file) as f:
+                        feature_names = json.load(f)
+                else:
+                    feature_names = get_feature_columns()
+
+                # Build feature matrix — only use columns the model was trained on
+                available_features = [f for f in feature_names if f in df.columns]
+                if len(available_features) < len(feature_names) * 0.8:
+                    logger.warning(
+                        f"ml_reversal: only {len(available_features)}/{len(feature_names)} features available"
+                    )
+
+                X = df[available_features].copy()
+
+                # Drop rows with NaN (warmup period)
+                valid_mask = X.notna().all(axis=1)
+                X_valid = X[valid_mask].values
+
+                if len(X_valid) > 0:
+                    # Batch prediction using raw Booster (fully vectorized!)
+                    dmatrix = xgb.DMatrix(X_valid, feature_names=available_features)
+                    raw_preds = booster.predict(dmatrix)
+                    # Output shape: (n_samples, n_classes) for multi:softprob
+                    if raw_preds.ndim == 1:
+                        # Binary or single output — reshape
+                        proba = raw_preds.reshape(-1, 1)
+                    else:
+                        proba = raw_preds
+                    # Classes: 0=valley(buy), 1=neither, 2=peak(sell)
+                    predictions = proba.argmax(axis=1)
+                    confidences = proba.max(axis=1)
+
+                    # Map predictions to signals
+                    pred_signals = np.zeros(len(df))
+                    valid_indices = np.where(valid_mask.values)[0]
+
+                    for i, idx in enumerate(valid_indices):
+                        if confidences[i] >= min_confidence:
+                            if predictions[i] == 0:  # Valley → BUY
+                                pred_signals[idx] = 1
+                            elif predictions[i] == 2:  # Peak → SELL
+                                pred_signals[idx] = -1
+
+                    df["ml_signal"] = pred_signals
+
+                    # Only trigger on signal changes (avoid repeated entries)
+                    signal_change = df["ml_signal"].diff().fillna(0)
+                    buy_signal = (signal_change > 0) & (df["ml_signal"] == 1)
+                    sell_signal = (signal_change < 0) & (df["ml_signal"] == -1)
+
+                    df.loc[buy_signal, "signal"] = 1
+                    df.loc[sell_signal, "signal"] = -1
+
+                    # Store ATR for stop management
+                    df["entry_atr"] = df["atr"]
+                    df["atr_sl_mult"] = atr_sl_mult
+                    df["atr_tp_mult"] = atr_tp_mult
+                    df["use_atr_exits"] = True
+
+                    logger.info(
+                        f"ml_reversal: {int(buy_signal.sum())} buy signals, "
+                        f"{int(sell_signal.sum())} sell signals from {len(X_valid)} valid rows"
+                    )
+                else:
+                    logger.warning("ml_reversal: no valid rows after NaN removal")
+            else:
+                logger.error(f"ml_reversal: model not found at {model_dir}")
 
         elif strategy == "value_area":
             # ================================================================

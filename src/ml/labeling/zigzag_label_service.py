@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models.market_data import MarketData
 from src.database.models.indicators import Indicators
-from src.ml.labeling.zigzag_labeler import ZigZagLabeler, ZigZagConfig
+from src.ml.labeling.zigzag_labeler import ZigZagLabeler, ZigZagConfig, get_config_for_timeframe
 
 logger = logging.getLogger(__name__)
 
@@ -231,6 +231,53 @@ class ZigZagLabelService:
         
         return distribution
     
+    async def label_symbol_multi_timeframe(
+        self,
+        symbol: str,
+        timeframes: Optional[List[str]] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        batch_size: int = 10000,
+    ) -> Dict[str, Any]:
+        """
+        Generate ZigZag labels for a symbol across multiple timeframes.
+
+        Uses timeframe-specific ZigZag parameters (depth, deviation, backstep)
+        so that M15 labels capture short-term swings while D1 labels capture
+        major reversals.
+
+        Args:
+            symbol: Trading symbol (e.g. 'CrudeOIL').
+            timeframes: List of timeframes to label. Default: M15, H1, H4, D1.
+            start_date: Optional start date filter.
+            end_date: Optional end date filter.
+            batch_size: Batch size for DB updates.
+
+        Returns:
+            Dict keyed by timeframe with labeling statistics for each.
+        """
+        if timeframes is None:
+            timeframes = ["M15", "H1", "H4", "D1"]
+
+        results: Dict[str, Any] = {}
+        for tf in timeframes:
+            cfg = get_config_for_timeframe(tf, symbol=symbol)
+            self.labeler = ZigZagLabeler(cfg)
+            logger.info(
+                f"Labeling {symbol} {tf} with depth={cfg.depth}, "
+                f"deviation={cfg.deviation}, backstep={cfg.backstep}, point={cfg.point}"
+            )
+            stats = await self.label_symbol(
+                symbol=symbol,
+                timeframe=tf,
+                start_date=start_date,
+                end_date=end_date,
+                batch_size=batch_size,
+            )
+            results[tf] = stats
+
+        return results
+
     async def clear_labels(self, symbol: str, timeframe: str) -> int:
         """Clear all ZigZag labels for a symbol/timeframe."""
         

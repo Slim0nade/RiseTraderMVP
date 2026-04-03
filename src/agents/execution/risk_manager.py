@@ -298,7 +298,22 @@ class RiskManagerAgent(BaseAgent):
         if self.account_balance <= 0:
             return False, "insufficient_balance", 1.0
 
-        # 6. Check signal confidence
+        # 6. Check margin concentration (20% cap per instrument).
+        # Use the worst-case lot size (2% risk cap) so the check is conservative:
+        # if even the smallest allowed position would exceed 20% margin, reject.
+        entry_price = signal_data.get("current_price", 0.0)
+        if entry_price > 0:
+            contract_size = self._CONTRACT_SIZES.get(symbol)
+            if contract_size and contract_size > 0:
+                max_risk_amount = self.account_balance * self.risk_per_trade
+                worst_case_lots = max_risk_amount / (contract_size * entry_price)
+                margin_rejected, margin_reason = self._check_margin_concentration(
+                    symbol, worst_case_lots, entry_price
+                )
+                if margin_rejected:
+                    return False, margin_reason, 1.0
+
+        # 7. Check signal confidence
         min_confidence = 0.5
         if signal_data.get("confidence", 0) < min_confidence:
             return False, "low_signal_confidence", 1.0
@@ -434,6 +449,20 @@ class RiskManagerAgent(BaseAgent):
 
         # Kelly fraction
         kelly_fraction = (win_rate * (win_loss_ratio + 1) - 1) / win_loss_ratio
+
+        # Negative Kelly means the strategy has negative expected value —
+        # trade at minimum size rather than rejecting outright, so we keep
+        # accumulating statistics while limiting exposure.
+        if kelly_fraction <= 0:
+            self.logger.warning(
+                "negative_kelly_edge",
+                symbol=symbol,
+                kelly_fraction=kelly_fraction,
+                win_rate=win_rate,
+                win_loss_ratio=win_loss_ratio,
+                action="minimum_size",
+            )
+            return minimum_size
 
         # Use fractional Kelly (25% Kelly) for safety
         fractional_kelly = kelly_fraction * 0.25
@@ -604,6 +633,95 @@ class RiskManagerAgent(BaseAgent):
         # We reduce size (50%) rather than blocking outright — lets correlated
         # trades through but at half size to limit concentrated risk.
         return False, reduce
+
+    # Contract sizes sourced from config/mt4_config.yaml (symbols.default_contract_size).
+    # The full traded symbol list extends the 4 entries in that file with the remaining
+    # instruments from mt4_config.yaml streaming.symbol_list.
+    _CONTRACT_SIZES: Dict[str, float] = {
+        # Energies — 1 lot = 1,000 barrels / gallons
+        "CrudeOIL": 1000.0,
+        "BRENT_OIL": 1000.0,
+        "GASOLINE": 1000.0,
+        "HEATING_OIL": 1000.0,
+        # Metals — 1 lot = 100 troy oz
+        "GOLD": 100.0,
+        "XAUUSD": 100.0,
+        # Agriculture — 1 lot = 100 bushels (mini contract for retail MT4)
+        "WHEAT": 100.0,
+        "CORN": 100.0,
+        # FX — standard lot = 100,000 units of base currency
+        "EURUSD": 100000.0,
+        "GBPUSD": 100000.0,
+        "GBPJPY": 100000.0,
+        "GBPJPY.": 100000.0,
+        # US equities / indices — CFD, 1 lot = 1 share/unit
+        "USA500": 1.0,
+        "TSLA": 1.0,
+        "MSFT": 1.0,
+    }
+    # Maximum allowed fraction of account equity that one instrument's margin may consume.
+    _MAX_MARGIN_CONCENTRATION = 0.20
+
+    def _check_margin_concentration(
+        self, symbol: str, proposed_lots: float, entry_price: float
+    ) -> tuple[bool, Optional[str]]:
+        """
+        Enforce the 20% per-instrument margin cap.
+
+        Rule: no single instrument may consume more than 20% of account equity
+        as margin (before leverage).  We approximate required margin as:
+
+            proposed_margin = proposed_lots × contract_size × entry_price
+
+        This is a conservative (pre-leverage) calculation; if anything it
+        over-estimates required margin, making the check appropriately strict.
+
+        Returns:
+            (rejected, reason)
+            rejected=True  → trade must be blocked
+            rejected=False → margin concentration is within limits
+        """
+        contract_size = self._CONTRACT_SIZES.get(symbol)
+        if contract_size is None:
+            self.logger.warning(
+                "margin_concentration_unknown_contract_size",
+                symbol=symbol,
+                action="skipping_check",
+            )
+            return False, None
+
+        if self.account_balance <= 0:
+            # Balance check already caught upstream; don't divide by zero here.
+            return False, None
+
+        proposed_margin = proposed_lots * contract_size * entry_price
+        concentration = proposed_margin / self.account_balance
+
+        self.logger.debug(
+            "margin_concentration_check",
+            symbol=symbol,
+            proposed_lots=proposed_lots,
+            contract_size=contract_size,
+            entry_price=entry_price,
+            proposed_margin=proposed_margin,
+            account_balance=self.account_balance,
+            concentration_pct=round(concentration * 100, 2),
+            limit_pct=self._MAX_MARGIN_CONCENTRATION * 100,
+        )
+
+        if concentration > self._MAX_MARGIN_CONCENTRATION:
+            self.logger.warning(
+                "margin_concentration_exceeded",
+                symbol=symbol,
+                proposed_lots=proposed_lots,
+                proposed_margin=proposed_margin,
+                account_balance=self.account_balance,
+                concentration_pct=round(concentration * 100, 2),
+                limit_pct=self._MAX_MARGIN_CONCENTRATION * 100,
+            )
+            return True, "margin_concentration_exceeds_20pct"
+
+        return False, None
 
     def _get_position(self, symbol: str) -> Optional[Dict[str, Any]]:
         """Get existing position for symbol"""

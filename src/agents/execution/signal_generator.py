@@ -201,7 +201,7 @@ class SignalGeneratorAgent(BaseAgent):
         Return (strategy_weights_dict, position_size_multiplier) for a given regime.
 
         Weights are relative (do not need to sum to 1.0).
-        ml_forecast weight is 0.0 for all regimes — ML is fake until Phase 4.
+        ML weights are conservative — reversal detection is one vote among many.
 
         Args:
             regime: One of "high_volatility", "trending_up", "trending_down",
@@ -217,50 +217,36 @@ class SignalGeneratorAgent(BaseAgent):
         if regime == "high_volatility":
             return (
                 {
-                    "crude_oil_v3": 0.4,
-                    "ma_crossover": 0.3,
                     "momentum": 0.2,
                     "mean_reversion": 0.1,
-                    "breakout": 0.0,
-                    "ml_forecast": 0.0,
+                    "ml_forecast": 0.15,
                 },
                 1.0,
             )
         elif regime in ("trending_up", "trending_down"):
             return (
                 {
-                    "ma_crossover": 0.4,
                     "momentum": 0.35,
                     "breakout": 0.25,
-                    "crude_oil_v3": 0.0,
-                    "mean_reversion": 0.0,
-                    "ml_forecast": 0.0,
+                    "ml_forecast": 0.25,
                 },
                 1.0,
             )
         elif regime == "ranging":
             return (
                 {
-                    "value_area": 0.4,
                     "mean_reversion": 0.35,
                     "momentum": 0.15,
                     "breakout": 0.1,
-                    "crude_oil_v3": 0.0,
-                    "ma_crossover": 0.0,
-                    "ml_forecast": 0.0,
+                    "ml_forecast": 0.20,
                 },
                 1.0,
             )
         elif regime == "low_volatility":
             return (
                 {
-                    "value_area": 0.5,
                     "mean_reversion": 0.3,
-                    "momentum": 0.0,
-                    "breakout": 0.0,
-                    "crude_oil_v3": 0.0,
-                    "ma_crossover": 0.0,
-                    "ml_forecast": 0.0,
+                    "ml_forecast": 0.10,
                 },
                 0.5,  # Half position size in low-volatility regimes
             )
@@ -304,9 +290,8 @@ class SignalGeneratorAgent(BaseAgent):
         if regime_weights.get("breakout", 0.0) > 0.0:
             strategy_signals["breakout"] = self._breakout_strategy(prices)
 
-        # ml_forecast always skipped — fake model (Phase 4 fix)
-        # if regime_weights.get("ml_forecast", 0.0) > 0.0 and self.latest_forecast:
-        #     strategy_signals["ml_forecast"] = self._ml_forecast_strategy()
+        if regime_weights.get("ml_forecast", 0.0) > 0.0 and self.latest_forecast:
+            strategy_signals["ml_forecast"] = self._ml_forecast_strategy()
 
         # Combine signals using weighted voting with regime weights
         combined_signal = self._combine_signals(strategy_signals, regime_weights)
@@ -480,19 +465,36 @@ class SignalGeneratorAgent(BaseAgent):
 
     def _ml_forecast_strategy(self) -> Dict[str, float]:
         """
-        ML forecast strategy: Use ML prediction
+        ML forecast strategy: Use reversal predictions from trained models.
 
-        Signal based on ML model prediction
+        Interprets reversal probabilities as trading signals:
+        - valley_prob > 0.65 → BUY signal (bottom detected)
+        - peak_prob > 0.65 → SELL signal (top detected)
+        - Otherwise → HOLD (no clear reversal)
+
+        Confidence = max(peak_prob, valley_prob) — how certain the model
+        is about ANY reversal.
         """
         if not self.latest_forecast:
             return {"score": 0.0, "confidence": 0.0}
 
-        prediction = self.latest_forecast.get("prediction", 0.5)
-        confidence = self.latest_forecast.get("confidence", 0.0)
+        valley_prob = self.latest_forecast.get("valley_prob", 0.0)
+        peak_prob = self.latest_forecast.get("peak_prob", 0.0)
+        signal = self.latest_forecast.get("signal", "WAIT")
 
-        # Convert prediction to signal score (-1 to 1)
-        # Assuming prediction is probability of upward movement (0-1)
-        score = (prediction - 0.5) * 2  # Map [0,1] to [-1,1]
+        # Convert reversal signal to directional score
+        if signal == "LONG":
+            # Valley detected → buy signal, strength = valley probability
+            score = valley_prob
+        elif signal == "SHORT":
+            # Peak detected → sell signal, strength = -peak probability
+            score = -peak_prob
+        else:
+            # No clear reversal
+            score = 0.0
+
+        # Confidence is how certain the model is about any reversal
+        confidence = max(valley_prob, peak_prob)
 
         return {"score": score, "confidence": confidence}
 
