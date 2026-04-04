@@ -143,10 +143,23 @@ def _momentum_strategy(prices: List[Dict]) -> Dict[str, float]:
     long_ma = np.mean(closes[-30:])
     current = closes[-1]
 
+    diff = short_ma - long_ma
+
     if current > short_ma and short_ma > long_ma:
-        score = min((current - long_ma) / long_ma, 1.0)
+        # Bullish: scale continuation with MA separation strength
+        raw_score = min(abs(diff) / long_ma * 20, 1.0)  # Normalize diff as % of price
+        if abs(diff) > long_ma * 0.01:  # MAs separated by > 1% of price = strong continuation
+            continuation_factor = min(0.5 + abs(diff) / long_ma * 20, 0.9)
+        else:
+            continuation_factor = 0.5
+        score = raw_score * continuation_factor
     elif current < short_ma and short_ma < long_ma:
-        score = max((current - long_ma) / long_ma, -1.0)
+        raw_score = min(abs(diff) / long_ma * 20, 1.0)
+        if abs(diff) > long_ma * 0.01:
+            continuation_factor = min(0.5 + abs(diff) / long_ma * 20, 0.9)
+        else:
+            continuation_factor = 0.5
+        score = -(raw_score * continuation_factor)
     else:
         score = 0.0
 
@@ -196,24 +209,84 @@ def _breakout_strategy(prices: List[Dict]) -> Dict[str, float]:
     highs = np.array([float(p["high"]) for p in prices])
     lows = np.array([float(p["low"]) for p in prices])
 
-    recent_high = np.max(highs[-20:-1])  # Exclude current bar
-    recent_low = np.min(lows[-20:-1])
+    recent_high = np.max(highs[-20:])
+    recent_low = np.min(lows[-20:])
     current = closes[-1]
 
     range_size = recent_high - recent_low
-    if range_size == 0.0:
+    if range_size <= 0.0:
         return {"score": 0.0, "confidence": 0.0}
 
-    breakout_threshold = range_size * 0.01
+    # Position within 20-bar range (0 = at low, 1 = at high)
+    position = (current - recent_low) / range_size
 
-    if current > recent_high + breakout_threshold:
-        score = min((current - recent_high) / range_size, 1.0)
-    elif current < recent_low - breakout_threshold:
-        score = max((current - recent_low) / range_size, -1.0)
+    if position >= 0.85:  # Upper 15% of range → bullish breakout zone
+        score = position  # 0.85 to 1.0
+        return {"score": score, "confidence": 0.65}
+    elif position <= 0.15:  # Lower 15% of range → bearish breakout zone
+        score = -(1.0 - position)  # -0.85 to -1.0
+        return {"score": score, "confidence": 0.65}
     else:
-        score = 0.0
+        return {"score": 0.0, "confidence": 0.0}
 
-    return {"score": score, "confidence": 0.65}
+
+def _trend_following_strategy(prices: List[Dict]) -> Optional[Dict[str, float]]:
+    """
+    Trend-following using EMA20/EMA50 alignment + price position.
+
+    Fires CONTINUOUSLY during sustained trends (unlike momentum which
+    dampens after the initial crossover).
+
+    BUY when: price > EMA20 > EMA50 (uptrend)
+    SELL when: price < EMA20 < EMA50 (downtrend)
+
+    Score scales with EMA separation and price distance from EMA20.
+    Returns None if no clear trend.
+    """
+    if len(prices) < 50:
+        return None
+
+    closes = np.array([float(p["close"]) for p in prices])
+
+    # EMA20 and EMA50
+    def _ema(data, period):
+        alpha = 2.0 / (period + 1)
+        ema = np.zeros_like(data)
+        ema[0] = data[0]
+        for i in range(1, len(data)):
+            ema[i] = alpha * data[i] + (1 - alpha) * ema[i - 1]
+        return ema
+
+    ema20 = _ema(closes, 20)
+    ema50 = _ema(closes, 50)
+
+    current = closes[-1]
+    e20 = ema20[-1]
+    e50 = ema50[-1]
+
+    # Uptrend: price > EMA20 > EMA50
+    if current > e20 and e20 > e50:
+        # EMA separation as % of price
+        separation = (e20 - e50) / e50
+        # Price distance above EMA20
+        distance = (current - e20) / e20
+        # Score: combination of separation strength + price distance
+        raw_score = min(separation * 20 + distance * 10, 1.0)
+        # Confidence from EMA slope (last 5 bars of EMA20)
+        ema20_slope = (ema20[-1] - ema20[-6]) / ema20[-6] if len(ema20) >= 6 else 0
+        confidence = min(0.5 + abs(ema20_slope) * 50, 0.90)
+        return {"score": max(0.3, raw_score), "confidence": confidence}
+
+    # Downtrend: price < EMA20 < EMA50
+    elif current < e20 and e20 < e50:
+        separation = (e50 - e20) / e50
+        distance = (e20 - current) / e20
+        raw_score = min(separation * 20 + distance * 10, 1.0)
+        ema20_slope = (ema20[-1] - ema20[-6]) / ema20[-6] if len(ema20) >= 6 else 0
+        confidence = min(0.5 + abs(ema20_slope) * 50, 0.90)
+        return {"score": -max(0.3, raw_score), "confidence": confidence}
+
+    return None
 
 
 def _ml_reversal_strategy(prices: List[Dict], symbol: str) -> Optional[Dict[str, float]]:
@@ -920,7 +993,24 @@ class LiveTradingService:
         if atr is None:
             return
 
-        # 5. Risk validation (tiered sizing + pyramiding)
+        # 5. Paper validation gate — record signal BEFORE sizer (validates signal quality, not account size)
+        if self._paper_validator and not self._paper_validator.get_validation_status()["criteria_met"]:
+            paper_stop = current_price - (2 * atr) if action == "BUY" else current_price + (2 * atr)
+            paper_tp = current_price + (3 * atr) if action == "BUY" else current_price - (3 * atr)
+            self._paper_validator.record_signal(
+                symbol=symbol, action=action,
+                entry_price=current_price,
+                stop_loss=paper_stop, take_profit=paper_tp,
+                regime=regime.value if hasattr(regime, 'value') else str(regime),
+                lots=0.01,
+            )
+            logger.info("paper_signal_recorded", symbol=symbol, action=action,
+                        price=round(current_price, 5), regime=str(regime),
+                        atr=round(atr, 5), stop_distance=round(2 * atr, 5),
+                        paper_sl=round(paper_stop, 5), paper_tp=round(paper_tp, 5))
+            return  # Skip real execution — paper mode collects signal quality data
+
+        # 6. Risk validation (tiered sizing + pyramiding)
         approved, reason, position_size_lots = await self._validate_signal(
             symbol=symbol,
             action=action,
@@ -997,21 +1087,7 @@ class LiveTradingService:
             ),
         )
 
-        # 7. Paper validation gate — record signal instead of executing if in paper mode
-        if self._paper_validator and not self._paper_validator.get_validation_status()["criteria_met"]:
-            self._paper_validator.record_signal(
-                symbol=symbol, action=action,
-                entry_price=current_price,
-                stop_loss=stop_loss, take_profit=take_profit,
-                regime=regime.value if hasattr(regime, 'value') else str(regime),
-                lots=position_size_lots,
-            )
-            logger.info("paper_signal_recorded", symbol=symbol, action=action,
-                        price=round(current_price, 5), regime=str(regime),
-                        lots=position_size_lots, sl=round(stop_loss, 5), tp=round(take_profit, 5))
-            return  # Do NOT execute the order
-
-        # 8. Execute or dry-run
+        # 7. Execute or dry-run (paper gate already checked at step 5)
         await self._execute_or_dryrun(
             symbol=symbol,
             action=action,
@@ -1153,22 +1229,17 @@ class LiveTradingService:
             if va_signal is not None:
                 signals["value_area"] = va_signal
 
-        # Momentum needs at least 30 bars (30-period MA).
-        # "trend_following" in the routing table also maps to the momentum
-        # implementation — same algorithm, different regime context.
-        if _is_allowed("momentum") or _is_allowed("trend_following"):
+        # Momentum needs at least 30 bars (30-period MA)
+        if _is_allowed("momentum"):
             if len(prices) >= 30:
-                raw_sig = _momentum_strategy(prices)
-                # Record under the key the router expects so _combine_signals
-                # picks up the correct regime weight.
-                if (
-                    allowed is not None
-                    and "trend_following" in allowed
-                    and "momentum" not in allowed
-                ):
-                    signals["trend_following"] = raw_sig
-                else:
-                    signals["momentum"] = raw_sig
+                signals["momentum"] = _momentum_strategy(prices)
+
+        # Trend following — EMA20/EMA50 alignment, fires during sustained trends
+        if _is_allowed("trend_following"):
+            if len(prices) >= 50:
+                tf_sig = _trend_following_strategy(prices)
+                if tf_sig is not None:
+                    signals["trend_following"] = tf_sig
 
         # Mean reversion needs 20 bars (Bollinger Bands)
         if _is_allowed("mean_reversion"):
@@ -1183,11 +1254,25 @@ class LiveTradingService:
         if not signals:
             return "HOLD", 0.0, 0.0, 0.0
 
+        # Diagnostic logging: per-strategy raw output
+        for name, result in signals.items():
+            logger.info("strategy_raw_output",
+                        symbol=symbol, strategy=name,
+                        score=round(result.get("score", 0), 4),
+                        confidence=round(result.get("confidence", 0), 4))
+
         combined = _combine_signals(signals, regime_weights=allowed)
         score = combined["score"]
         confidence = combined["confidence"]
 
-        if abs(score) < threshold or confidence < self._min_confidence:
+        passed = abs(score) >= threshold and confidence >= self._min_confidence
+        logger.info("signal_combine_result",
+                    symbol=symbol, combined_score=round(score, 4),
+                    combined_confidence=round(confidence, 4),
+                    threshold=threshold, passed=passed,
+                    strategies_active=list(signals.keys()))
+
+        if not passed:
             return "HOLD", score, confidence, ml_confidence
 
         action = "BUY" if score > 0 else "SELL"
