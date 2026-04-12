@@ -770,8 +770,22 @@ class LiveTradingService:
                     try:
                         latest_price = await self._get_latest_price(sym)
                         if latest_price > 0:
-                            result = self._paper_validator.check_outcomes(sym, latest_price)
-                            if result:
+                            # 72-hour timeout for stale paper trades
+                            for trade in self._paper_validator._open_trades.get(sym, []):
+                                if not trade.resolved:
+                                    age = (datetime.now(timezone.utc) - trade.entry_time).total_seconds()
+                                    if age > 72 * 3600:  # 72 hours without resolution
+                                        self._paper_validator._resolve(trade, trade.entry_price, "loss")
+                                        logger.warning("paper_trade_timeout", symbol=sym,
+                                                       age_hours=round(age / 3600, 1),
+                                                       entry_price=trade.entry_price)
+                            # Remove timed-out trades from open list
+                            open_trades = self._paper_validator._open_trades.get(sym, [])
+                            self._paper_validator._open_trades[sym] = [t for t in open_trades if not t.resolved]
+
+                            # Check TP/SL outcomes
+                            results = self._paper_validator.check_outcomes(sym, latest_price)
+                            for result in results:
                                 logger.info("paper_trade_resolved", symbol=sym,
                                             outcome=result.outcome, pnl=round(result.pnl, 2))
                     except Exception:
@@ -938,6 +952,15 @@ class LiveTradingService:
         )
 
         if action == "HOLD":
+            # HOLD diagnosis — helps understand why GBPJPY/USA500 aren't signaling
+            logger.info("signal_hold_diagnosis",
+                        symbol=symbol,
+                        regime=regime.value if hasattr(regime, 'value') else str(regime),
+                        combined_score=round(score, 4),
+                        combined_confidence=round(confidence, 4),
+                        threshold=strategy_config.get("signal_threshold", self._signal_threshold),
+                        candle_count=len(candles_raw),
+                        allow_trading=strategy_config.get("allow_trading", True))
             return
 
         # 3b. Trend filter — suppress counter-trend signals (e.g. ML calling every
@@ -994,19 +1017,26 @@ class LiveTradingService:
             return
 
         # 5. Paper validation gate — record signal BEFORE sizer (validates signal quality, not account size)
+        #    Paper TP: 1.5×ATR for faster resolution (live keeps original distances)
+        #    Paper SL: 2×ATR (unchanged)
         if self._paper_validator and not self._paper_validator.get_validation_status()["criteria_met"]:
-            paper_stop = current_price - (2 * atr) if action == "BUY" else current_price + (2 * atr)
-            paper_tp = current_price + (3 * atr) if action == "BUY" else current_price - (3 * atr)
+            paper_sl_distance = 2.0 * atr
+            paper_tp_distance = 1.5 * atr  # Tighter TP for faster paper resolution
+            paper_stop = current_price - paper_sl_distance if action == "BUY" else current_price + paper_sl_distance
+            paper_tp = current_price + paper_tp_distance if action == "BUY" else current_price - paper_tp_distance
             self._paper_validator.record_signal(
                 symbol=symbol, action=action,
                 entry_price=current_price,
                 stop_loss=paper_stop, take_profit=paper_tp,
                 regime=regime.value if hasattr(regime, 'value') else str(regime),
                 lots=0.01,
+                atr=atr,
             )
             logger.info("paper_signal_recorded", symbol=symbol, action=action,
                         price=round(current_price, 5), regime=str(regime),
-                        atr=round(atr, 5), stop_distance=round(2 * atr, 5),
+                        atr=round(atr, 5),
+                        paper_sl_distance=round(paper_sl_distance, 5),
+                        paper_tp_distance=round(paper_tp_distance, 5),
                         paper_sl=round(paper_stop, 5), paper_tp=round(paper_tp, 5))
             return  # Skip real execution — paper mode collects signal quality data
 

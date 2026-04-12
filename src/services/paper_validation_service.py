@@ -15,6 +15,11 @@ Activation criteria (ALL must be met):
   - Profit factor >= 1.3 (gross profit / gross loss)
   - Max consecutive losses <= 5
   - At least 2 different regime classifications observed
+
+Concurrent paper trades (up to 3 per symbol) with spacing guards:
+  - 4-hour minimum time gap between entries on the same symbol
+  - 1×ATR minimum price distance between entries on the same symbol
+  - Max 3 concurrent open trades per symbol
 """
 import structlog
 from datetime import datetime, timezone
@@ -22,6 +27,11 @@ from typing import Dict, List, Optional
 from dataclasses import dataclass, field
 
 logger = structlog.get_logger(__name__)
+
+# Spacing guards for concurrent paper trades
+MAX_CONCURRENT_PER_SYMBOL = 3
+MIN_TIME_GAP_HOURS = 4
+MIN_PRICE_GAP_ATR = 1.0  # Must be 1×ATR away from any open entry
 
 
 @dataclass
@@ -49,7 +59,7 @@ class PaperValidationService:
     MIN_REGIME_TYPES = 2
 
     def __init__(self) -> None:
-        self._open_trades: Dict[str, PaperTrade] = {}  # symbol → trade
+        self._open_trades: Dict[str, List[PaperTrade]] = {}  # symbol → list of trades
         self._resolved_trades: List[PaperTrade] = []
         self._regimes_seen: set = set()
         self._consecutive_losses: int = 0
@@ -64,14 +74,43 @@ class PaperValidationService:
         take_profit: float,
         regime: str,
         lots: float = 0.01,
+        atr: float = 0.0,
     ) -> None:
         """Record a new paper signal to track.
 
-        Silently skips the symbol if a trade is already open for it — one open
-        position per instrument at a time matches the live trading constraint.
+        Allows up to MAX_CONCURRENT_PER_SYMBOL concurrent trades per symbol,
+        with spacing guards to ensure entries are genuinely independent:
+          - 4-hour minimum time gap since last entry on this symbol
+          - 1×ATR minimum price gap from any open entry on this symbol
         """
-        if symbol in self._open_trades:
+        existing = self._open_trades.get(symbol, [])
+
+        # Guard 1: max concurrent trades per symbol
+        if len(existing) >= MAX_CONCURRENT_PER_SYMBOL:
+            logger.debug("paper_skip_max_concurrent", symbol=symbol,
+                         open_count=len(existing))
             return
+
+        # Guard 2: minimum time since last entry on this symbol
+        if existing:
+            last_entry_time = existing[-1].entry_time
+            hours_since = (datetime.now(timezone.utc) - last_entry_time).total_seconds() / 3600
+            if hours_since < MIN_TIME_GAP_HOURS:
+                logger.debug("paper_skip_time_gap", symbol=symbol,
+                             hours_since=round(hours_since, 2),
+                             min_gap=MIN_TIME_GAP_HOURS)
+                return
+
+        # Guard 3: minimum price distance from any open entry
+        if existing and atr > 0:
+            for open_trade in existing:
+                if abs(entry_price - open_trade.entry_price) < MIN_PRICE_GAP_ATR * atr:
+                    logger.debug("paper_skip_price_gap", symbol=symbol,
+                                 entry_price=entry_price,
+                                 open_entry=open_trade.entry_price,
+                                 price_gap=round(abs(entry_price - open_trade.entry_price), 5),
+                                 min_gap=round(MIN_PRICE_GAP_ATR * atr, 5))
+                    return
 
         trade = PaperTrade(
             symbol=symbol,
@@ -83,7 +122,8 @@ class PaperValidationService:
             regime=regime,
             lots=lots,
         )
-        self._open_trades[symbol] = trade
+        existing.append(trade)
+        self._open_trades[symbol] = existing
         self._regimes_seen.add(regime)
 
         logger.info(
@@ -94,35 +134,42 @@ class PaperValidationService:
             sl=stop_loss,
             tp=take_profit,
             regime=regime,
+            concurrent_count=len(existing),
         )
 
-    def check_outcomes(self, symbol: str, current_price: float) -> Optional[PaperTrade]:
-        """Check if an open paper trade hit TP or SL.
+    def check_outcomes(self, symbol: str, current_price: float) -> List[PaperTrade]:
+        """Check if any open paper trades for this symbol hit TP or SL.
 
-        Returns the resolved PaperTrade if the trade closed this tick, or
-        None if no trade is open for the symbol or neither level was hit.
+        Returns a list of resolved PaperTrades (may be empty).
+        Each trade in the list was resolved this tick.
         """
-        if symbol not in self._open_trades:
-            return None
+        if symbol not in self._open_trades or not self._open_trades[symbol]:
+            return []
 
-        trade = self._open_trades[symbol]
+        resolved = []
+        remaining = []
+        for trade in self._open_trades[symbol]:
+            if trade.action == "BUY":
+                if current_price <= trade.stop_loss:
+                    self._resolve(trade, current_price, "loss")
+                    resolved.append(trade)
+                elif current_price >= trade.take_profit:
+                    self._resolve(trade, current_price, "win")
+                    resolved.append(trade)
+                else:
+                    remaining.append(trade)
+            elif trade.action == "SELL":
+                if current_price >= trade.stop_loss:
+                    self._resolve(trade, current_price, "loss")
+                    resolved.append(trade)
+                elif current_price <= trade.take_profit:
+                    self._resolve(trade, current_price, "win")
+                    resolved.append(trade)
+                else:
+                    remaining.append(trade)
 
-        if trade.action == "BUY":
-            if current_price <= trade.stop_loss:
-                self._resolve(trade, current_price, "loss")
-            elif current_price >= trade.take_profit:
-                self._resolve(trade, current_price, "win")
-        elif trade.action == "SELL":
-            if current_price >= trade.stop_loss:
-                self._resolve(trade, current_price, "loss")
-            elif current_price <= trade.take_profit:
-                self._resolve(trade, current_price, "win")
-
-        if trade.resolved:
-            del self._open_trades[symbol]
-            return trade
-
-        return None
+        self._open_trades[symbol] = remaining
+        return resolved
 
     def _resolve(self, trade: PaperTrade, exit_price: float, outcome: str) -> None:
         """Mark a trade as closed and update running statistics."""
@@ -183,7 +230,7 @@ class PaperValidationService:
             "total_signals": total,
             "wins": wins,
             "losses": losses,
-            "open_trades": len(self._open_trades),
+            "open_trades": sum(len(trades) for trades in self._open_trades.values()),
             "win_rate": round(win_rate, 4),
             "profit_factor": round(profit_factor, 2),
             "gross_profit": round(gross_profit, 2),
