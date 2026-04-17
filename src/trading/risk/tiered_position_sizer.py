@@ -58,7 +58,7 @@ class TieredPositionSizer:
     - Daily loss limit: 5% of account → halt trading
     - Weekly loss limit: 15% → require review
     - Small account protection: if min lot exceeds 5% account risk, tighten the
-      stop up to 1×ATR floor; if that is still insufficient, return 0.0 (skip trade).
+      stop up to 0.8×ATR floor; if that is still insufficient, return 0.0 (skip trade).
 
     After calling calculate_lot_size(), check _last_adjusted_stop — if not None,
     the caller must use that value instead of 2×ATR for the stop distance.
@@ -142,10 +142,12 @@ class TieredPositionSizer:
             # Tighten the stop so that 0.01 lots == exactly 5% account risk
             max_stop = (0.05 * account_balance) / (contract_size * MIN_LOTS)
 
-            # Accept the tighter stop when it is at least 90% of ATR.
-            # Stops narrower than ~1×ATR are vulnerable to stop-hunting; tighter
+            # Accept the tighter stop when it is at least 80% of ATR.
+            # Stops narrower than ~0.8×ATR are vulnerable to stop-hunting; tighter
             # than that and we skip the trade rather than enter with a suicidal stop.
-            if atr > 0 and max_stop >= 0.9 * atr:
+            # Lowered from 0.9 to 0.8 to unblock small accounts on high-ATR symbols
+            # (e.g. $293 account on CrudeOIL with ATR=$1.71 → ratio=0.86 now passes).
+            if atr > 0 and max_stop >= 0.8 * atr:
                 # Stop is still wider than 1×ATR — safe to tighten and proceed
                 self._last_adjusted_stop = max_stop
                 logger.info(
