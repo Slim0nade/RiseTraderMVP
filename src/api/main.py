@@ -278,6 +278,47 @@ app.include_router(eda.router, prefix="/api")  # EDA - Automated Data Quality An
 app.include_router(events.router, prefix="/api")  # SSE Events streaming
 app.include_router(alerts.router, prefix="/api")  # Price Alerts
 
+# OAuth discovery stub — Claude Code MCP client probes these before connecting.
+# Must return an OAuth-spec-compliant body ({"error": "<string>", ...}) so the
+# SDK's zod validator accepts it and falls through to unauthenticated mode,
+# instead of the app's default JSON error envelope which has `error` as an object.
+_OAUTH_NO_AUTH_BODY = {
+    "error": "not_supported",
+    "error_description": "This MCP server does not require authentication",
+}
+
+
+@app.get("/.well-known/oauth-authorization-server")
+@app.get("/.well-known/oauth-authorization-server/mcp")
+@app.get("/.well-known/oauth-protected-resource")
+@app.get("/.well-known/oauth-protected-resource/mcp")
+@app.get("/.well-known/openid-configuration")
+async def oauth_discovery_stub():
+    return JSONResponse(status_code=404, content=_OAUTH_NO_AUTH_BODY)
+
+
+# RFC 7591 dynamic client registration + RFC 6749 authorize/token endpoints.
+# Claude Code falls back to these at the base URL when discovery returns 404.
+@app.post("/register")
+@app.post("/oauth/register")
+@app.post("/mcp/register")
+async def oauth_register_stub():
+    return JSONResponse(status_code=404, content=_OAUTH_NO_AUTH_BODY)
+
+
+@app.api_route("/authorize", methods=["GET", "POST"])
+@app.api_route("/oauth/authorize", methods=["GET", "POST"])
+@app.api_route("/mcp/authorize", methods=["GET", "POST"])
+async def oauth_authorize_stub():
+    return JSONResponse(status_code=404, content=_OAUTH_NO_AUTH_BODY)
+
+
+@app.post("/token")
+@app.post("/oauth/token")
+@app.post("/mcp/token")
+async def oauth_token_stub():
+    return JSONResponse(status_code=404, content=_OAUTH_NO_AUTH_BODY)
+
 # Mount MCP server (SSE transport for Claude Code / Claude Desktop)
 app.mount("/mcp", create_mcp_app())
 

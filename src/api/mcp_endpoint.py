@@ -761,7 +761,7 @@ async def _get_latest_candles(symbol: str, timeframe: str, limit: int = 100) -> 
         candles = await repo.get_latest_ticks(symbol=symbol, timeframe=timeframe, limit=limit)
         return {
             "symbol": symbol, "timeframe": timeframe,
-            "candles": [{"timestamp": str(c.timestamp), "open": float(c.open), "high": float(c.high), "low": float(c.low), "close": float(c.close), "volume": float(c.volume)} for c in candles],
+            "candles": [{"timestamp": str(c.time), "open": float(c.open), "high": float(c.high), "low": float(c.low), "close": float(c.last), "volume": float(c.volume)} for c in candles],
             "total": len(candles),
         }
 
@@ -917,9 +917,9 @@ async def _list_backtests(limit: int = 20, status: Optional[str] = None) -> Dict
     async with get_db_context() as db:
         from src.database.repositories.backtest_repository import BacktestRepository
         repo = BacktestRepository(db)
-        runs = await repo.list_runs(limit=limit, status=status)
+        runs = await repo.list_runs(limit=limit, status_filter=status)
         return {
-            "items": [{"id": str(r.id), "status": r.status, "candles_processed": r.candles_processed, "total_trades": r.total_trades, "start_time": str(r.created_at) if r.created_at else None} for r in runs],
+            "items": [{"id": str(r.id), "status": r.status, "candles_processed": r.candles_processed, "total_trades": r.total_trades, "start_time": str(r.start_time) if r.start_time else None} for r in runs],
             "total": len(runs),
         }
 
@@ -1450,7 +1450,10 @@ def create_mcp_app() -> Starlette:
         http://localhost:8003/mcp/sse
     """
     server = Server("risetrader")
-    sse_transport = SseServerTransport("/mcp/messages/")
+    # Endpoint path is relative to this sub-app; the MCP SDK auto-prepends
+    # scope["root_path"] (="/mcp" from the FastAPI mount) when advertising
+    # it to the client. Including "/mcp/" here would double the prefix.
+    sse_transport = SseServerTransport("/messages/")
 
     @server.list_tools()
     async def list_tools() -> List[Tool]:

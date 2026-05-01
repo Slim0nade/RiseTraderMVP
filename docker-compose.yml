@@ -19,6 +19,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backups:/backups  # Mount for easy backup/restore access
+      - ./docker/init-mlflow-db.sh:/docker-entrypoint-initdb.d/init-mlflow-db.sh
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-risetrader}"]
       interval: 10s
@@ -70,20 +71,21 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      MLFLOW_BACKEND_STORE_URI: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-risetrader2024}@postgres:5432/${POSTGRES_DB:-risetrader}
+      MLFLOW_BACKEND_STORE_URI: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-risetrader2024}@postgres:5432/mlflow
       MLFLOW_DEFAULT_ARTIFACT_ROOT: /mlflow/artifacts
     command: >
+      bash -c "pip install psycopg2-binary &&
       mlflow server
-      --backend-store-uri postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-risetrader2024}@postgres:5432/${POSTGRES_DB:-risetrader}
+      --backend-store-uri postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-risetrader2024}@postgres:5432/mlflow
       --default-artifact-root /mlflow/artifacts
       --host 0.0.0.0
-      --port 5000
+      --port 5000"
     volumes:
       - mlflow_artifacts:/mlflow/artifacts
     networks:
       - risetrader
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5000/health')\""]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -111,6 +113,7 @@ services:
       dockerfile: docker/api/Dockerfile.simple
     container_name: risetrader-api
     restart: unless-stopped
+    command: ["bash", "/app/scripts/start_api.sh"]
     env_file:
       - .env
     # network_mode: host  # Disabled - doesn't work on macOS Docker Desktop
@@ -142,6 +145,15 @@ services:
       # Stealth Stop Manager settings
       STEALTH_STOPS_ENABLED: ${STEALTH_STOPS_ENABLED:-true}
       STEALTH_STOP_POLL_INTERVAL: ${STEALTH_STOP_POLL_INTERVAL:-5}
+      # Live Trading Service settings
+      LIVE_TRADING_ENABLED: ${LIVE_TRADING_ENABLED:-true}
+      LIVE_TRADING_SYMBOLS: ${LIVE_TRADING_SYMBOLS:-CrudeOIL,USA500,GBPJPY.}
+      LIVE_TRADING_INTERVAL: ${LIVE_TRADING_INTERVAL:-300}
+      LIVE_TRADING_DRY_RUN: ${LIVE_TRADING_DRY_RUN:-false}
+      MAX_OPEN_POSITIONS: ${MAX_OPEN_POSITIONS:-5}
+      MAX_DAILY_LOSS: ${MAX_DAILY_LOSS:-1000}
+      # Paper validation gate — must collect 50 profitable signals before live execution
+      PAPER_VALIDATION_MODE: ${PAPER_VALIDATION_MODE:-true}
     networks:
       - risetrader
     volumes:
@@ -150,6 +162,7 @@ services:
       - ./config:/app/config  # Mount config for hot reload
       - ./scripts:/app/scripts  # Mount scripts for data pipeline
       - ./data:/app/data  # Mount data directory for downloads
+      - ./models:/app/models  # Mount trained ML models
 
 volumes:
   postgres_data:

@@ -7,6 +7,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     libzmq5 \
+    libopenblas-dev \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
@@ -39,4 +40,5 @@ COPY scripts/start_api.sh /app/start_api.sh
 RUN chmod +x /app/start_api.sh
 
 # Run startup script (supports hot reload via ENABLE_HOT_RELOAD env var)
-CMD ["/app/start_api.sh"]
+# Use bash -c to ensure mounted scripts work even without +x bit
+CMD ["bash", "/app/start_api.sh"]

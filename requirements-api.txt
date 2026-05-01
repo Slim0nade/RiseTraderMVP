@@ -45,9 +45,9 @@ mcp>=1.0.0
 # LLM Structured Output (GBNF grammar enforcement for Ollama)
 instructor==1.3.0  # Pinned for aiohttp compatibility
 
-# AutoGen 0.4 for Multi-Agent Orchestration (Phase 6)
-autogen-agentchat>=0.4.0
-autogen-ext[openai]>=0.4.0
+# AutoGen 0.4 for Multi-Agent Orchestration (Phase 6 — disabled to unblock Docker build)
+# autogen-agentchat>=0.4.0
+# autogen-ext[openai]>=0.4.0
 
 # Development
 pytest>=7.4.3
