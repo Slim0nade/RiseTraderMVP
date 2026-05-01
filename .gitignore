@@ -127,3 +127,11 @@ dmypy.json
 
 # Ruff
 .ruff_cache/
+
+# Phase 6 hygiene
+data/dukascopy/
+models/
+.claude/worktrees/
+.claude/settings.local.json
+docs/Trading docs/
+.serena/memories/RiseBackendMVP/
