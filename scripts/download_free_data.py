@@ -53,20 +53,119 @@ logger = logging.getLogger(__name__)
 
 SYMBOL_MAPPING = {
     # Our symbol -> (Dukascopy symbol, HistData symbol, Description)
-    'CrudeOIL': ('WTIUSD', 'WTIUSD', 'WTI Crude Oil'),
-    'XAUUSD': ('XAUUSD', 'XAUUSD', 'Gold'),
-    'SPX500': ('SPX500USD', 'SPX500USD', 'S&P 500 Index'),
-    'DXY': ('USDOLLARINDEX', 'UDX', 'US Dollar Index'),
-    'VIX': (None, 'VXXUSD', 'VIX Volatility Index (via VXX proxy)'),
+    'CrudeOIL':  ('WTIUSD',        'WTIUSD',    'WTI Crude Oil'),
+    'XAUUSD':    ('XAUUSD',        'XAUUSD',    'Gold'),
+    'SPX500':    ('SPX500USD',     'SPX500USD', 'S&P 500 Index'),
+    'DXY':       ('USDOLLARINDEX', 'UDX',       'US Dollar Index'),
+    'VIX':       (None,            'VXXUSD',    'VIX Volatility Index (via VXX proxy)'),
+    # Phase 2 additions — data-gap fills
+    'USA500':    ('USA500IDXUSD',  None,        'US 500 Cash Index'),
+    'BRENT_OIL': ('BCOUSD',        'BCOUSD',    'Brent Crude Oil'),
+    'GBPJPY':    ('GBPJPY',        'GBPJPY',    'GBP/JPY'),
 }
 
-# Dukascopy instrument details
+# Dukascopy instrument details: point = 10 ** (-decimals), i.e. the price multiplier
 DUKASCOPY_INSTRUMENTS = {
-    'WTIUSD': {'decimals': 3, 'name': 'WTI/USD'},
-    'XAUUSD': {'decimals': 3, 'name': 'Gold'},
-    'SPX500USD': {'decimals': 2, 'name': 'S&P 500'},
+    'WTIUSD':        {'decimals': 3, 'name': 'WTI/USD'},
+    'XAUUSD':        {'decimals': 3, 'name': 'Gold'},
+    'SPX500USD':     {'decimals': 2, 'name': 'S&P 500'},
     'USDOLLARINDEX': {'decimals': 3, 'name': 'US Dollar Index'},
+    # Phase 2 additions
+    'USA500IDXUSD':  {'decimals': 3, 'name': 'US 500 Cash Index'},  # ~5000-6000, 3dp confirmed
+    'BCOUSD':        {'decimals': 3, 'name': 'Brent Crude Oil'},    # ~$80, same range as WTI
+    'GBPJPY':        {'decimals': 3, 'name': 'GBP/JPY'},            # ~190.xxx, 3dp standard forex
 }
+
+
+# =============================================================================
+# Utility: resumability + H1 aggregation
+# =============================================================================
+
+async def get_resume_point(symbol: str, timeframe: str = "M1") -> Optional[datetime]:
+    """
+    Query the latest candle timestamp stored for this symbol+timeframe in PostgreSQL.
+
+    Uses the DUKASCOPY source filter so that MT4-sourced rows (which may be
+    partial or missing weekends) do not distort the resume position.
+
+    Args:
+        symbol:    RiseTrader internal symbol name (e.g. 'USA500', 'BRENT_OIL').
+        timeframe: 'M1' or 'H1'.  Must match the ENUM value stored in market_data.
+
+    Returns:
+        Latest datetime (UTC-aware) already in the DB, or None if no rows exist.
+
+    Edge cases:
+        - Returns None when the table is empty for this symbol/timeframe.
+        - The DB stores timeframe as a PostgreSQL ENUM; casting to TEXT avoids
+          type mismatch on the equality check.
+    """
+    import asyncpg
+
+    db_url = os.getenv(
+        "DATABASE_URL",
+        "postgresql://postgres:risetrader2024@localhost:5433/risetrader"
+    )
+    # asyncpg uses plain postgresql:// — strip SQLAlchemy driver suffix if present
+    db_url = db_url.replace("+asyncpg", "").replace("postgresql+asyncpg", "postgresql")
+
+    conn = await asyncpg.connect(db_url)
+    try:
+        row = await conn.fetchrow(
+            "SELECT MAX(time) FROM market_data "
+            "WHERE symbol = $1 AND source = 'DUKASCOPY' AND CAST(timeframe AS TEXT) = $2",
+            symbol, timeframe
+        )
+        return row[0] if row and row[0] else None
+    finally:
+        await conn.close()
+
+
+def aggregate_m1_to_h1(m1_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Aggregate M1 candles to H1 using standard OHLCV rules.
+
+    Groups by flooring the timestamp to the nearest hour:
+        open   = first M1 open in the hour
+        high   = max of all M1 highs
+        low    = min of all M1 lows
+        close  = last M1 close
+        volume = sum of all M1 volumes
+
+    Args:
+        m1_df: DataFrame with columns [time, open, high, low, close, volume].
+               'time' must be datetime-compatible (naive or tz-aware).
+
+    Returns:
+        DataFrame with H1 candles sorted ascending by time.
+        Empty DataFrame if input is empty.
+
+    Edge cases:
+        - Handles both tz-aware and tz-naive timestamps.
+        - Hours with only one M1 candle produce a valid H1 candle (O=H=L=C).
+        - NaN volumes are treated as 0 before summing.
+    """
+    if m1_df.empty:
+        return pd.DataFrame()
+
+    df = m1_df.copy()
+    df["time"] = pd.to_datetime(df["time"])
+    df["volume"] = df["volume"].fillna(0)
+    df["period"] = df["time"].dt.floor("h")
+
+    h1 = (
+        df.groupby("period")
+        .agg(
+            open=("open", "first"),
+            high=("high", "max"),
+            low=("low", "min"),
+            close=("close", "last"),
+            volume=("volume", "sum"),
+        )
+        .reset_index()
+        .rename(columns={"period": "time"})
+    )
+    return h1.sort_values("time").reset_index(drop=True)
 
 
 # =============================================================================
@@ -510,55 +609,229 @@ class DataImporter:
 # CLI Interface
 # =============================================================================
 
+def _download_and_import_symbol(
+    rise_symbol: str,
+    start_date: datetime,
+    end_date: datetime,
+    output_dir: str,
+    import_db: bool,
+    resume: bool,
+) -> None:
+    """
+    Download M1 data for a single RiseTrader internal symbol from Dukascopy,
+    optionally aggregating to H1 and importing both timeframes to the database.
+
+    Args:
+        rise_symbol: Internal name, e.g. 'USA500', 'BRENT_OIL', 'GBPJPY'.
+                     Must be present in SYMBOL_MAPPING.
+        start_date:  Earliest date to fetch.  Overridden by DB resume point if
+                     resume=True and the DB already has later data.
+        end_date:    Latest date to fetch (inclusive).
+        output_dir:  Root output directory; CSVs land in <output_dir>/dukascopy/.
+        import_db:   When True, insert M1 and H1 candles directly into PostgreSQL.
+        resume:      When True, query MAX(time) for this symbol from the DB and
+                     advance start_date to (resume_point + 1 minute) to avoid
+                     re-downloading data already present.
+
+    Edge cases:
+        - Unknown symbol: logs an error and returns without raising.
+        - Empty download (weekend gap, holiday): skips CSV write and DB import.
+        - If DB resume query fails (DB offline), falls back to start_date with a
+          warning rather than aborting the run.
+    """
+    mapping = SYMBOL_MAPPING.get(rise_symbol)
+    if mapping is None:
+        logger.error(
+            f"Unknown symbol '{rise_symbol}'. "
+            f"Known symbols: {list(SYMBOL_MAPPING.keys())}"
+        )
+        return
+
+    dk_symbol, _, description = mapping
+    if dk_symbol is None:
+        logger.error(f"'{rise_symbol}' has no Dukascopy source — skipping.")
+        return
+
+    effective_start = start_date
+
+    if resume:
+        try:
+            resume_point: Optional[datetime] = asyncio.run(
+                get_resume_point(rise_symbol, "M1")
+            )
+            if resume_point is not None:
+                # Advance start to one minute after the last stored candle
+                resume_dt = resume_point.replace(tzinfo=None) + timedelta(minutes=1)
+                if resume_dt > end_date:
+                    logger.info(
+                        f"[{rise_symbol}] DB is up to date "
+                        f"(latest M1: {resume_point}). Nothing to download."
+                    )
+                    return
+                logger.info(
+                    f"[{rise_symbol}] Resuming from {resume_dt.date()} "
+                    f"(DB latest M1: {resume_point.date()})"
+                )
+                effective_start = resume_dt
+            else:
+                logger.info(
+                    f"[{rise_symbol}] No existing data found — "
+                    f"downloading from {effective_start.date()}"
+                )
+        except Exception as exc:
+            logger.warning(
+                f"[{rise_symbol}] Resume query failed ({exc}); "
+                f"falling back to --start {start_date.date()}"
+            )
+
+    downloader = DukascopyDownloader(output_dir=f"{output_dir}/dukascopy")
+    logger.info(
+        f"[{rise_symbol}] Downloading {dk_symbol} "
+        f"({description}) {effective_start.date()} → {end_date.date()}"
+    )
+    df_m1 = downloader.download_range(dk_symbol, effective_start, end_date)
+
+    if df_m1.empty:
+        logger.warning(f"[{rise_symbol}] No M1 data returned — nothing to save.")
+        return
+
+    # Save M1 CSV
+    m1_filepath = downloader.save_csv(df_m1, dk_symbol, effective_start, end_date)
+
+    # Aggregate to H1
+    df_h1 = aggregate_m1_to_h1(df_m1)
+    logger.info(f"[{rise_symbol}] Aggregated {len(df_m1)} M1 → {len(df_h1)} H1 candles")
+
+    # Save H1 CSV alongside M1
+    if not df_h1.empty:
+        h1_filename = (
+            f"{dk_symbol}_{effective_start.strftime('%Y%m%d')}"
+            f"_{end_date.strftime('%Y%m%d')}_H1.csv"
+        )
+        h1_filepath = downloader.output_dir / h1_filename
+        df_h1.to_csv(h1_filepath, index=False)
+        logger.info(f"[{rise_symbol}] Saved {len(df_h1)} H1 records to {h1_filepath}")
+
+    if import_db:
+        importer = DataImporter()
+        logger.info(f"[{rise_symbol}] Importing M1 to DB as '{rise_symbol}'...")
+        asyncio.run(
+            importer.import_csv(m1_filepath, rise_symbol, source='DUKASCOPY', timeframe='M1')
+        )
+        if not df_h1.empty:
+            logger.info(f"[{rise_symbol}] Importing H1 to DB as '{rise_symbol}'...")
+            asyncio.run(
+                importer.import_csv(h1_filepath, rise_symbol, source='DUKASCOPY', timeframe='H1')
+            )
+
+
 def main():
-    parser = argparse.ArgumentParser(description='Download free market data')
-    parser.add_argument('--source', choices=['dukascopy', 'histdata', 'all'], 
-                       default='dukascopy', help='Data source')
+    parser = argparse.ArgumentParser(
+        description='Download free market data from Dukascopy / HistData',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Download 3 symbols with resume + DB import
+  python3 scripts/download_free_data.py --symbols USA500,BRENT_OIL,GBPJPY --start 2020-01-01 --import-db --resume
+
+  # Single symbol, no DB import
+  python3 scripts/download_free_data.py --symbols USA500 --start 2020-01-01
+
+  # Legacy single-symbol Dukascopy download (raw Dukascopy symbol name)
+  python3 scripts/download_free_data.py --source dukascopy --symbol WTIUSD --start 2024-01-01
+
+Known --symbols values: CrudeOIL, XAUUSD, SPX500, DXY, USA500, BRENT_OIL, GBPJPY
+        """
+    )
+    # New multi-symbol interface
+    parser.add_argument(
+        '--symbols', type=str, default=None,
+        help=(
+            'Comma-separated list of RiseTrader internal symbol names to download '
+            '(e.g. USA500,BRENT_OIL,GBPJPY).  When set, --source is forced to '
+            '"dukascopy" and H1 aggregation is performed automatically.'
+        )
+    )
+    parser.add_argument(
+        '--resume', action='store_true',
+        help=(
+            'Skip already-downloaded data by querying MAX(time) from PostgreSQL '
+            'for each symbol before downloading.  Requires DB to be reachable.'
+        )
+    )
+    # Legacy interface (kept for backward compatibility)
+    parser.add_argument('--source', choices=['dukascopy', 'histdata', 'all'],
+                        default='dukascopy', help='Data source (legacy --symbol path)')
     parser.add_argument('--symbol', type=str, default='WTIUSD',
-                       help='Symbol to download (e.g., WTIUSD, XAUUSD, SPX500USD)')
+                        help='Raw Dukascopy/HistData symbol name (legacy single-symbol path)')
     parser.add_argument('--start', type=str, default='2024-01-01',
-                       help='Start date (YYYY-MM-DD)')
+                        help='Start date (YYYY-MM-DD)')
     parser.add_argument('--end', type=str, default=None,
-                       help='End date (YYYY-MM-DD), defaults to today')
+                        help='End date (YYYY-MM-DD), defaults to today')
     parser.add_argument('--output-dir', type=str, default='data',
-                       help='Output directory')
+                        help='Output directory root')
     parser.add_argument('--import-db', action='store_true',
-                       help='Import downloaded data to database')
+                        help='Import downloaded data to PostgreSQL database')
     parser.add_argument('--target-symbol', type=str, default=None,
-                       help='Target symbol name for database (e.g., CrudeOIL)')
-    
+                        help='Override target symbol name for DB (legacy path only)')
+
     args = parser.parse_args()
-    
+
     start_date = datetime.strptime(args.start, '%Y-%m-%d')
     end_date = datetime.strptime(args.end, '%Y-%m-%d') if args.end else datetime.now()
-    
+
+    # -------------------------------------------------------------------------
+    # New path: --symbols USA500,BRENT_OIL,GBPJPY
+    # -------------------------------------------------------------------------
+    if args.symbols:
+        symbol_list = [s.strip() for s in args.symbols.split(',') if s.strip()]
+        logger.info(
+            f"Multi-symbol download: {symbol_list} "
+            f"| start={start_date.date()} end={end_date.date()} "
+            f"| resume={args.resume} import_db={args.import_db}"
+        )
+        for rise_symbol in symbol_list:
+            try:
+                _download_and_import_symbol(
+                    rise_symbol=rise_symbol,
+                    start_date=start_date,
+                    end_date=end_date,
+                    output_dir=args.output_dir,
+                    import_db=args.import_db,
+                    resume=args.resume,
+                )
+            except Exception as exc:
+                logger.error(f"[{rise_symbol}] Unhandled error: {exc}", exc_info=True)
+        return
+
+    # -------------------------------------------------------------------------
+    # Legacy path: --source / --symbol (raw Dukascopy symbol names)
+    # -------------------------------------------------------------------------
     if args.source == 'dukascopy':
         downloader = DukascopyDownloader(output_dir=f"{args.output_dir}/dukascopy")
         df = downloader.download_range(args.symbol, start_date, end_date)
         if not df.empty:
             filepath = downloader.save_csv(df, args.symbol, start_date, end_date)
-            
+
             if args.import_db:
                 target = args.target_symbol or args.symbol
                 importer = DataImporter()
                 asyncio.run(importer.import_csv(filepath, target, source='DUKASCOPY'))
-                
+
     elif args.source == 'histdata':
         downloader = HistDataDownloader(output_dir=f"{args.output_dir}/histdata")
         df = downloader.download_range(args.symbol, start_date.year, end_date.year)
         if not df.empty:
             filepath = downloader.save_csv(df, args.symbol)
-            
+
             if args.import_db:
                 target = args.target_symbol or args.symbol
                 importer = DataImporter()
                 asyncio.run(importer.import_csv(filepath, target, source='HISTDATA'))
-                
+
     elif args.source == 'all':
-        # Download all available symbols from both sources
         logger.info("Downloading all available symbols from all sources...")
-        
-        # Dukascopy
+
         duka = DukascopyDownloader(output_dir=f"{args.output_dir}/dukascopy")
         for symbol in DUKASCOPY_INSTRUMENTS.keys():
             try:
@@ -567,8 +840,7 @@ def main():
                     duka.save_csv(df, symbol, start_date, end_date)
             except Exception as e:
                 logger.error(f"Error downloading {symbol} from Dukascopy: {e}")
-                
-        # HistData
+
         hist = HistDataDownloader(output_dir=f"{args.output_dir}/histdata")
         for symbol in ['WTIUSD', 'XAUUSD', 'SPX500USD', 'UDX']:
             try:

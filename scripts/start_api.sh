@@ -3,6 +3,9 @@
 
 set -e
 
+echo "🧹 Clearing __pycache__ to prevent stale imports..."
+find /app -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+
 echo "🚀 Starting RiseTrader API..."
 
 # Check if hot reload is enabled
