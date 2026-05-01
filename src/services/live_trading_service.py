@@ -56,6 +56,7 @@ CONTRACT_SIZES: Dict[str, int] = {
     "GBPJPY.": 100_000,
     "XAUUSD": 100,
     "BRENT_OIL": 1000,
+    "#TSLA": 1000,
 }
 
 # Pip size per symbol (used for anti-stop-hunt offset, not for P&L math)
@@ -65,16 +66,71 @@ PIP_VALUES: Dict[str, float] = {
     "GBPJPY.": 0.001,
     "XAUUSD": 0.01,
     "BRENT_OIL": 0.01,
+    "#TSLA": 0.01,
 }
 
 # Default pip size for any symbol not in the map above
 DEFAULT_PIP = 0.01
 
 # DB symbol mapping — MT4 symbols may differ from DB symbols
-# MT4 uses "GBPJPY." but DB stores "GBPJPY"
+# MT4 uses "GBPJPY." / "#TSLA" but DB stores "GBPJPY" / "TSLA"
 MT4_TO_DB_SYMBOL: Dict[str, str] = {
     "GBPJPY.": "GBPJPY",
+    "#TSLA": "TSLA",
 }
+
+# ---------------------------------------------------------------------------
+# Per-symbol strategy weights (MoE path a)
+# ---------------------------------------------------------------------------
+# Each symbol gets its own ensemble weights that override the defaults in
+# _combine_signals.  Rationale per symbol:
+#   - CrudeOIL: proven ensemble from backtest (VA +209%, ML Rev +156%).
+#     Heavier VA + ML Reversal (only persisted model), lighter trend tools.
+#   - USA500: index → respects VAH/VAL, trends well. Drop mean-rev (gap risk).
+#   - GBPJPY.: FX pair, XGB F1 weakest (0.094) → lean on trend/momentum.
+#   - #TSLA: single-name beta, news-driven, wide spread → trend + momentum
+#     + breakout only. NO mean-reversion (gap risk on news/earnings).
+#
+# Weights need NOT sum to 1.0 — _combine_signals normalizes by total weight.
+# A strategy absent from the dict gets weight 0 (effectively disabled for
+# that symbol).  Strategy names must match the keys produced by
+# _generate_signal's signals dict (ml_reversal, value_area, momentum,
+# trend_following, mean_reversion, breakout).
+SYMBOL_WEIGHTS: Dict[str, Dict[str, float]] = {
+    "CrudeOIL": {
+        "value_area": 0.30,
+        "ml_reversal": 0.25,
+        "momentum": 0.20,
+        "trend_following": 0.10,
+        "mean_reversion": 0.10,
+        "breakout": 0.05,
+    },
+    "USA500": {
+        "value_area": 0.35,
+        "trend_following": 0.25,
+        "momentum": 0.20,
+        "breakout": 0.15,
+        "ml_reversal": 0.05,
+    },
+    "GBPJPY.": {
+        "trend_following": 0.35,
+        "momentum": 0.25,
+        "value_area": 0.20,
+        "breakout": 0.15,
+        "mean_reversion": 0.05,
+    },
+    "#TSLA": {
+        "trend_following": 0.35,
+        "momentum": 0.30,
+        "breakout": 0.25,
+        "value_area": 0.10,
+    },
+}
+
+
+def _symbol_weights(symbol: str) -> Optional[Dict[str, float]]:
+    """Look up per-symbol ensemble weights; returns None if not configured."""
+    return SYMBOL_WEIGHTS.get(symbol)
 
 def _db_symbol(mt4_symbol: str) -> str:
     """Convert MT4 symbol to DB symbol for candle lookups."""
@@ -315,7 +371,15 @@ def _ml_reversal_strategy(prices: List[Dict], symbol: str) -> Optional[Dict[str,
         peak_f1 = meta.get("peak_f1", 0.0)
         valley_f1 = meta.get("valley_f1", 0.0)
 
-        MIN_REVERSAL_F1 = 0.30
+        # Minimum reversal F1 gate.
+        # Peaks+valleys are ~6% of all H1 candles (severe class imbalance), so
+        # realistic F1 scores for XGBoost on this task are in the 0.08-0.15 range
+        # even for models that add positive P&L in backtest (CrudeOIL backtest
+        # returned +156% with F1=0.117).  The prior 0.30 gate was calibrated for
+        # a balanced-class model and permanently blocked every ml_reversal
+        # signal in production.  0.08 keeps clearly-broken runs out while
+        # letting real imbalanced-class models activate.
+        MIN_REVERSAL_F1 = 0.08
         if reversal_f1 < MIN_REVERSAL_F1:
             logger.warning(
                 "ml_model_quality_gate_blocked",
@@ -621,8 +685,11 @@ class LiveTradingService:
         self.max_daily_loss: float = _env_float("MAX_DAILY_LOSS", 1000.0)
 
         # Signal thresholds — RESTORED from 0.5 to 0.6 (lowering caused bad entries)
-        self._signal_threshold: float = 0.6
-        self._min_confidence: float = 0.6
+        # Demo-validation thresholds — originally both 0.6 which combined with
+        # sqrt(conf) dampening in _combine_signals produced near-zero fire rate.
+        # RegimeRouter still enforces per-regime thresholds on top of these.
+        self._signal_threshold: float = 0.45
+        self._min_confidence: float = 0.45
 
         # Runtime state
         self._running: bool = False
@@ -1228,14 +1295,63 @@ class LiveTradingService:
         Signals are only emitted when abs(score) >= threshold AND
         confidence >= self._min_confidence.
         """
-        # Determine which strategies to run and the threshold to use.
+        # Determine which strategies to run and their weights.
+        # Composition:
+        #   - RegimeRouter decides which strategies are *allowed* for this regime.
+        #   - SYMBOL_WEIGHTS overrides weights within the allowed set per symbol
+        #     (so CrudeOIL, USA500, GBPJPY., #TSLA each get their own mixture).
+        # Final allowed = SYMBOL_WEIGHTS ∩ regime_allowed, renormalized to sum=1.
         if strategy_config is not None:
-            allowed: Optional[Dict[str, float]] = strategy_config.get("strategies")
+            regime_allowed: Optional[Dict[str, float]] = strategy_config.get("strategies")
             threshold = float(strategy_config.get("signal_threshold", self._signal_threshold))
         else:
-            # Backward-compat: no regime filter — run everything with default weights.
-            allowed = None
+            regime_allowed = None
             threshold = self._signal_threshold
+
+        symbol_w = _symbol_weights(symbol)
+
+        if symbol_w is not None and regime_allowed is not None:
+            # Intersect so we never run e.g. mean_reversion in a strong trend regime
+            # even if SYMBOL_WEIGHTS lists it.
+            overlap = {s: w for s, w in symbol_w.items() if s in regime_allowed}
+            total = sum(overlap.values())
+            if total > 0:
+                allowed: Optional[Dict[str, float]] = {k: v / total for k, v in overlap.items()}
+                logger.info(
+                    "symbol_weights_applied",
+                    symbol=symbol,
+                    weights={k: round(v, 3) for k, v in allowed.items()},
+                    regime_allowed=list(regime_allowed.keys()),
+                    source="SYMBOL_WEIGHTS_x_regime",
+                )
+            else:
+                # No overlap — fall back to regime weights so we still emit something.
+                allowed = regime_allowed
+                logger.info(
+                    "symbol_weights_no_overlap",
+                    symbol=symbol,
+                    symbol_weights=list(symbol_w.keys()),
+                    regime_allowed=list(regime_allowed.keys()),
+                    fallback="regime_weights",
+                )
+        elif symbol_w is not None:
+            allowed = symbol_w
+            logger.info(
+                "symbol_weights_applied",
+                symbol=symbol,
+                weights={k: round(v, 3) for k, v in allowed.items()},
+                source="SYMBOL_WEIGHTS_only",
+            )
+        else:
+            allowed = regime_allowed
+            logger.info(
+                "symbol_weights_default",
+                symbol=symbol,
+                note="no SYMBOL_WEIGHTS entry; using regime weights",
+                regime_weights=(
+                    list(regime_allowed.keys()) if regime_allowed else None
+                ),
+            )
 
         def _is_allowed(name: str) -> bool:
             """Return True when the strategy is not blocked by the regime config."""

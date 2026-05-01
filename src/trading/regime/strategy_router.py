@@ -123,7 +123,9 @@ class StrategyRouter:
                 "trend_following": 0.25,
             },
             "blocked": frozenset({"value_area", "mean_reversion", "ml_reversal"}),
-            "signal_threshold": 0.60,
+            # 0.45 for demo validation — originally 0.60 which was too tight for
+            # the ensemble to actually fire given sqrt(conf) dampening.
+            "signal_threshold": 0.45,
             "allow_trading": True,
             "reason": "Trending regime: momentum and breakout strategies selected.",
         },
@@ -134,7 +136,8 @@ class StrategyRouter:
                 "ml_reversal": 0.20,
             },
             "blocked": frozenset({"momentum", "breakout"}),
-            "signal_threshold": 0.60,
+            # 0.45 for demo validation — originally 0.60.
+            "signal_threshold": 0.45,
             "allow_trading": True,
             "reason": "Ranging regime: mean-reversion and value-area strategies selected.",
         },
@@ -157,11 +160,13 @@ class StrategyRouter:
                 "ml_reversal": 0.20,
             },
             "blocked": frozenset(),
-            "signal_threshold": 0.75,
+            # 0.55 for demo validation — originally 0.75 which made UNKNOWN
+            # regime effectively a halted state.
+            "signal_threshold": 0.55,
             "allow_trading": True,
             "reason": (
                 "Unknown regime: all strategies run at equal weight. "
-                "Extra-selective threshold (0.75) applied."
+                "Selective threshold (0.55) applied."
             ),
         },
     }

@@ -1,0 +1,91 @@
+# Regime-Aware Strategy System Configuration
+# Tunable thresholds for regime classification and strategy routing.
+# Changes to this file take effect on next API restart (or WatchFiles reload).
+#
+# regime_classifier — controls the multi-factor regime detection math.
+# strategy_router   — controls which strategies run in each regime and at
+#                     what weight/threshold.
+#
+# All float thresholds are documented with their units and empirical context
+# so you can tune without reading source code.
+
+regime_classifier:
+  # ---------------------------------------------------------------------------
+  # ADX (Average Directional Index) thresholds
+  # ---------------------------------------------------------------------------
+  adx_period: 14               # Wilder's ADX lookback in bars
+  adx_trend_threshold: 25.0    # ADX above this → trending criterion fires
+  adx_ranging_threshold: 20.0  # ADX below this → ranging criterion fires
+
+  # ---------------------------------------------------------------------------
+  # ATR-based volatility detection
+  # ---------------------------------------------------------------------------
+  atr_period: 14               # ATR lookback in bars
+  atr_sma_period: 50           # Baseline SMA period for ATR ratio denominator
+  atr_volatile_ratio: 2.5      # current_ATR / baseline_ATR_SMA > this → volatile trigger
+  spike_atr_multiple: 3.0      # single-bar range > this × ATR → news-candle trigger
+  return_sigma_multiple: 4.0   # |hourly_return| > this × return_std → extreme-move trigger
+                               # 4.0 avoids false positives from smooth trending series;
+                               # lower to 3.0 for more sensitivity
+
+  # ---------------------------------------------------------------------------
+  # Hurst exponent (R/S analysis on raw price levels)
+  # ---------------------------------------------------------------------------
+  # Empirical note: short-window R/S (max_lag=20) on raw prices gives H≈1.0
+  # for pure linear trends and 0.8–0.9 for ranging/noisy series.
+  hurst_max_lag: 20
+  hurst_trend_threshold: 0.95  # H above this → trending Hurst criterion fires
+  hurst_ranging_low: 0.35      # lower bound of ranging Hurst band
+  hurst_ranging_high: 0.95     # upper bound of ranging Hurst band
+                               # (same value as trend threshold means every non-trend
+                               # series qualifies for the ranging band)
+
+  # ---------------------------------------------------------------------------
+  # MA-based criteria
+  # ---------------------------------------------------------------------------
+  ma50_consec_threshold: 10    # consecutive bars above/below MA(50) → trend criterion
+  ma20_cross_threshold: 3      # MA(20) crosses in last 20 bars → ranging criterion
+
+strategy_router:
+  # ---------------------------------------------------------------------------
+  # TRENDING regime
+  # Momentum and breakout strategies selected; mean-reversion blocked.
+  # ---------------------------------------------------------------------------
+  trending:
+    strategies:
+      momentum: 0.40
+      breakout: 0.35
+      trend_following: 0.25
+    signal_threshold: 0.60
+
+  # ---------------------------------------------------------------------------
+  # RANGING regime
+  # Mean-reversion and value-area strategies selected; trend strategies blocked.
+  # ---------------------------------------------------------------------------
+  ranging:
+    strategies:
+      value_area: 0.45
+      mean_reversion: 0.35
+      ml_reversal: 0.20
+    signal_threshold: 0.60
+
+  # ---------------------------------------------------------------------------
+  # VOLATILE regime
+  # No new entries during high-volatility halts.
+  # ---------------------------------------------------------------------------
+  volatile:
+    allow_trading: false
+
+  # ---------------------------------------------------------------------------
+  # UNKNOWN regime
+  # All strategies run at equal weight with an extra-selective threshold
+  # to compensate for regime uncertainty.
+  # ---------------------------------------------------------------------------
+  unknown:
+    strategies:
+      momentum: 0.20
+      breakout: 0.20
+      trend_following: 0.20
+      value_area: 0.20
+      mean_reversion: 0.20
+    signal_threshold: 0.75
