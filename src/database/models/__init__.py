@@ -13,6 +13,7 @@ from .market_data import MarketData
 from .mcp_tool import MCPTool
 from .model_configuration import ModelConfiguration
 from .model_performance import ModelPerformance
+from .mt4_account_phase import MT4AccountPhase
 from .mt4_connection import MT4Connection
 from .mt4_orders import MT4Order
 from .mt4_positions import MT4Position
@@ -42,6 +43,7 @@ __all__ = [
     "AccountInfo",
     "ModelPerformance",
     # MT4 integration models
+    "MT4AccountPhase",
     "MT4Connection",
     "MT4Order",
     "MT4Position",

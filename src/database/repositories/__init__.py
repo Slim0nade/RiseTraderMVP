@@ -12,6 +12,7 @@ from .indicators_repository import IndicatorsRepository
 from .market_data_repository import MarketDataRepository
 from .mcp_tool_repository import MCPToolRepository
 from .model_configuration_repository import ModelConfigurationRepository
+from .mt4_account_phase_repository import MT4AccountPhaseRepository
 from .mt4_connection_repository import MT4ConnectionRepository
 from .mt4_order_repository import MT4OrderRepository
 from .parameter_grid_repository import ParameterGridRepository
@@ -35,6 +36,7 @@ __all__ = [
     "TradingRepository",
     "ForecastsRepository",
     # MT4 integration repositories
+    "MT4AccountPhaseRepository",
     "MT4ConnectionRepository",
     "MT4OrderRepository",
     # Agent system repositories (Feature 005)
