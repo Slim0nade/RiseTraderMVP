@@ -1,0 +1,5948 @@
+{
+  "generated_at": "2026-04-29T23:05:49.119384+00:00",
+  "n_pairs": 65,
+  "pairs": [
+    {
+      "symbol": "BRENT_OIL",
+      "timeframe": "D1",
+      "first_ts": "2019-01-02 00:00:00+00",
+      "last_ts": "2026-04-28 00:00:00+00",
+      "total_bars": 1878,
+      "days_stale": 1,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 1878,
+          "first_ts": "2019-01-02 00:00:00+00",
+          "last_ts": "2026-04-28 00:00:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 1462,
+        "weekend": 370,
+        "suspicious_multi_day": 15,
+        "holiday_likely": 30
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 35088.0,
+        "weekend": 26736.0,
+        "suspicious_multi_day": 1536.0,
+        "holiday_likely": 792.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-04-02 00:00:00+00",
+          "curr": "2026-04-17 00:00:00+00",
+          "hours": 360.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 00:00:00+00",
+          "curr": "2026-03-09 00:00:00+00",
+          "hours": 120.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2019-04-18 00:00:00+00",
+          "curr": "2019-04-22 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-04-09 00:00:00+00",
+          "curr": "2020-04-13 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-12-24 00:00:00+00",
+          "curr": "2020-12-28 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-12-31 00:00:00+00",
+          "curr": "2021-01-04 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2021-04-01 00:00:00+00",
+          "curr": "2021-04-05 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2022-04-14 00:00:00+00",
+          "curr": "2022-04-18 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2023-04-06 00:00:00+00",
+          "curr": "2023-04-10 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2024-03-28 00:00:00+00",
+          "curr": "2024-04-01 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        }
+      ]
+    },
+    {
+      "symbol": "BRENT_OIL",
+      "timeframe": "H1",
+      "first_ts": "2019-01-02 01:00:00+00",
+      "last_ts": "2026-04-29 21:00:00+00",
+      "total_bars": 78132,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "DUKASCOPY",
+          "bars": 39078,
+          "first_ts": "2019-01-02 01:00:00+00",
+          "last_ts": "2026-03-31 20:00:00+00"
+        },
+        {
+          "source": "MT4",
+          "bars": 39054,
+          "first_ts": "2019-01-02 01:00:00+00",
+          "last_ts": "2026-04-29 21:00:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 37841,
+        "daily_break": 662,
+        "weekend": 724,
+        "suspicious_multi_day": 14,
+        "holiday_likely": 4
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 42472.0,
+        "daily_break": 662.0,
+        "weekend": 19792.0,
+        "suspicious_multi_day": 1165.0,
+        "holiday_likely": 105.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-04-02 21:00:00+00",
+          "curr": "2026-04-17 20:00:00+00",
+          "hours": 359.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-12-24 18:00:00+00",
+          "curr": "2020-12-28 01:00:00+00",
+          "hours": 79.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-12-31 19:00:00+00",
+          "curr": "2021-01-04 01:00:00+00",
+          "hours": 78.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2024-03-28 20:00:00+00",
+          "curr": "2024-04-01 02:00:00+00",
+          "hours": 78.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2019-04-18 20:00:00+00",
+          "curr": "2019-04-22 00:00:00+00",
+          "hours": 76.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-04-09 20:00:00+00",
+          "curr": "2020-04-13 00:00:00+00",
+          "hours": 76.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2021-04-01 20:00:00+00",
+          "curr": "2021-04-05 00:00:00+00",
+          "hours": 76.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2022-04-14 20:00:00+00",
+          "curr": "2022-04-18 00:00:00+00",
+          "hours": 76.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2023-04-06 20:00:00+00",
+          "curr": "2023-04-10 00:00:00+00",
+          "hours": 76.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-04-17 20:00:00+00",
+          "curr": "2025-04-21 00:00:00+00",
+          "hours": 76.0,
+          "class": "suspicious_multi_day"
+        }
+      ]
+    },
+    {
+      "symbol": "BRENT_OIL",
+      "timeframe": "H4",
+      "first_ts": "2019-01-02 00:00:00+00",
+      "last_ts": "2026-04-29 16:00:00+00",
+      "total_bars": 11160,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 11160,
+          "first_ts": "2019-01-02 00:00:00+00",
+          "last_ts": "2026-04-29 16:00:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 10769,
+        "weekend": 370,
+        "suspicious_multi_day": 16,
+        "holiday_likely": 4
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 43316.0,
+        "weekend": 19408.0,
+        "suspicious_multi_day": 1360.0,
+        "holiday_likely": 108.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-04-02 20:00:00+00",
+          "curr": "2026-04-17 20:00:00+00",
+          "hours": 360.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 16:00:00+00",
+          "curr": "2026-03-09 00:00:00+00",
+          "hours": 104.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-12-24 16:00:00+00",
+          "curr": "2020-12-28 00:00:00+00",
+          "hours": 80.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-12-31 16:00:00+00",
+          "curr": "2021-01-04 00:00:00+00",
+          "hours": 80.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2019-04-18 20:00:00+00",
+          "curr": "2019-04-22 00:00:00+00",
+          "hours": 76.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-04-09 20:00:00+00",
+          "curr": "2020-04-13 00:00:00+00",
+          "hours": 76.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2021-04-01 20:00:00+00",
+          "curr": "2021-04-05 00:00:00+00",
+          "hours": 76.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2022-04-14 20:00:00+00",
+          "curr": "2022-04-18 00:00:00+00",
+          "hours": 76.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2023-04-06 20:00:00+00",
+          "curr": "2023-04-10 00:00:00+00",
+          "hours": 76.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2024-03-28 20:00:00+00",
+          "curr": "2024-04-01 00:00:00+00",
+          "hours": 76.0,
+          "class": "suspicious_multi_day"
+        }
+      ]
+    },
+    {
+      "symbol": "BRENT_OIL",
+      "timeframe": "M1",
+      "first_ts": "2019-01-02 01:00:00+00",
+      "last_ts": "2026-04-29 21:58:00+00",
+      "total_bars": 2332234,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "DUKASCOPY",
+          "bars": 2311860,
+          "first_ts": "2019-01-02 01:00:00+00",
+          "last_ts": "2026-03-31 20:59:00+00"
+        },
+        {
+          "source": "MT4",
+          "bars": 20374,
+          "first_ts": "2026-02-27 07:12:00+00",
+          "last_ts": "2026-04-29 21:58:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 1505,
+        "weekend": 371,
+        "suspicious_multi_day": 14,
+        "holiday_likely": 3
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 4719.3,
+        "weekend": 19080.9,
+        "suspicious_multi_day": 1154.5,
+        "holiday_likely": 91.3
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-04-02 21:54:00+00",
+          "curr": "2026-04-17 20:58:00+00",
+          "hours": 359.07,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-12-24 18:59:00+00",
+          "curr": "2020-12-28 01:00:00+00",
+          "hours": 78.02,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2024-03-28 20:58:00+00",
+          "curr": "2024-04-01 02:00:00+00",
+          "hours": 77.03,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-12-31 19:59:00+00",
+          "curr": "2021-01-04 01:00:00+00",
+          "hours": 77.02,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2022-04-14 20:58:00+00",
+          "curr": "2022-04-18 00:00:00+00",
+          "hours": 75.03,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2023-04-06 20:58:00+00",
+          "curr": "2023-04-10 00:00:00+00",
+          "hours": 75.03,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-04-17 20:58:00+00",
+          "curr": "2025-04-21 00:00:00+00",
+          "hours": 75.03,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2019-04-18 20:59:00+00",
+          "curr": "2019-04-22 00:00:00+00",
+          "hours": 75.02,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-04-09 20:59:00+00",
+          "curr": "2020-04-13 00:00:00+00",
+          "hours": 75.02,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2021-04-01 20:59:00+00",
+          "curr": "2021-04-05 00:00:00+00",
+          "hours": 75.02,
+          "class": "suspicious_multi_day"
+        }
+      ]
+    },
+    {
+      "symbol": "BRENT_OIL",
+      "timeframe": "M15",
+      "first_ts": "2019-01-02 01:00:00+00",
+      "last_ts": "2026-04-29 21:45:00+00",
+      "total_bars": 155793,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 155793,
+          "first_ts": "2019-01-02 01:00:00+00",
+          "last_ts": "2026-04-29 21:45:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 1520,
+        "weekend": 370,
+        "suspicious_multi_day": 17,
+        "holiday_likely": 3,
+        "daily_break": 2
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 5118.0,
+        "weekend": 19115.8,
+        "suspicious_multi_day": 1368.5,
+        "holiday_likely": 91.8,
+        "daily_break": 2.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-04-02 21:45:00+00",
+          "curr": "2026-04-17 20:45:00+00",
+          "hours": 359.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 17:30:00+00",
+          "curr": "2026-03-09 02:45:00+00",
+          "hours": 105.25,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-12-24 18:45:00+00",
+          "curr": "2020-12-28 01:00:00+00",
+          "hours": 78.25,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-12-31 19:45:00+00",
+          "curr": "2021-01-04 01:00:00+00",
+          "hours": 77.25,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2024-03-28 20:45:00+00",
+          "curr": "2024-04-01 02:00:00+00",
+          "hours": 77.25,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2019-04-18 20:45:00+00",
+          "curr": "2019-04-22 00:00:00+00",
+          "hours": 75.25,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-04-09 20:45:00+00",
+          "curr": "2020-04-13 00:00:00+00",
+          "hours": 75.25,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2021-04-01 20:45:00+00",
+          "curr": "2021-04-05 00:00:00+00",
+          "hours": 75.25,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2022-04-14 20:45:00+00",
+          "curr": "2022-04-18 00:00:00+00",
+          "hours": 75.25,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2023-04-06 20:45:00+00",
+          "curr": "2023-04-10 00:00:00+00",
+          "hours": 75.25,
+          "class": "suspicious_multi_day"
+        }
+      ]
+    },
+    {
+      "symbol": "BRENT_OIL",
+      "timeframe": "M30",
+      "first_ts": "2019-01-02 01:00:00+00",
+      "last_ts": "2026-04-29 21:30:00+00",
+      "total_bars": 79755,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "DUKASCOPY",
+          "bars": 1756,
+          "first_ts": "2026-02-02 01:00:00+00",
+          "last_ts": "2026-03-31 20:30:00+00"
+        },
+        {
+          "source": "MT4",
+          "bars": 77999,
+          "first_ts": "2019-01-02 01:00:00+00",
+          "last_ts": "2026-04-29 21:30:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 1507,
+        "weekend": 371,
+        "suspicious_multi_day": 14,
+        "holiday_likely": 3,
+        "daily_break": 1
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 5421.0,
+        "weekend": 19256.0,
+        "suspicious_multi_day": 1160.5,
+        "holiday_likely": 92.5,
+        "daily_break": 1.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-04-02 21:30:00+00",
+          "curr": "2026-04-17 20:30:00+00",
+          "hours": 359.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-12-24 18:30:00+00",
+          "curr": "2020-12-28 01:00:00+00",
+          "hours": 78.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-12-31 19:30:00+00",
+          "curr": "2021-01-04 01:00:00+00",
+          "hours": 77.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2024-03-28 20:30:00+00",
+          "curr": "2024-04-01 02:00:00+00",
+          "hours": 77.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2019-04-18 20:30:00+00",
+          "curr": "2019-04-22 00:00:00+00",
+          "hours": 75.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-04-09 20:30:00+00",
+          "curr": "2020-04-13 00:00:00+00",
+          "hours": 75.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2021-04-01 20:30:00+00",
+          "curr": "2021-04-05 00:00:00+00",
+          "hours": 75.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2022-04-14 20:30:00+00",
+          "curr": "2022-04-18 00:00:00+00",
+          "hours": 75.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2023-04-06 20:30:00+00",
+          "curr": "2023-04-10 00:00:00+00",
+          "hours": 75.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-04-17 20:30:00+00",
+          "curr": "2025-04-21 00:00:00+00",
+          "hours": 75.5,
+          "class": "suspicious_multi_day"
+        }
+      ]
+    },
+    {
+      "symbol": "CORN",
+      "timeframe": "D1",
+      "first_ts": "2026-02-27 00:00:00+00",
+      "last_ts": "2026-04-28 00:00:00+00",
+      "total_bars": 30,
+      "days_stale": 1,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 30,
+          "first_ts": "2026-02-27 00:00:00+00",
+          "last_ts": "2026-04-28 00:00:00+00"
+        }
+      ],
+      "gap_classes": {
+        "weekend": 6,
+        "suspicious_short": 20,
+        "suspicious_multi_day": 3
+      },
+      "gap_classes_hours": {
+        "weekend": 432.0,
+        "suspicious_short": 480.0,
+        "suspicious_multi_day": 528.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-04-02 00:00:00+00",
+          "curr": "2026-04-17 00:00:00+00",
+          "hours": 360.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 00:00:00+00",
+          "curr": "2026-03-09 00:00:00+00",
+          "hours": 120.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-11 00:00:00+00",
+          "curr": "2026-03-13 00:00:00+00",
+          "hours": 48.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-02 00:00:00+00",
+          "curr": "2026-03-03 00:00:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-03 00:00:00+00",
+          "curr": "2026-03-04 00:00:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-09 00:00:00+00",
+          "curr": "2026-03-10 00:00:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-10 00:00:00+00",
+          "curr": "2026-03-11 00:00:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-16 00:00:00+00",
+          "curr": "2026-03-17 00:00:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-17 00:00:00+00",
+          "curr": "2026-03-18 00:00:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-18 00:00:00+00",
+          "curr": "2026-03-19 00:00:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "CORN",
+      "timeframe": "H1",
+      "first_ts": "2026-02-27 07:00:00+00",
+      "last_ts": "2026-04-29 18:00:00+00",
+      "total_bars": 394,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 394,
+          "first_ts": "2026-02-27 07:00:00+00",
+          "last_ts": "2026-04-29 18:00:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 382,
+        "weekend": 6,
+        "suspicious_multi_day": 5
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 560.0,
+        "weekend": 324.0,
+        "suspicious_multi_day": 591.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-04-02 18:00:00+00",
+          "curr": "2026-04-17 18:00:00+00",
+          "hours": 360.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 17:00:00+00",
+          "curr": "2026-03-09 02:00:00+00",
+          "hours": 105.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-11 01:00:00+00",
+          "curr": "2026-03-13 18:00:00+00",
+          "hours": 65.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-19 06:00:00+00",
+          "curr": "2026-03-20 18:00:00+00",
+          "hours": 36.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-22 00:00:00+00",
+          "curr": "2026-04-23 01:00:00+00",
+          "hours": 25.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-23 18:00:00+00",
+          "curr": "2026-04-24 05:00:00+00",
+          "hours": 11.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-02 03:00:00+00",
+          "curr": "2026-03-02 13:00:00+00",
+          "hours": 10.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-21 03:00:00+00",
+          "curr": "2026-04-21 13:00:00+00",
+          "hours": 10.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-23 18:00:00+00",
+          "curr": "2026-03-24 03:00:00+00",
+          "hours": 9.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-24 05:00:00+00",
+          "curr": "2026-04-24 14:00:00+00",
+          "hours": 9.0,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "CORN",
+      "timeframe": "H4",
+      "first_ts": "2026-02-27 04:00:00+00",
+      "last_ts": "2026-04-29 16:00:00+00",
+      "total_bars": 125,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 125,
+          "first_ts": "2026-02-27 04:00:00+00",
+          "last_ts": "2026-04-29 16:00:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 112,
+        "weekend": 6,
+        "holiday_likely": 2,
+        "suspicious_multi_day": 4
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 552.0,
+        "weekend": 336.0,
+        "holiday_likely": 24.0,
+        "suspicious_multi_day": 564.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-04-02 16:00:00+00",
+          "curr": "2026-04-17 16:00:00+00",
+          "hours": 360.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 16:00:00+00",
+          "curr": "2026-03-09 00:00:00+00",
+          "hours": 104.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-11 00:00:00+00",
+          "curr": "2026-03-13 16:00:00+00",
+          "hours": 64.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-19 04:00:00+00",
+          "curr": "2026-03-20 16:00:00+00",
+          "hours": 36.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-22 00:00:00+00",
+          "curr": "2026-04-23 00:00:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-23 16:00:00+00",
+          "curr": "2026-04-24 04:00:00+00",
+          "hours": 12.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-02 16:00:00+00",
+          "curr": "2026-03-03 00:00:00+00",
+          "hours": 8.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-03 16:00:00+00",
+          "curr": "2026-03-04 00:00:00+00",
+          "hours": 8.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-09 16:00:00+00",
+          "curr": "2026-03-10 00:00:00+00",
+          "hours": 8.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-10 16:00:00+00",
+          "curr": "2026-03-11 00:00:00+00",
+          "hours": 8.0,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "CORN",
+      "timeframe": "M1",
+      "first_ts": "2026-02-27 07:11:00+00",
+      "last_ts": "2026-04-29 18:13:00+00",
+      "total_bars": 7299,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 7299,
+          "first_ts": "2026-02-27 07:11:00+00",
+          "last_ts": "2026-04-29 18:13:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 60,
+        "weekend": 6,
+        "suspicious_multi_day": 5
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 234.1,
+        "weekend": 323.4,
+        "suspicious_multi_day": 591.2
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-04-02 18:13:00+00",
+          "curr": "2026-04-17 18:13:00+00",
+          "hours": 360.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 17:33:00+00",
+          "curr": "2026-03-09 02:48:00+00",
+          "hours": 105.25,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-11 01:06:00+00",
+          "curr": "2026-03-13 18:13:00+00",
+          "hours": 65.12,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-19 06:31:00+00",
+          "curr": "2026-03-20 18:13:00+00",
+          "hours": 35.7,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-22 00:26:00+00",
+          "curr": "2026-04-23 01:36:00+00",
+          "hours": 25.17,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-23 18:13:00+00",
+          "curr": "2026-04-24 05:38:00+00",
+          "hours": 11.42,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-21 03:00:00+00",
+          "curr": "2026-04-21 13:48:00+00",
+          "hours": 10.8,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-23 18:13:00+00",
+          "curr": "2026-03-24 03:29:00+00",
+          "hours": 9.27,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-02 03:50:00+00",
+          "curr": "2026-03-02 13:03:00+00",
+          "hours": 9.22,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-24 05:39:00+00",
+          "curr": "2026-04-24 14:16:00+00",
+          "hours": 8.62,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "CORN",
+      "timeframe": "M15",
+      "first_ts": "2026-02-27 07:00:00+00",
+      "last_ts": "2026-04-29 18:00:00+00",
+      "total_bars": 1205,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 1205,
+          "first_ts": "2026-02-27 07:00:00+00",
+          "last_ts": "2026-04-29 18:00:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 68,
+        "weekend": 6,
+        "suspicious_multi_day": 5
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 246.2,
+        "weekend": 324.2,
+        "suspicious_multi_day": 591.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-04-02 18:00:00+00",
+          "curr": "2026-04-17 18:00:00+00",
+          "hours": 360.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 17:30:00+00",
+          "curr": "2026-03-09 02:45:00+00",
+          "hours": 105.25,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-11 01:00:00+00",
+          "curr": "2026-03-13 18:00:00+00",
+          "hours": 65.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-19 06:30:00+00",
+          "curr": "2026-03-20 18:00:00+00",
+          "hours": 35.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-22 00:15:00+00",
+          "curr": "2026-04-23 01:30:00+00",
+          "hours": 25.25,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-23 18:00:00+00",
+          "curr": "2026-04-24 05:30:00+00",
+          "hours": 11.5,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-21 03:00:00+00",
+          "curr": "2026-04-21 13:45:00+00",
+          "hours": 10.75,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-02 03:45:00+00",
+          "curr": "2026-03-02 13:00:00+00",
+          "hours": 9.25,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-23 18:00:00+00",
+          "curr": "2026-03-24 03:15:00+00",
+          "hours": 9.25,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-24 05:30:00+00",
+          "curr": "2026-04-24 14:15:00+00",
+          "hours": 8.75,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "CORN",
+      "timeframe": "M30",
+      "first_ts": "2026-02-27 07:00:00+00",
+      "last_ts": "2026-04-29 18:00:00+00",
+      "total_bars": 689,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 689,
+          "first_ts": "2026-02-27 07:00:00+00",
+          "last_ts": "2026-04-29 18:00:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 86,
+        "weekend": 6,
+        "suspicious_multi_day": 5
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 264.5,
+        "weekend": 324.0,
+        "suspicious_multi_day": 591.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-04-02 18:00:00+00",
+          "curr": "2026-04-17 18:00:00+00",
+          "hours": 360.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 17:30:00+00",
+          "curr": "2026-03-09 02:30:00+00",
+          "hours": 105.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-11 01:00:00+00",
+          "curr": "2026-03-13 18:00:00+00",
+          "hours": 65.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-19 06:30:00+00",
+          "curr": "2026-03-20 18:00:00+00",
+          "hours": 35.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-22 00:00:00+00",
+          "curr": "2026-04-23 01:30:00+00",
+          "hours": 25.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-23 18:00:00+00",
+          "curr": "2026-04-24 05:30:00+00",
+          "hours": 11.5,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-21 03:00:00+00",
+          "curr": "2026-04-21 13:30:00+00",
+          "hours": 10.5,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-02 03:30:00+00",
+          "curr": "2026-03-02 13:00:00+00",
+          "hours": 9.5,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-23 18:00:00+00",
+          "curr": "2026-03-24 03:00:00+00",
+          "hours": 9.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-24 05:30:00+00",
+          "curr": "2026-04-24 14:00:00+00",
+          "hours": 8.5,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "CrudeOIL",
+      "timeframe": "D1",
+      "first_ts": "2009-08-04 00:00:00+00",
+      "last_ts": "2026-04-28 00:00:00+00",
+      "total_bars": 4981,
+      "days_stale": 1,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 4981,
+          "first_ts": "2009-08-04 00:00:00+00",
+          "last_ts": "2026-04-28 00:00:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 3987,
+        "holiday_likely": 964,
+        "weekend": 17,
+        "suspicious_multi_day": 12
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 95688.0,
+        "holiday_likely": 43320.0,
+        "weekend": 1392.0,
+        "suspicious_multi_day": 6264.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2025-06-18 00:00:00+00",
+          "curr": "2025-11-25 00:00:00+00",
+          "hours": 3840.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-11-25 00:00:00+00",
+          "curr": "2025-12-29 00:00:00+00",
+          "hours": 816.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-02 00:00:00+00",
+          "curr": "2026-04-19 00:00:00+00",
+          "hours": 408.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-04-09 00:00:00+00",
+          "curr": "2025-04-22 00:00:00+00",
+          "hours": 312.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-02-17 00:00:00+00",
+          "curr": "2026-02-27 00:00:00+00",
+          "hours": 240.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-01-14 00:00:00+00",
+          "curr": "2026-01-22 00:00:00+00",
+          "hours": 192.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 00:00:00+00",
+          "curr": "2026-03-09 00:00:00+00",
+          "hours": 120.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-02-02 00:00:00+00",
+          "curr": "2026-02-06 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-11 00:00:00+00",
+          "curr": "2026-03-15 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-05-14 00:00:00+00",
+          "curr": "2025-05-16 00:00:00+00",
+          "hours": 48.0,
+          "class": "suspicious_multi_day"
+        }
+      ]
+    },
+    {
+      "symbol": "CrudeOIL",
+      "timeframe": "H1",
+      "first_ts": "2009-08-04 17:00:00+00",
+      "last_ts": "2026-04-29 22:00:00+00",
+      "total_bars": 95535,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 95535,
+          "first_ts": "2009-08-04 17:00:00+00",
+          "last_ts": "2026-04-29 22:00:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 87137,
+        "daily_break": 6745,
+        "weekend": 1598,
+        "holiday_likely": 38,
+        "suspicious_multi_day": 16
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 89812.0,
+        "daily_break": 6745.0,
+        "weekend": 41650.0,
+        "holiday_likely": 2086.0,
+        "suspicious_multi_day": 6400.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2025-06-18 20:00:00+00",
+          "curr": "2025-11-25 08:00:00+00",
+          "hours": 3828.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-11-25 09:00:00+00",
+          "curr": "2025-12-29 19:00:00+00",
+          "hours": 826.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-02 20:00:00+00",
+          "curr": "2026-04-19 23:00:00+00",
+          "hours": 411.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-04-09 04:00:00+00",
+          "curr": "2025-04-22 16:00:00+00",
+          "hours": 324.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-02-17 20:00:00+00",
+          "curr": "2026-02-27 07:00:00+00",
+          "hours": 227.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-01-14 19:00:00+00",
+          "curr": "2026-01-22 00:00:00+00",
+          "hours": 173.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-11 01:00:00+00",
+          "curr": "2026-03-15 23:00:00+00",
+          "hours": 118.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 17:00:00+00",
+          "curr": "2026-03-09 02:00:00+00",
+          "hours": 105.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-02-02 13:00:00+00",
+          "curr": "2026-02-06 21:00:00+00",
+          "hours": 104.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-05-14 05:00:00+00",
+          "curr": "2025-05-16 20:00:00+00",
+          "hours": 63.0,
+          "class": "suspicious_multi_day"
+        }
+      ]
+    },
+    {
+      "symbol": "CrudeOIL",
+      "timeframe": "H4",
+      "first_ts": "2009-08-04 16:00:00+00",
+      "last_ts": "2026-04-29 16:00:00+00",
+      "total_bars": 25508,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 25508,
+          "first_ts": "2009-08-04 16:00:00+00",
+          "last_ts": "2026-04-29 16:00:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 24641,
+        "weekend": 812,
+        "holiday_likely": 39,
+        "suspicious_multi_day": 15
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 98716.0,
+        "weekend": 39556.0,
+        "holiday_likely": 2044.0,
+        "suspicious_multi_day": 6372.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2025-06-18 20:00:00+00",
+          "curr": "2025-11-25 08:00:00+00",
+          "hours": 3828.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-11-25 08:00:00+00",
+          "curr": "2025-12-29 16:00:00+00",
+          "hours": 824.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-02 20:00:00+00",
+          "curr": "2026-04-19 20:00:00+00",
+          "hours": 408.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-04-09 04:00:00+00",
+          "curr": "2025-04-22 16:00:00+00",
+          "hours": 324.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-02-17 20:00:00+00",
+          "curr": "2026-02-27 04:00:00+00",
+          "hours": 224.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-01-14 16:00:00+00",
+          "curr": "2026-01-22 00:00:00+00",
+          "hours": 176.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-11 00:00:00+00",
+          "curr": "2026-03-15 20:00:00+00",
+          "hours": 116.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-02-02 12:00:00+00",
+          "curr": "2026-02-06 20:00:00+00",
+          "hours": 104.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 16:00:00+00",
+          "curr": "2026-03-09 00:00:00+00",
+          "hours": 104.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-05-14 04:00:00+00",
+          "curr": "2025-05-16 20:00:00+00",
+          "hours": 64.0,
+          "class": "suspicious_multi_day"
+        }
+      ]
+    },
+    {
+      "symbol": "CrudeOIL",
+      "timeframe": "M1",
+      "first_ts": "2009-08-04 17:21:00+00",
+      "last_ts": "2026-04-29 23:02:00+00",
+      "total_bars": 5729773,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "BC",
+          "bars": 5623033,
+          "first_ts": "2009-08-04 17:21:00+00",
+          "last_ts": "2026-04-28 15:47:00+00"
+        },
+        {
+          "source": "MT4",
+          "bars": 106741,
+          "first_ts": "2024-08-19 05:01:00+00",
+          "last_ts": "2026-04-29 23:03:00+00"
+        }
+      ],
+      "gap_classes": {
+        "weekend": 848,
+        "suspicious_short": 380,
+        "holiday_likely": 40,
+        "daily_break": 2076
+      },
+      "gap_classes_hours": {
+        "weekend": 41856.1,
+        "suspicious_short": 918.6,
+        "holiday_likely": 2219.7,
+        "daily_break": 2122.5
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2025-04-07 14:52:00+00",
+          "curr": "2025-04-08 04:37:00+00",
+          "hours": 13.75,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2010-07-27 23:10:00+00",
+          "curr": "2010-07-28 11:36:00+00",
+          "hours": 12.43,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2025-11-28 02:28:00+00",
+          "curr": "2025-11-28 13:30:00+00",
+          "hours": 11.03,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-29 07:10:00+00",
+          "curr": "2026-04-29 15:49:00+00",
+          "hours": 8.65,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2014-05-26 16:59:00+00",
+          "curr": "2014-05-26 22:00:00+00",
+          "hours": 5.02,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2014-09-01 16:59:00+00",
+          "curr": "2014-09-01 22:00:00+00",
+          "hours": 5.02,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2014-11-27 17:59:00+00",
+          "curr": "2014-11-27 23:00:00+00",
+          "hours": 5.02,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2015-01-19 17:59:00+00",
+          "curr": "2015-01-19 23:00:00+00",
+          "hours": 5.02,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2015-02-16 17:59:00+00",
+          "curr": "2015-02-16 23:00:00+00",
+          "hours": 5.02,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2015-05-25 16:59:00+00",
+          "curr": "2015-05-25 22:00:00+00",
+          "hours": 5.02,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "CrudeOIL",
+      "timeframe": "M15",
+      "first_ts": "2009-08-04 17:15:00+00",
+      "last_ts": "2026-04-29 22:45:00+00",
+      "total_bars": 376836,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 376836,
+          "first_ts": "2009-08-04 17:15:00+00",
+          "last_ts": "2026-04-29 22:45:00+00"
+        }
+      ],
+      "gap_classes": {
+        "daily_break": 3110,
+        "weekend": 814,
+        "suspicious_short": 227,
+        "holiday_likely": 38,
+        "suspicious_multi_day": 16
+      },
+      "gap_classes_hours": {
+        "daily_break": 3589.0,
+        "weekend": 40493.5,
+        "suspicious_short": 930.0,
+        "holiday_likely": 2069.5,
+        "suspicious_multi_day": 6399.5
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2025-06-18 20:45:00+00",
+          "curr": "2025-11-25 08:45:00+00",
+          "hours": 3828.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-11-25 09:00:00+00",
+          "curr": "2025-12-29 19:00:00+00",
+          "hours": 826.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-02 20:45:00+00",
+          "curr": "2026-04-19 23:15:00+00",
+          "hours": 410.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-04-09 04:15:00+00",
+          "curr": "2025-04-22 16:30:00+00",
+          "hours": 324.25,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-02-17 20:30:00+00",
+          "curr": "2026-02-27 07:00:00+00",
+          "hours": 226.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-01-14 19:30:00+00",
+          "curr": "2026-01-22 00:45:00+00",
+          "hours": 173.25,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-11 01:00:00+00",
+          "curr": "2026-03-15 23:30:00+00",
+          "hours": 118.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 17:30:00+00",
+          "curr": "2026-03-09 02:45:00+00",
+          "hours": 105.25,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-02-02 13:45:00+00",
+          "curr": "2026-02-06 21:45:00+00",
+          "hours": 104.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-05-14 05:30:00+00",
+          "curr": "2025-05-16 20:15:00+00",
+          "hours": 62.75,
+          "class": "suspicious_multi_day"
+        }
+      ]
+    },
+    {
+      "symbol": "CrudeOIL",
+      "timeframe": "M30",
+      "first_ts": "2009-08-04 17:00:00+00",
+      "last_ts": "2026-04-29 22:30:00+00",
+      "total_bars": 189328,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 189328,
+          "first_ts": "2009-08-04 17:00:00+00",
+          "last_ts": "2026-04-29 22:30:00+00"
+        }
+      ],
+      "gap_classes": {
+        "daily_break": 1224,
+        "weekend": 814,
+        "suspicious_short": 2160,
+        "holiday_likely": 38,
+        "suspicious_multi_day": 16
+      },
+      "gap_classes_hours": {
+        "daily_break": 1224.0,
+        "weekend": 40615.0,
+        "suspicious_short": 3843.5,
+        "holiday_likely": 2074.0,
+        "suspicious_multi_day": 6399.5
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2025-06-18 20:30:00+00",
+          "curr": "2025-11-25 08:30:00+00",
+          "hours": 3828.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-11-25 09:00:00+00",
+          "curr": "2025-12-29 19:00:00+00",
+          "hours": 826.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-02 20:30:00+00",
+          "curr": "2026-04-19 23:00:00+00",
+          "hours": 410.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-04-09 04:00:00+00",
+          "curr": "2025-04-22 16:30:00+00",
+          "hours": 324.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-02-17 20:30:00+00",
+          "curr": "2026-02-27 07:00:00+00",
+          "hours": 226.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-01-14 19:30:00+00",
+          "curr": "2026-01-22 00:30:00+00",
+          "hours": 173.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-11 01:00:00+00",
+          "curr": "2026-03-15 23:30:00+00",
+          "hours": 118.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 17:30:00+00",
+          "curr": "2026-03-09 02:30:00+00",
+          "hours": 105.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-02-02 13:30:00+00",
+          "curr": "2026-02-06 21:30:00+00",
+          "hours": 104.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-05-14 05:30:00+00",
+          "curr": "2025-05-16 20:00:00+00",
+          "hours": 62.5,
+          "class": "suspicious_multi_day"
+        }
+      ]
+    },
+    {
+      "symbol": "CrudeOIL",
+      "timeframe": "M5",
+      "first_ts": "2018-12-06 04:10:00+00",
+      "last_ts": "2024-12-06 21:59:00+00",
+      "total_bars": 441834,
+      "days_stale": 509,
+      "sources": [
+        {
+          "source": "BC",
+          "bars": 441834,
+          "first_ts": "2018-12-06 04:10:00+00",
+          "last_ts": "2024-12-06 21:59:00+00"
+        }
+      ],
+      "gap_classes": {
+        "daily_break": 1194,
+        "weekend": 304,
+        "holiday_likely": 13,
+        "suspicious_short": 39
+      },
+      "gap_classes_hours": {
+        "daily_break": 1292.8,
+        "weekend": 15039.7,
+        "holiday_likely": 767.8,
+        "suspicious_short": 164.7
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2019-01-21 17:55:00+00",
+          "curr": "2019-01-21 23:00:00+00",
+          "hours": 5.08,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2019-02-18 17:55:00+00",
+          "curr": "2019-02-18 23:00:00+00",
+          "hours": 5.08,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2019-05-27 16:55:00+00",
+          "curr": "2019-05-27 22:00:00+00",
+          "hours": 5.08,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2019-07-04 16:55:00+00",
+          "curr": "2019-07-04 22:00:00+00",
+          "hours": 5.08,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2019-09-02 16:55:00+00",
+          "curr": "2019-09-02 22:00:00+00",
+          "hours": 5.08,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2019-11-28 17:55:00+00",
+          "curr": "2019-11-28 23:00:00+00",
+          "hours": 5.08,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2020-01-20 17:55:00+00",
+          "curr": "2020-01-20 23:00:00+00",
+          "hours": 5.08,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2020-02-17 17:55:00+00",
+          "curr": "2020-02-17 23:00:00+00",
+          "hours": 5.08,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2020-05-25 16:55:00+00",
+          "curr": "2020-05-25 22:00:00+00",
+          "hours": 5.08,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2020-09-07 16:55:00+00",
+          "curr": "2020-09-07 22:00:00+00",
+          "hours": 5.08,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "DXY",
+      "timeframe": "M1",
+      "first_ts": "2008-05-04 17:00:00+00",
+      "last_ts": "2026-04-29 06:58:00+00",
+      "total_bars": 5967180,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "BC",
+          "bars": 5967180,
+          "first_ts": "2008-05-04 17:00:00+00",
+          "last_ts": "2026-04-29 06:58:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 3637,
+        "holiday_likely": 461,
+        "weekend": 473,
+        "suspicious_multi_day": 10,
+        "daily_break": 21
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 8940.1,
+        "holiday_likely": 21557.6,
+        "weekend": 24653.9,
+        "suspicious_multi_day": 2255.9,
+        "daily_break": 20.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-01-26 05:59:00+00",
+          "curr": "2026-03-08 23:00:00+00",
+          "hours": 1001.02,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-08-19 04:59:00+00",
+          "curr": "2025-09-08 05:00:00+00",
+          "hours": 480.02,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-12-17 05:59:00+00",
+          "curr": "2026-01-06 06:00:00+00",
+          "hours": 480.02,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2009-01-08 19:40:00+00",
+          "curr": "2009-01-11 18:49:00+00",
+          "hours": 71.15,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2009-10-08 23:44:00+00",
+          "curr": "2009-10-11 19:29:00+00",
+          "hours": 67.75,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2018-06-17 18:10:00+00",
+          "curr": "2018-06-19 12:18:00+00",
+          "hours": 42.13,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2008-09-08 05:56:00+00",
+          "curr": "2008-09-09 13:41:00+00",
+          "hours": 31.75,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2008-10-02 09:12:00+00",
+          "curr": "2008-10-03 15:12:00+00",
+          "hours": 30.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2024-12-31 23:06:00+00",
+          "curr": "2025-01-02 01:45:00+00",
+          "hours": 26.65,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2008-09-22 19:11:00+00",
+          "curr": "2008-09-23 20:34:00+00",
+          "hours": 25.38,
+          "class": "suspicious_multi_day"
+        }
+      ]
+    },
+    {
+      "symbol": "GASOLINE",
+      "timeframe": "D1",
+      "first_ts": "2026-02-27 00:00:00+00",
+      "last_ts": "2026-04-28 00:00:00+00",
+      "total_bars": 34,
+      "days_stale": 1,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 34,
+          "first_ts": "2026-02-27 00:00:00+00",
+          "last_ts": "2026-04-28 00:00:00+00"
+        }
+      ],
+      "gap_classes": {
+        "holiday_likely": 4,
+        "suspicious_short": 26,
+        "suspicious_multi_day": 3
+      },
+      "gap_classes_hours": {
+        "holiday_likely": 192.0,
+        "suspicious_short": 624.0,
+        "suspicious_multi_day": 624.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-04-02 00:00:00+00",
+          "curr": "2026-04-19 00:00:00+00",
+          "hours": 408.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 00:00:00+00",
+          "curr": "2026-03-09 00:00:00+00",
+          "hours": 120.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-11 00:00:00+00",
+          "curr": "2026-03-15 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-01 00:00:00+00",
+          "curr": "2026-03-02 00:00:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-02 00:00:00+00",
+          "curr": "2026-03-03 00:00:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-03 00:00:00+00",
+          "curr": "2026-03-04 00:00:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-09 00:00:00+00",
+          "curr": "2026-03-10 00:00:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-10 00:00:00+00",
+          "curr": "2026-03-11 00:00:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-15 00:00:00+00",
+          "curr": "2026-03-16 00:00:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-16 00:00:00+00",
+          "curr": "2026-03-17 00:00:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "GASOLINE",
+      "timeframe": "H1",
+      "first_ts": "2026-02-27 07:00:00+00",
+      "last_ts": "2026-04-29 22:00:00+00",
+      "total_bars": 475,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 475,
+          "first_ts": "2026-02-27 07:00:00+00",
+          "last_ts": "2026-04-29 22:00:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 444,
+        "weekend": 7,
+        "daily_break": 18,
+        "suspicious_multi_day": 5
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 560.0,
+        "weekend": 204.0,
+        "daily_break": 18.0,
+        "suspicious_multi_day": 697.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-04-02 20:00:00+00",
+          "curr": "2026-04-19 23:00:00+00",
+          "hours": 411.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-11 01:00:00+00",
+          "curr": "2026-03-15 23:00:00+00",
+          "hours": 118.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 17:00:00+00",
+          "curr": "2026-03-09 02:00:00+00",
+          "hours": 105.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-19 06:00:00+00",
+          "curr": "2026-03-20 20:00:00+00",
+          "hours": 38.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-22 00:00:00+00",
+          "curr": "2026-04-23 01:00:00+00",
+          "hours": 25.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-02 04:00:00+00",
+          "curr": "2026-03-02 13:00:00+00",
+          "hours": 9.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-23 19:00:00+00",
+          "curr": "2026-03-24 04:00:00+00",
+          "hours": 9.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-21 04:00:00+00",
+          "curr": "2026-04-21 13:00:00+00",
+          "hours": 9.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-23 20:00:00+00",
+          "curr": "2026-04-24 05:00:00+00",
+          "hours": 9.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-24 05:00:00+00",
+          "curr": "2026-04-24 14:00:00+00",
+          "hours": 9.0,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "GASOLINE",
+      "timeframe": "H4",
+      "first_ts": "2026-02-27 04:00:00+00",
+      "last_ts": "2026-04-29 16:00:00+00",
+      "total_bars": 148,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 148,
+          "first_ts": "2026-02-27 04:00:00+00",
+          "last_ts": "2026-04-29 16:00:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 139,
+        "weekend": 4,
+        "suspicious_multi_day": 4
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 616.0,
+        "weekend": 192.0,
+        "suspicious_multi_day": 668.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-04-02 20:00:00+00",
+          "curr": "2026-04-19 20:00:00+00",
+          "hours": 408.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-11 00:00:00+00",
+          "curr": "2026-03-15 20:00:00+00",
+          "hours": 116.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 16:00:00+00",
+          "curr": "2026-03-09 00:00:00+00",
+          "hours": 104.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-19 04:00:00+00",
+          "curr": "2026-03-20 20:00:00+00",
+          "hours": 40.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-22 00:00:00+00",
+          "curr": "2026-04-23 00:00:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-23 16:00:00+00",
+          "curr": "2026-03-24 04:00:00+00",
+          "hours": 12.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-02 04:00:00+00",
+          "curr": "2026-03-02 12:00:00+00",
+          "hours": 8.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-16 16:00:00+00",
+          "curr": "2026-03-17 00:00:00+00",
+          "hours": 8.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-30 16:00:00+00",
+          "curr": "2026-03-31 00:00:00+00",
+          "hours": 8.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-20 12:00:00+00",
+          "curr": "2026-04-20 20:00:00+00",
+          "hours": 8.0,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "GASOLINE",
+      "timeframe": "M1",
+      "first_ts": "2026-02-27 07:12:00+00",
+      "last_ts": "2026-04-29 23:01:00+00",
+      "total_bars": 21593,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 21595,
+          "first_ts": "2026-02-27 07:12:00+00",
+          "last_ts": "2026-04-29 23:04:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 36,
+        "weekend": 5,
+        "daily_break": 15,
+        "suspicious_multi_day": 5
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 137.9,
+        "weekend": 199.0,
+        "daily_break": 15.8,
+        "suspicious_multi_day": 697.9
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-04-02 20:58:00+00",
+          "curr": "2026-04-19 23:23:00+00",
+          "hours": 410.42,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-11 01:06:00+00",
+          "curr": "2026-03-15 23:42:00+00",
+          "hours": 118.6,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 17:35:00+00",
+          "curr": "2026-03-09 02:49:00+00",
+          "hours": 105.23,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-19 06:32:00+00",
+          "curr": "2026-03-20 20:58:00+00",
+          "hours": 38.43,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-22 00:26:00+00",
+          "curr": "2026-04-23 01:36:00+00",
+          "hours": 25.17,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-21 04:05:00+00",
+          "curr": "2026-04-21 13:49:00+00",
+          "hours": 9.73,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-02 04:08:00+00",
+          "curr": "2026-03-02 13:08:00+00",
+          "hours": 9.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-23 20:41:00+00",
+          "curr": "2026-04-24 05:39:00+00",
+          "hours": 8.97,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-23 19:23:00+00",
+          "curr": "2026-03-24 04:08:00+00",
+          "hours": 8.75,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-29 07:10:00+00",
+          "curr": "2026-04-29 15:49:00+00",
+          "hours": 8.65,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "GASOLINE",
+      "timeframe": "M15",
+      "first_ts": "2026-02-27 07:00:00+00",
+      "last_ts": "2026-04-29 22:45:00+00",
+      "total_bars": 1633,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 1633,
+          "first_ts": "2026-02-27 07:00:00+00",
+          "last_ts": "2026-04-29 22:45:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 35,
+        "weekend": 5,
+        "daily_break": 15,
+        "suspicious_multi_day": 5
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 137.2,
+        "weekend": 199.8,
+        "daily_break": 18.8,
+        "suspicious_multi_day": 697.8
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-04-02 20:45:00+00",
+          "curr": "2026-04-19 23:15:00+00",
+          "hours": 410.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-11 01:00:00+00",
+          "curr": "2026-03-15 23:30:00+00",
+          "hours": 118.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 17:30:00+00",
+          "curr": "2026-03-09 02:45:00+00",
+          "hours": 105.25,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-19 06:30:00+00",
+          "curr": "2026-03-20 20:45:00+00",
+          "hours": 38.25,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-22 00:15:00+00",
+          "curr": "2026-04-23 01:30:00+00",
+          "hours": 25.25,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-21 04:00:00+00",
+          "curr": "2026-04-21 13:45:00+00",
+          "hours": 9.75,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-02 04:00:00+00",
+          "curr": "2026-03-02 13:00:00+00",
+          "hours": 9.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-23 20:30:00+00",
+          "curr": "2026-04-24 05:30:00+00",
+          "hours": 9.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-23 19:15:00+00",
+          "curr": "2026-03-24 04:00:00+00",
+          "hours": 8.75,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-24 05:30:00+00",
+          "curr": "2026-04-24 14:15:00+00",
+          "hours": 8.75,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "GASOLINE",
+      "timeframe": "M30",
+      "first_ts": "2026-02-27 07:00:00+00",
+      "last_ts": "2026-04-29 22:30:00+00",
+      "total_bars": 887,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 887,
+          "first_ts": "2026-02-27 07:00:00+00",
+          "last_ts": "2026-04-29 22:30:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 68,
+        "weekend": 5,
+        "suspicious_multi_day": 5,
+        "daily_break": 1
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 177.0,
+        "weekend": 200.5,
+        "suspicious_multi_day": 697.5,
+        "daily_break": 1.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-04-02 20:30:00+00",
+          "curr": "2026-04-19 23:00:00+00",
+          "hours": 410.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-11 01:00:00+00",
+          "curr": "2026-03-15 23:30:00+00",
+          "hours": 118.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 17:30:00+00",
+          "curr": "2026-03-09 02:30:00+00",
+          "hours": 105.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-19 06:30:00+00",
+          "curr": "2026-03-20 20:30:00+00",
+          "hours": 38.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-22 00:00:00+00",
+          "curr": "2026-04-23 01:30:00+00",
+          "hours": 25.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-21 04:00:00+00",
+          "curr": "2026-04-21 13:30:00+00",
+          "hours": 9.5,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-02 04:00:00+00",
+          "curr": "2026-03-02 13:00:00+00",
+          "hours": 9.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-23 19:00:00+00",
+          "curr": "2026-03-24 04:00:00+00",
+          "hours": 9.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-23 20:30:00+00",
+          "curr": "2026-04-24 05:30:00+00",
+          "hours": 9.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-24 05:30:00+00",
+          "curr": "2026-04-24 14:00:00+00",
+          "hours": 8.5,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "GBPJPY",
+      "timeframe": "D1",
+      "first_ts": "2019-01-01 00:00:00+00",
+      "last_ts": "2026-04-28 00:00:00+00",
+      "total_bars": 1860,
+      "days_stale": 1,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 1860,
+          "first_ts": "2019-01-01 00:00:00+00",
+          "last_ts": "2026-04-28 00:00:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 1441,
+        "weekend": 364,
+        "suspicious_multi_day": 5,
+        "holiday_likely": 49
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 34584.0,
+        "weekend": 26520.0,
+        "suspicious_multi_day": 1800.0,
+        "holiday_likely": 1272.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2019-04-18 00:00:00+00",
+          "curr": "2019-06-05 00:00:00+00",
+          "hours": 1152.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-07-15 00:00:00+00",
+          "curr": "2020-07-29 00:00:00+00",
+          "hours": 336.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 00:00:00+00",
+          "curr": "2026-03-09 00:00:00+00",
+          "hours": 120.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-12-31 00:00:00+00",
+          "curr": "2021-01-04 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-11 00:00:00+00",
+          "curr": "2026-03-15 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2019-01-01 00:00:00+00",
+          "curr": "2019-01-02 00:00:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2019-01-02 00:00:00+00",
+          "curr": "2019-01-03 00:00:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2019-01-03 00:00:00+00",
+          "curr": "2019-01-04 00:00:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2019-01-07 00:00:00+00",
+          "curr": "2019-01-08 00:00:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2019-01-08 00:00:00+00",
+          "curr": "2019-01-09 00:00:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "GBPJPY",
+      "timeframe": "H1",
+      "first_ts": "2019-01-01 22:00:00+00",
+      "last_ts": "2026-04-29 22:00:00+00",
+      "total_bars": 85782,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "DUKASCOPY",
+          "bars": 42648,
+          "first_ts": "2019-01-01 22:00:00+00",
+          "last_ts": "2026-02-27 21:00:00+00"
+        },
+        {
+          "source": "MT4",
+          "bars": 43134,
+          "first_ts": "2019-01-01 22:00:00+00",
+          "last_ts": "2026-04-29 22:00:00+00"
+        }
+      ],
+      "gap_classes": {
+        "daily_break": 4534,
+        "suspicious_short": 37852,
+        "weekend": 733,
+        "suspicious_multi_day": 7,
+        "holiday_likely": 7
+      },
+      "gap_classes_hours": {
+        "daily_break": 4534.0,
+        "suspicious_short": 37982.0,
+        "weekend": 19731.0,
+        "suspicious_multi_day": 1818.0,
+        "holiday_likely": 135.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2019-04-18 23:00:00+00",
+          "curr": "2019-06-05 00:00:00+00",
+          "hours": 1129.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-07-15 23:00:00+00",
+          "curr": "2020-07-29 15:00:00+00",
+          "hours": 328.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-11 01:00:00+00",
+          "curr": "2026-03-15 23:00:00+00",
+          "hours": 118.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 17:00:00+00",
+          "curr": "2026-03-09 02:00:00+00",
+          "hours": 105.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-12-31 21:00:00+00",
+          "curr": "2021-01-04 00:00:00+00",
+          "hours": 75.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-19 06:00:00+00",
+          "curr": "2026-03-20 20:00:00+00",
+          "hours": 38.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-22 00:00:00+00",
+          "curr": "2026-04-23 01:00:00+00",
+          "hours": 25.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2019-04-18 05:00:00+00",
+          "curr": "2019-04-18 15:00:00+00",
+          "hours": 10.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-02 04:00:00+00",
+          "curr": "2026-03-02 13:00:00+00",
+          "hours": 9.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-23 19:00:00+00",
+          "curr": "2026-03-24 04:00:00+00",
+          "hours": 9.0,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "GBPJPY",
+      "timeframe": "H4",
+      "first_ts": "2019-01-01 20:00:00+00",
+      "last_ts": "2026-04-29 16:00:00+00",
+      "total_bars": 11058,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 11058,
+          "first_ts": "2019-01-01 20:00:00+00",
+          "last_ts": "2026-04-29 16:00:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 10676,
+        "weekend": 368,
+        "suspicious_multi_day": 6,
+        "holiday_likely": 7
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 42772.0,
+        "weekend": 19492.0,
+        "suspicious_multi_day": 1796.0,
+        "holiday_likely": 136.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2019-04-18 20:00:00+00",
+          "curr": "2019-06-05 00:00:00+00",
+          "hours": 1132.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-07-15 20:00:00+00",
+          "curr": "2020-07-29 12:00:00+00",
+          "hours": 328.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-11 00:00:00+00",
+          "curr": "2026-03-15 20:00:00+00",
+          "hours": 116.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 16:00:00+00",
+          "curr": "2026-03-09 00:00:00+00",
+          "hours": 104.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-12-31 20:00:00+00",
+          "curr": "2021-01-04 00:00:00+00",
+          "hours": 76.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-19 04:00:00+00",
+          "curr": "2026-03-20 20:00:00+00",
+          "hours": 40.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-22 00:00:00+00",
+          "curr": "2026-04-23 00:00:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-23 16:00:00+00",
+          "curr": "2026-03-24 04:00:00+00",
+          "hours": 12.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2019-04-18 04:00:00+00",
+          "curr": "2019-04-18 12:00:00+00",
+          "hours": 8.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2020-07-29 16:00:00+00",
+          "curr": "2020-07-30 00:00:00+00",
+          "hours": 8.0,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "GBPJPY",
+      "timeframe": "M1",
+      "first_ts": "2019-01-01 22:06:00+00",
+      "last_ts": "2026-04-29 23:02:00+00",
+      "total_bars": 2573387,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "DUKASCOPY",
+          "bars": 2550733,
+          "first_ts": "2019-01-01 22:06:00+00",
+          "last_ts": "2026-02-27 21:59:00+00"
+        },
+        {
+          "source": "MT4",
+          "bars": 22655,
+          "first_ts": "2026-02-27 07:12:00+00",
+          "last_ts": "2026-04-29 23:03:00+00"
+        }
+      ],
+      "gap_classes": {
+        "weekend": 368,
+        "suspicious_short": 46,
+        "suspicious_multi_day": 7,
+        "daily_break": 8,
+        "holiday_likely": 7
+      },
+      "gap_classes_hours": {
+        "weekend": 19009.0,
+        "suspicious_short": 166.1,
+        "suspicious_multi_day": 1816.5,
+        "daily_break": 8.0,
+        "holiday_likely": 128.9
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2019-04-18 23:59:00+00",
+          "curr": "2019-06-05 00:00:00+00",
+          "hours": 1128.02,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-07-15 23:59:00+00",
+          "curr": "2020-07-29 15:00:00+00",
+          "hours": 327.02,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-11 01:06:00+00",
+          "curr": "2026-03-15 23:42:00+00",
+          "hours": 118.6,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 17:35:00+00",
+          "curr": "2026-03-09 02:49:00+00",
+          "hours": 105.23,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-12-31 21:59:00+00",
+          "curr": "2021-01-04 00:00:00+00",
+          "hours": 74.02,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-19 06:32:00+00",
+          "curr": "2026-03-20 20:58:00+00",
+          "hours": 38.43,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-22 00:26:00+00",
+          "curr": "2026-04-23 01:36:00+00",
+          "hours": 25.17,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-21 04:05:00+00",
+          "curr": "2026-04-21 13:49:00+00",
+          "hours": 9.73,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2019-04-18 05:59:00+00",
+          "curr": "2019-04-18 15:00:00+00",
+          "hours": 9.02,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-02 04:08:00+00",
+          "curr": "2026-03-02 13:07:00+00",
+          "hours": 8.98,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "GBPJPY",
+      "timeframe": "M15",
+      "first_ts": "2019-01-01 22:00:00+00",
+      "last_ts": "2026-04-29 22:45:00+00",
+      "total_bars": 172231,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 172231,
+          "first_ts": "2019-01-01 22:00:00+00",
+          "last_ts": "2026-04-29 22:45:00+00"
+        }
+      ],
+      "gap_classes": {
+        "weekend": 368,
+        "suspicious_short": 43,
+        "suspicious_multi_day": 7,
+        "daily_break": 8,
+        "holiday_likely": 7
+      },
+      "gap_classes_hours": {
+        "weekend": 19093.2,
+        "suspicious_short": 165.0,
+        "suspicious_multi_day": 1817.0,
+        "daily_break": 9.2,
+        "holiday_likely": 129.8
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2019-04-18 23:45:00+00",
+          "curr": "2019-06-05 00:00:00+00",
+          "hours": 1128.25,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-07-15 23:45:00+00",
+          "curr": "2020-07-29 15:00:00+00",
+          "hours": 327.25,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-11 01:00:00+00",
+          "curr": "2026-03-15 23:30:00+00",
+          "hours": 118.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 17:30:00+00",
+          "curr": "2026-03-09 02:45:00+00",
+          "hours": 105.25,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-12-31 21:45:00+00",
+          "curr": "2021-01-04 00:00:00+00",
+          "hours": 74.25,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-19 06:30:00+00",
+          "curr": "2026-03-20 20:45:00+00",
+          "hours": 38.25,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-22 00:15:00+00",
+          "curr": "2026-04-23 01:30:00+00",
+          "hours": 25.25,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-21 04:00:00+00",
+          "curr": "2026-04-21 13:45:00+00",
+          "hours": 9.75,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2019-04-18 05:45:00+00",
+          "curr": "2019-04-18 15:00:00+00",
+          "hours": 9.25,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-02 04:00:00+00",
+          "curr": "2026-03-02 13:00:00+00",
+          "hours": 9.0,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "GBPJPY",
+      "timeframe": "M30",
+      "first_ts": "2019-01-01 22:00:00+00",
+      "last_ts": "2026-04-29 22:30:00+00",
+      "total_bars": 86194,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 86194,
+          "first_ts": "2019-01-01 22:00:00+00",
+          "last_ts": "2026-04-29 22:30:00+00"
+        }
+      ],
+      "gap_classes": {
+        "weekend": 368,
+        "suspicious_short": 66,
+        "suspicious_multi_day": 7,
+        "daily_break": 9,
+        "holiday_likely": 7
+      },
+      "gap_classes_hours": {
+        "weekend": 19184.0,
+        "suspicious_short": 190.5,
+        "suspicious_multi_day": 1817.5,
+        "daily_break": 9.0,
+        "holiday_likely": 131.5
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2019-04-18 23:30:00+00",
+          "curr": "2019-06-05 00:00:00+00",
+          "hours": 1128.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-07-15 23:30:00+00",
+          "curr": "2020-07-29 15:00:00+00",
+          "hours": 327.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-11 01:00:00+00",
+          "curr": "2026-03-15 23:30:00+00",
+          "hours": 118.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 17:30:00+00",
+          "curr": "2026-03-09 02:30:00+00",
+          "hours": 105.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-12-31 21:30:00+00",
+          "curr": "2021-01-04 00:00:00+00",
+          "hours": 74.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-19 06:30:00+00",
+          "curr": "2026-03-20 20:30:00+00",
+          "hours": 38.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-22 00:00:00+00",
+          "curr": "2026-04-23 01:30:00+00",
+          "hours": 25.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2019-04-18 05:30:00+00",
+          "curr": "2019-04-18 15:00:00+00",
+          "hours": 9.5,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-21 04:00:00+00",
+          "curr": "2026-04-21 13:30:00+00",
+          "hours": 9.5,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-02 04:00:00+00",
+          "curr": "2026-03-02 13:00:00+00",
+          "hours": 9.0,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "MSFT",
+      "timeframe": "D1",
+      "first_ts": "1986-03-13 00:00:00+00",
+      "last_ts": "2026-04-29 04:00:00+00",
+      "total_bars": 10140,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "CSV",
+          "bars": 10110,
+          "first_ts": "1986-03-13 00:00:00+00",
+          "last_ts": "2026-04-29 04:00:00+00"
+        },
+        {
+          "source": "MT4",
+          "bars": 30,
+          "first_ts": "2026-02-26 00:00:00+00",
+          "last_ts": "2026-04-28 00:00:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 7937,
+        "weekend": 2022,
+        "suspicious_multi_day": 143,
+        "holiday_likely": 37
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 189797.0,
+        "weekend": 150090.0,
+        "suspicious_multi_day": 10373.0,
+        "holiday_likely": 1512.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2001-09-10 00:00:00+00",
+          "curr": "2001-09-17 00:00:00+00",
+          "hours": 168.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "1986-03-27 00:00:00+00",
+          "curr": "1986-03-31 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "1986-07-03 00:00:00+00",
+          "curr": "1986-07-07 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "1987-04-16 00:00:00+00",
+          "curr": "1987-04-20 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "1987-07-02 00:00:00+00",
+          "curr": "1987-07-06 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "1987-12-24 00:00:00+00",
+          "curr": "1987-12-28 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "1987-12-31 00:00:00+00",
+          "curr": "1988-01-04 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "1988-03-31 00:00:00+00",
+          "curr": "1988-04-04 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "1989-03-23 00:00:00+00",
+          "curr": "1989-03-27 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "1990-04-12 00:00:00+00",
+          "curr": "1990-04-16 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        }
+      ]
+    },
+    {
+      "symbol": "MSFT",
+      "timeframe": "H1",
+      "first_ts": "2023-03-15 09:30:00+00",
+      "last_ts": "2026-04-29 19:00:00+00",
+      "total_bars": 5303,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "CSV",
+          "bars": 5074,
+          "first_ts": "2023-03-15 09:30:00+00",
+          "last_ts": "2026-02-10 11:30:00+00"
+        },
+        {
+          "source": "MT4",
+          "bars": 229,
+          "first_ts": "2026-02-26 20:00:00+00",
+          "last_ts": "2026-04-29 19:00:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 5122,
+        "weekend": 156,
+        "suspicious_multi_day": 17,
+        "holiday_likely": 7
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 14955.0,
+        "weekend": 10557.0,
+        "suspicious_multi_day": 1627.5,
+        "holiday_likely": 254.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-02-10 11:30:00+00",
+          "curr": "2026-02-26 20:00:00+00",
+          "hours": 392.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-02 19:00:00+00",
+          "curr": "2026-04-17 19:00:00+00",
+          "hours": 360.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-07-03 11:30:00+00",
+          "curr": "2025-07-07 09:30:00+00",
+          "hours": 94.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2023-04-06 15:30:00+00",
+          "curr": "2023-04-10 09:30:00+00",
+          "hours": 90.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2024-03-28 15:30:00+00",
+          "curr": "2024-04-01 09:30:00+00",
+          "hours": 90.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-04-17 15:30:00+00",
+          "curr": "2025-04-21 09:30:00+00",
+          "hours": 90.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-10 19:00:00+00",
+          "curr": "2026-03-13 19:00:00+00",
+          "hours": 72.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 17:00:00+00",
+          "curr": "2026-03-06 20:00:00+00",
+          "hours": 51.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-18 19:00:00+00",
+          "curr": "2026-03-20 19:00:00+00",
+          "hours": 48.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2023-07-03 11:30:00+00",
+          "curr": "2023-07-05 09:30:00+00",
+          "hours": 46.0,
+          "class": "suspicious_multi_day"
+        }
+      ]
+    },
+    {
+      "symbol": "MSFT",
+      "timeframe": "H4",
+      "first_ts": "2026-02-26 20:00:00+00",
+      "last_ts": "2026-04-29 16:00:00+00",
+      "total_bars": 77,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 77,
+          "first_ts": "2026-02-26 20:00:00+00",
+          "last_ts": "2026-04-29 16:00:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 65,
+        "weekend": 7,
+        "suspicious_multi_day": 4
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 504.0,
+        "weekend": 448.0,
+        "suspicious_multi_day": 532.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-04-02 16:00:00+00",
+          "curr": "2026-04-17 16:00:00+00",
+          "hours": 360.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-10 16:00:00+00",
+          "curr": "2026-03-13 16:00:00+00",
+          "hours": 72.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 16:00:00+00",
+          "curr": "2026-03-06 20:00:00+00",
+          "hours": 52.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-18 16:00:00+00",
+          "curr": "2026-03-20 16:00:00+00",
+          "hours": 48.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-21 16:00:00+00",
+          "curr": "2026-04-22 16:00:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-09 16:00:00+00",
+          "curr": "2026-03-10 12:00:00+00",
+          "hours": 20.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-17 16:00:00+00",
+          "curr": "2026-03-18 12:00:00+00",
+          "hours": 20.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-20 16:00:00+00",
+          "curr": "2026-04-21 12:00:00+00",
+          "hours": 20.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-23 16:00:00+00",
+          "curr": "2026-04-24 12:00:00+00",
+          "hours": 20.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-28 16:00:00+00",
+          "curr": "2026-04-29 12:00:00+00",
+          "hours": 20.0,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "MSFT",
+      "timeframe": "M1",
+      "first_ts": "2026-02-26 20:58:00+00",
+      "last_ts": "2026-04-29 19:58:00+00",
+      "total_bars": 9380,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 9380,
+          "first_ts": "2026-02-26 20:58:00+00",
+          "last_ts": "2026-04-29 19:58:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 37,
+        "weekend": 8,
+        "suspicious_multi_day": 4
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 323.8,
+        "weekend": 435.0,
+        "suspicious_multi_day": 531.4
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-04-02 19:58:00+00",
+          "curr": "2026-04-17 19:58:00+00",
+          "hours": 360.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-10 19:58:00+00",
+          "curr": "2026-03-13 19:58:00+00",
+          "hours": 72.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 17:35:00+00",
+          "curr": "2026-03-06 20:58:00+00",
+          "hours": 51.38,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-18 19:58:00+00",
+          "curr": "2026-03-20 19:58:00+00",
+          "hours": 48.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-21 19:58:00+00",
+          "curr": "2026-04-22 19:58:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-28 19:58:00+00",
+          "curr": "2026-04-29 15:49:00+00",
+          "hours": 19.85,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-09 19:58:00+00",
+          "curr": "2026-03-10 15:40:00+00",
+          "hours": 19.7,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-17 19:58:00+00",
+          "curr": "2026-03-18 15:05:00+00",
+          "hours": 19.12,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-23 19:58:00+00",
+          "curr": "2026-04-24 14:17:00+00",
+          "hours": 18.32,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-20 19:58:00+00",
+          "curr": "2026-04-21 13:49:00+00",
+          "hours": 17.85,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "MSFT",
+      "timeframe": "M15",
+      "first_ts": "2026-02-26 20:45:00+00",
+      "last_ts": "2026-04-29 19:45:00+00",
+      "total_bars": 756,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 756,
+          "first_ts": "2026-02-26 20:45:00+00",
+          "last_ts": "2026-04-29 19:45:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 31,
+        "weekend": 8,
+        "suspicious_multi_day": 5
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 286.0,
+        "weekend": 436.0,
+        "suspicious_multi_day": 568.5
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-04-02 19:45:00+00",
+          "curr": "2026-04-17 19:45:00+00",
+          "hours": 360.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-10 19:45:00+00",
+          "curr": "2026-03-13 19:45:00+00",
+          "hours": 72.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 17:30:00+00",
+          "curr": "2026-03-06 20:45:00+00",
+          "hours": 51.25,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-18 19:45:00+00",
+          "curr": "2026-03-20 19:45:00+00",
+          "hours": 48.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-21 19:45:00+00",
+          "curr": "2026-04-23 09:00:00+00",
+          "hours": 37.25,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-28 19:45:00+00",
+          "curr": "2026-04-29 15:45:00+00",
+          "hours": 20.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-09 19:45:00+00",
+          "curr": "2026-03-10 15:30:00+00",
+          "hours": 19.75,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-17 19:45:00+00",
+          "curr": "2026-03-18 15:00:00+00",
+          "hours": 19.25,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-23 19:45:00+00",
+          "curr": "2026-04-24 14:15:00+00",
+          "hours": 18.5,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-20 19:45:00+00",
+          "curr": "2026-04-21 13:45:00+00",
+          "hours": 18.0,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "MSFT",
+      "timeframe": "M30",
+      "first_ts": "2025-11-13 09:30:00+00",
+      "last_ts": "2026-04-29 19:30:00+00",
+      "total_bars": 1176,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "CSV",
+          "bars": 760,
+          "first_ts": "2025-11-13 09:30:00+00",
+          "last_ts": "2026-02-10 11:30:00+00"
+        },
+        {
+          "source": "MT4",
+          "bars": 416,
+          "first_ts": "2026-02-26 20:30:00+00",
+          "last_ts": "2026-04-29 19:30:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 86,
+        "weekend": 21,
+        "holiday_likely": 3,
+        "suspicious_multi_day": 7
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 1058.0,
+        "weekend": 1322.5,
+        "holiday_likely": 105.0,
+        "suspicious_multi_day": 1003.5
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-02-10 11:30:00+00",
+          "curr": "2026-02-26 20:30:00+00",
+          "hours": 393.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-02 19:30:00+00",
+          "curr": "2026-04-17 19:30:00+00",
+          "hours": 360.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-10 19:30:00+00",
+          "curr": "2026-03-13 19:30:00+00",
+          "hours": 72.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 17:30:00+00",
+          "curr": "2026-03-06 20:30:00+00",
+          "hours": 51.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-18 19:30:00+00",
+          "curr": "2026-03-20 19:30:00+00",
+          "hours": 48.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-12-31 15:30:00+00",
+          "curr": "2026-01-02 09:30:00+00",
+          "hours": 42.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-21 19:30:00+00",
+          "curr": "2026-04-23 09:00:00+00",
+          "hours": 37.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-09 19:30:00+00",
+          "curr": "2026-03-10 15:30:00+00",
+          "hours": 20.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-28 19:30:00+00",
+          "curr": "2026-04-29 15:30:00+00",
+          "hours": 20.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-17 19:30:00+00",
+          "curr": "2026-03-18 15:00:00+00",
+          "hours": 19.5,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "MSFT",
+      "timeframe": "M5",
+      "first_ts": "2025-11-13 09:30:00+00",
+      "last_ts": "2026-02-10 11:35:00+00",
+      "total_bars": 4555,
+      "days_stale": 78,
+      "sources": [
+        {
+          "source": "CSV",
+          "bars": 4555,
+          "first_ts": "2025-11-13 09:30:00+00",
+          "last_ts": "2026-02-10 11:35:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 42,
+        "weekend": 13,
+        "holiday_likely": 3,
+        "suspicious_multi_day": 1
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 738.5,
+        "weekend": 879.6,
+        "holiday_likely": 103.8,
+        "suspicious_multi_day": 41.6
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2025-12-31 15:55:00+00",
+          "curr": "2026-01-02 09:30:00+00",
+          "hours": 41.58,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-11-13 15:55:00+00",
+          "curr": "2025-11-14 09:30:00+00",
+          "hours": 17.58,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2025-11-17 15:55:00+00",
+          "curr": "2025-11-18 09:30:00+00",
+          "hours": 17.58,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2025-11-18 15:55:00+00",
+          "curr": "2025-11-19 09:30:00+00",
+          "hours": 17.58,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2025-11-19 15:55:00+00",
+          "curr": "2025-11-20 09:30:00+00",
+          "hours": 17.58,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2025-11-20 15:55:00+00",
+          "curr": "2025-11-21 09:30:00+00",
+          "hours": 17.58,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2025-11-24 15:55:00+00",
+          "curr": "2025-11-25 09:30:00+00",
+          "hours": 17.58,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2025-11-25 15:55:00+00",
+          "curr": "2025-11-26 09:30:00+00",
+          "hours": 17.58,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2025-12-01 15:55:00+00",
+          "curr": "2025-12-02 09:30:00+00",
+          "hours": 17.58,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2025-12-02 15:55:00+00",
+          "curr": "2025-12-03 09:30:00+00",
+          "hours": 17.58,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "TSLA",
+      "timeframe": "D1",
+      "first_ts": "2010-06-29 00:00:00+00",
+      "last_ts": "2026-04-28 00:00:00+00",
+      "total_bars": 3994,
+      "days_stale": 1,
+      "sources": [
+        {
+          "source": "CSV",
+          "bars": 3964,
+          "first_ts": "2010-06-29 00:00:00+00",
+          "last_ts": "2026-04-01 04:00:00+00"
+        },
+        {
+          "source": "MT4",
+          "bars": 30,
+          "first_ts": "2026-02-26 00:00:00+00",
+          "last_ts": "2026-04-28 00:00:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 3117,
+        "weekend": 799,
+        "holiday_likely": 32,
+        "suspicious_multi_day": 45
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 74321.0,
+        "weekend": 59474.0,
+        "holiday_likely": 1320.0,
+        "suspicious_multi_day": 3653.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-04-02 00:00:00+00",
+          "curr": "2026-04-17 00:00:00+00",
+          "hours": 360.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2010-12-23 00:00:00+00",
+          "curr": "2010-12-27 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2011-04-21 00:00:00+00",
+          "curr": "2011-04-25 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2012-04-05 00:00:00+00",
+          "curr": "2012-04-09 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2013-03-28 00:00:00+00",
+          "curr": "2013-04-01 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2014-04-17 00:00:00+00",
+          "curr": "2014-04-21 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2014-07-03 00:00:00+00",
+          "curr": "2014-07-07 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2015-04-02 00:00:00+00",
+          "curr": "2015-04-06 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2015-07-02 00:00:00+00",
+          "curr": "2015-07-06 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2015-12-24 00:00:00+00",
+          "curr": "2015-12-28 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        }
+      ]
+    },
+    {
+      "symbol": "TSLA",
+      "timeframe": "H1",
+      "first_ts": "2023-03-15 09:30:00+00",
+      "last_ts": "2026-04-29 19:00:00+00",
+      "total_bars": 5300,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "CSV",
+          "bars": 5074,
+          "first_ts": "2023-03-15 09:30:00+00",
+          "last_ts": "2026-02-10 11:30:00+00"
+        },
+        {
+          "source": "MT4",
+          "bars": 226,
+          "first_ts": "2026-02-26 20:00:00+00",
+          "last_ts": "2026-04-29 19:00:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 5119,
+        "weekend": 156,
+        "suspicious_multi_day": 17,
+        "holiday_likely": 7
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 14955.0,
+        "weekend": 10557.0,
+        "suspicious_multi_day": 1627.5,
+        "holiday_likely": 254.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-02-10 11:30:00+00",
+          "curr": "2026-02-26 20:00:00+00",
+          "hours": 392.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-02 19:00:00+00",
+          "curr": "2026-04-17 19:00:00+00",
+          "hours": 360.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-07-03 11:30:00+00",
+          "curr": "2025-07-07 09:30:00+00",
+          "hours": 94.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2023-04-06 15:30:00+00",
+          "curr": "2023-04-10 09:30:00+00",
+          "hours": 90.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2024-03-28 15:30:00+00",
+          "curr": "2024-04-01 09:30:00+00",
+          "hours": 90.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-04-17 15:30:00+00",
+          "curr": "2025-04-21 09:30:00+00",
+          "hours": 90.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-10 19:00:00+00",
+          "curr": "2026-03-13 19:00:00+00",
+          "hours": 72.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 17:00:00+00",
+          "curr": "2026-03-06 20:00:00+00",
+          "hours": 51.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-18 19:00:00+00",
+          "curr": "2026-03-20 19:00:00+00",
+          "hours": 48.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2023-07-03 11:30:00+00",
+          "curr": "2023-07-05 09:30:00+00",
+          "hours": 46.0,
+          "class": "suspicious_multi_day"
+        }
+      ]
+    },
+    {
+      "symbol": "TSLA",
+      "timeframe": "H4",
+      "first_ts": "2026-02-26 20:00:00+00",
+      "last_ts": "2026-04-29 16:00:00+00",
+      "total_bars": 77,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 77,
+          "first_ts": "2026-02-26 20:00:00+00",
+          "last_ts": "2026-04-29 16:00:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 65,
+        "weekend": 7,
+        "suspicious_multi_day": 4
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 504.0,
+        "weekend": 448.0,
+        "suspicious_multi_day": 532.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-04-02 16:00:00+00",
+          "curr": "2026-04-17 16:00:00+00",
+          "hours": 360.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-10 16:00:00+00",
+          "curr": "2026-03-13 16:00:00+00",
+          "hours": 72.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 16:00:00+00",
+          "curr": "2026-03-06 20:00:00+00",
+          "hours": 52.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-18 16:00:00+00",
+          "curr": "2026-03-20 16:00:00+00",
+          "hours": 48.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-21 16:00:00+00",
+          "curr": "2026-04-22 16:00:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-09 16:00:00+00",
+          "curr": "2026-03-10 12:00:00+00",
+          "hours": 20.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-17 16:00:00+00",
+          "curr": "2026-03-18 12:00:00+00",
+          "hours": 20.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-20 16:00:00+00",
+          "curr": "2026-04-21 12:00:00+00",
+          "hours": 20.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-23 16:00:00+00",
+          "curr": "2026-04-24 12:00:00+00",
+          "hours": 20.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-28 16:00:00+00",
+          "curr": "2026-04-29 12:00:00+00",
+          "hours": 20.0,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "TSLA",
+      "timeframe": "M1",
+      "first_ts": "2026-02-26 20:58:00+00",
+      "last_ts": "2026-04-29 19:58:00+00",
+      "total_bars": 9723,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 9723,
+          "first_ts": "2026-02-26 20:58:00+00",
+          "last_ts": "2026-04-29 19:58:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 36,
+        "weekend": 8,
+        "suspicious_multi_day": 4
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 323.8,
+        "weekend": 435.0,
+        "suspicious_multi_day": 531.4
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-04-02 19:58:00+00",
+          "curr": "2026-04-17 19:58:00+00",
+          "hours": 360.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-10 19:58:00+00",
+          "curr": "2026-03-13 19:58:00+00",
+          "hours": 72.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 17:35:00+00",
+          "curr": "2026-03-06 20:58:00+00",
+          "hours": 51.38,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-18 19:58:00+00",
+          "curr": "2026-03-20 19:58:00+00",
+          "hours": 48.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-21 19:58:00+00",
+          "curr": "2026-04-22 19:58:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-28 19:58:00+00",
+          "curr": "2026-04-29 15:49:00+00",
+          "hours": 19.85,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-09 19:58:00+00",
+          "curr": "2026-03-10 15:41:00+00",
+          "hours": 19.72,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-17 19:58:00+00",
+          "curr": "2026-03-18 15:05:00+00",
+          "hours": 19.12,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-23 19:58:00+00",
+          "curr": "2026-04-24 14:17:00+00",
+          "hours": 18.32,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-20 19:58:00+00",
+          "curr": "2026-04-21 13:49:00+00",
+          "hours": 17.85,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "TSLA",
+      "timeframe": "M15",
+      "first_ts": "2026-02-26 20:45:00+00",
+      "last_ts": "2026-04-29 19:45:00+00",
+      "total_bars": 753,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 753,
+          "first_ts": "2026-02-26 20:45:00+00",
+          "last_ts": "2026-04-29 19:45:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 30,
+        "weekend": 8,
+        "suspicious_multi_day": 5
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 286.2,
+        "weekend": 436.0,
+        "suspicious_multi_day": 568.5
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-04-02 19:45:00+00",
+          "curr": "2026-04-17 19:45:00+00",
+          "hours": 360.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-10 19:45:00+00",
+          "curr": "2026-03-13 19:45:00+00",
+          "hours": 72.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 17:30:00+00",
+          "curr": "2026-03-06 20:45:00+00",
+          "hours": 51.25,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-18 19:45:00+00",
+          "curr": "2026-03-20 19:45:00+00",
+          "hours": 48.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-21 19:45:00+00",
+          "curr": "2026-04-23 09:00:00+00",
+          "hours": 37.25,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-28 19:45:00+00",
+          "curr": "2026-04-29 15:45:00+00",
+          "hours": 20.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-09 19:45:00+00",
+          "curr": "2026-03-10 15:30:00+00",
+          "hours": 19.75,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-17 19:45:00+00",
+          "curr": "2026-03-18 15:00:00+00",
+          "hours": 19.25,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-23 19:45:00+00",
+          "curr": "2026-04-24 14:15:00+00",
+          "hours": 18.5,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-20 19:45:00+00",
+          "curr": "2026-04-21 13:45:00+00",
+          "hours": 18.0,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "TSLA",
+      "timeframe": "M30",
+      "first_ts": "2025-11-13 09:30:00+00",
+      "last_ts": "2026-04-29 19:30:00+00",
+      "total_bars": 1173,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "CSV",
+          "bars": 760,
+          "first_ts": "2025-11-13 09:30:00+00",
+          "last_ts": "2026-02-10 11:30:00+00"
+        },
+        {
+          "source": "MT4",
+          "bars": 413,
+          "first_ts": "2026-02-26 20:30:00+00",
+          "last_ts": "2026-04-29 19:30:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 86,
+        "weekend": 21,
+        "holiday_likely": 3,
+        "suspicious_multi_day": 7
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 1059.5,
+        "weekend": 1322.5,
+        "holiday_likely": 105.0,
+        "suspicious_multi_day": 1003.5
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-02-10 11:30:00+00",
+          "curr": "2026-02-26 20:30:00+00",
+          "hours": 393.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-02 19:30:00+00",
+          "curr": "2026-04-17 19:30:00+00",
+          "hours": 360.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-10 19:30:00+00",
+          "curr": "2026-03-13 19:30:00+00",
+          "hours": 72.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 17:30:00+00",
+          "curr": "2026-03-06 20:30:00+00",
+          "hours": 51.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-18 19:30:00+00",
+          "curr": "2026-03-20 19:30:00+00",
+          "hours": 48.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-12-31 15:30:00+00",
+          "curr": "2026-01-02 09:30:00+00",
+          "hours": 42.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-21 19:30:00+00",
+          "curr": "2026-04-23 09:00:00+00",
+          "hours": 37.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-09 19:30:00+00",
+          "curr": "2026-03-10 15:30:00+00",
+          "hours": 20.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-28 19:30:00+00",
+          "curr": "2026-04-29 15:30:00+00",
+          "hours": 20.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-17 19:30:00+00",
+          "curr": "2026-03-18 15:00:00+00",
+          "hours": 19.5,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "TSLA",
+      "timeframe": "M5",
+      "first_ts": "2025-11-13 09:30:00+00",
+      "last_ts": "2026-02-10 11:40:00+00",
+      "total_bars": 4557,
+      "days_stale": 78,
+      "sources": [
+        {
+          "source": "CSV",
+          "bars": 4557,
+          "first_ts": "2025-11-13 09:30:00+00",
+          "last_ts": "2026-02-10 11:40:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 42,
+        "weekend": 13,
+        "holiday_likely": 3,
+        "suspicious_multi_day": 1
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 738.5,
+        "weekend": 879.6,
+        "holiday_likely": 103.8,
+        "suspicious_multi_day": 41.6
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2025-12-31 15:55:00+00",
+          "curr": "2026-01-02 09:30:00+00",
+          "hours": 41.58,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-11-13 15:55:00+00",
+          "curr": "2025-11-14 09:30:00+00",
+          "hours": 17.58,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2025-11-17 15:55:00+00",
+          "curr": "2025-11-18 09:30:00+00",
+          "hours": 17.58,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2025-11-18 15:55:00+00",
+          "curr": "2025-11-19 09:30:00+00",
+          "hours": 17.58,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2025-11-19 15:55:00+00",
+          "curr": "2025-11-20 09:30:00+00",
+          "hours": 17.58,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2025-11-20 15:55:00+00",
+          "curr": "2025-11-21 09:30:00+00",
+          "hours": 17.58,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2025-11-24 15:55:00+00",
+          "curr": "2025-11-25 09:30:00+00",
+          "hours": 17.58,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2025-11-25 15:55:00+00",
+          "curr": "2025-11-26 09:30:00+00",
+          "hours": 17.58,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2025-12-01 15:55:00+00",
+          "curr": "2025-12-02 09:30:00+00",
+          "hours": 17.58,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2025-12-02 15:55:00+00",
+          "curr": "2025-12-03 09:30:00+00",
+          "hours": 17.58,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "USA500",
+      "timeframe": "D1",
+      "first_ts": "2024-01-01 00:00:00+00",
+      "last_ts": "2026-04-28 00:00:00+00",
+      "total_bars": 597,
+      "days_stale": 1,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 597,
+          "first_ts": "2024-01-01 00:00:00+00",
+          "last_ts": "2026-04-28 00:00:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 460,
+        "weekend": 111,
+        "suspicious_multi_day": 4,
+        "holiday_likely": 21
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 11040.0,
+        "weekend": 8304.0,
+        "suspicious_multi_day": 408.0,
+        "holiday_likely": 600.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-03-04 00:00:00+00",
+          "curr": "2026-03-09 00:00:00+00",
+          "hours": 120.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2024-03-28 00:00:00+00",
+          "curr": "2024-04-01 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-04-17 00:00:00+00",
+          "curr": "2025-04-21 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-11 00:00:00+00",
+          "curr": "2026-03-15 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2024-01-01 00:00:00+00",
+          "curr": "2024-01-02 00:00:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2024-01-02 00:00:00+00",
+          "curr": "2024-01-03 00:00:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2024-01-03 00:00:00+00",
+          "curr": "2024-01-04 00:00:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2024-01-04 00:00:00+00",
+          "curr": "2024-01-05 00:00:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2024-01-08 00:00:00+00",
+          "curr": "2024-01-09 00:00:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2024-01-09 00:00:00+00",
+          "curr": "2024-01-10 00:00:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "USA500",
+      "timeframe": "H1",
+      "first_ts": "2024-01-01 23:00:00+00",
+      "last_ts": "2026-04-29 22:00:00+00",
+      "total_bars": 25582,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "DUKASCOPY",
+          "bars": 12557,
+          "first_ts": "2024-01-01 23:00:00+00",
+          "last_ts": "2026-02-27 21:00:00+00"
+        },
+        {
+          "source": "MT4",
+          "bars": 13025,
+          "first_ts": "2024-01-01 23:00:00+00",
+          "last_ts": "2026-04-29 22:00:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 12294,
+        "daily_break": 495,
+        "weekend": 225,
+        "suspicious_multi_day": 6,
+        "holiday_likely": 4
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 12941.0,
+        "daily_break": 495.0,
+        "weekend": 6391.0,
+        "suspicious_multi_day": 438.0,
+        "holiday_likely": 110.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-03-11 01:00:00+00",
+          "curr": "2026-03-15 23:00:00+00",
+          "hours": 118.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 17:00:00+00",
+          "curr": "2026-03-09 02:00:00+00",
+          "hours": 105.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2024-03-28 20:00:00+00",
+          "curr": "2024-04-01 00:00:00+00",
+          "hours": 76.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-04-17 20:00:00+00",
+          "curr": "2025-04-21 00:00:00+00",
+          "hours": 76.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-19 06:00:00+00",
+          "curr": "2026-03-20 20:00:00+00",
+          "hours": 38.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-22 00:00:00+00",
+          "curr": "2026-04-23 01:00:00+00",
+          "hours": 25.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-01-09 14:00:00+00",
+          "curr": "2025-01-09 23:00:00+00",
+          "hours": 9.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-02 04:00:00+00",
+          "curr": "2026-03-02 13:00:00+00",
+          "hours": 9.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-23 19:00:00+00",
+          "curr": "2026-03-24 04:00:00+00",
+          "hours": 9.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-21 04:00:00+00",
+          "curr": "2026-04-21 13:00:00+00",
+          "hours": 9.0,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "USA500",
+      "timeframe": "H4",
+      "first_ts": "2024-01-01 20:00:00+00",
+      "last_ts": "2026-04-29 16:00:00+00",
+      "total_bars": 3492,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 3492,
+          "first_ts": "2024-01-01 20:00:00+00",
+          "last_ts": "2026-04-29 16:00:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 3367,
+        "weekend": 115,
+        "suspicious_multi_day": 5,
+        "holiday_likely": 4
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 13540.0,
+        "weekend": 6316.0,
+        "suspicious_multi_day": 412.0,
+        "holiday_likely": 104.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-03-11 00:00:00+00",
+          "curr": "2026-03-15 20:00:00+00",
+          "hours": 116.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 16:00:00+00",
+          "curr": "2026-03-09 00:00:00+00",
+          "hours": 104.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2024-03-28 20:00:00+00",
+          "curr": "2024-04-01 00:00:00+00",
+          "hours": 76.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-04-17 20:00:00+00",
+          "curr": "2025-04-21 00:00:00+00",
+          "hours": 76.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-19 04:00:00+00",
+          "curr": "2026-03-20 20:00:00+00",
+          "hours": 40.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-22 00:00:00+00",
+          "curr": "2026-04-23 00:00:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-23 16:00:00+00",
+          "curr": "2026-03-24 04:00:00+00",
+          "hours": 12.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2025-01-09 12:00:00+00",
+          "curr": "2025-01-09 20:00:00+00",
+          "hours": 8.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2025-11-28 04:00:00+00",
+          "curr": "2025-11-28 12:00:00+00",
+          "hours": 8.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-02 04:00:00+00",
+          "curr": "2026-03-02 12:00:00+00",
+          "hours": 8.0,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "USA500",
+      "timeframe": "M1",
+      "first_ts": "2024-01-01 23:00:00+00",
+      "last_ts": "2026-04-29 23:02:00+00",
+      "total_bars": 739093,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "DUKASCOPY",
+          "bars": 717749,
+          "first_ts": "2024-01-01 23:00:00+00",
+          "last_ts": "2026-02-27 21:14:00+00"
+        },
+        {
+          "source": "MT4",
+          "bars": 21346,
+          "first_ts": "2026-02-27 07:12:00+00",
+          "last_ts": "2026-04-29 23:04:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 498,
+        "weekend": 115,
+        "suspicious_multi_day": 6,
+        "holiday_likely": 4,
+        "daily_break": 1
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 1032.3,
+        "weekend": 6254.9,
+        "suspicious_multi_day": 438.2,
+        "holiday_likely": 109.1,
+        "daily_break": 0.8
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-03-11 01:06:00+00",
+          "curr": "2026-03-15 23:42:00+00",
+          "hours": 118.6,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 17:35:00+00",
+          "curr": "2026-03-09 02:49:00+00",
+          "hours": 105.23,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2024-03-28 20:13:00+00",
+          "curr": "2024-04-01 00:00:00+00",
+          "hours": 75.78,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-04-17 20:13:00+00",
+          "curr": "2025-04-21 00:00:00+00",
+          "hours": 75.78,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-19 06:32:00+00",
+          "curr": "2026-03-20 20:13:00+00",
+          "hours": 37.68,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-22 00:26:00+00",
+          "curr": "2026-04-23 01:36:00+00",
+          "hours": 25.17,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-21 04:04:00+00",
+          "curr": "2026-04-21 13:49:00+00",
+          "hours": 9.75,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-23 20:13:00+00",
+          "curr": "2026-04-24 05:39:00+00",
+          "hours": 9.43,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-02 04:08:00+00",
+          "curr": "2026-03-02 13:08:00+00",
+          "hours": 9.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-23 19:23:00+00",
+          "curr": "2026-03-24 04:08:00+00",
+          "hours": 8.75,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "USA500",
+      "timeframe": "M15",
+      "first_ts": "2024-01-01 23:00:00+00",
+      "last_ts": "2026-04-29 22:45:00+00",
+      "total_bars": 50149,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 50149,
+          "first_ts": "2024-01-01 23:00:00+00",
+          "last_ts": "2026-04-29 22:45:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 497,
+        "weekend": 115,
+        "suspicious_multi_day": 6,
+        "holiday_likely": 4
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 1135.0,
+        "weekend": 6281.2,
+        "suspicious_multi_day": 438.5,
+        "holiday_likely": 110.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-03-11 01:00:00+00",
+          "curr": "2026-03-15 23:30:00+00",
+          "hours": 118.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 17:30:00+00",
+          "curr": "2026-03-09 02:45:00+00",
+          "hours": 105.25,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2024-03-28 20:00:00+00",
+          "curr": "2024-04-01 00:00:00+00",
+          "hours": 76.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-04-17 20:00:00+00",
+          "curr": "2025-04-21 00:00:00+00",
+          "hours": 76.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-19 06:30:00+00",
+          "curr": "2026-03-20 20:00:00+00",
+          "hours": 37.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-22 00:15:00+00",
+          "curr": "2026-04-23 01:30:00+00",
+          "hours": 25.25,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-21 04:00:00+00",
+          "curr": "2026-04-21 13:45:00+00",
+          "hours": 9.75,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-23 20:00:00+00",
+          "curr": "2026-04-24 05:30:00+00",
+          "hours": 9.5,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-02 04:00:00+00",
+          "curr": "2026-03-02 13:00:00+00",
+          "hours": 9.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2025-01-09 14:15:00+00",
+          "curr": "2025-01-09 23:00:00+00",
+          "hours": 8.75,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "USA500",
+      "timeframe": "M30",
+      "first_ts": "2024-01-01 23:00:00+00",
+      "last_ts": "2026-04-29 22:30:00+00",
+      "total_bars": 25422,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 25422,
+          "first_ts": "2024-01-01 23:00:00+00",
+          "last_ts": "2026-04-29 22:30:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 513,
+        "weekend": 115,
+        "suspicious_multi_day": 6,
+        "holiday_likely": 4,
+        "daily_break": 1
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 1154.0,
+        "weekend": 6281.0,
+        "suspicious_multi_day": 438.5,
+        "holiday_likely": 110.0,
+        "daily_break": 1.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-03-11 01:00:00+00",
+          "curr": "2026-03-15 23:30:00+00",
+          "hours": 118.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 17:30:00+00",
+          "curr": "2026-03-09 02:30:00+00",
+          "hours": 105.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2024-03-28 20:00:00+00",
+          "curr": "2024-04-01 00:00:00+00",
+          "hours": 76.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-04-17 20:00:00+00",
+          "curr": "2025-04-21 00:00:00+00",
+          "hours": 76.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-19 06:30:00+00",
+          "curr": "2026-03-20 20:00:00+00",
+          "hours": 37.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-22 00:00:00+00",
+          "curr": "2026-04-23 01:30:00+00",
+          "hours": 25.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-21 04:00:00+00",
+          "curr": "2026-04-21 13:30:00+00",
+          "hours": 9.5,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-23 20:00:00+00",
+          "curr": "2026-04-24 05:30:00+00",
+          "hours": 9.5,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2025-01-09 14:00:00+00",
+          "curr": "2025-01-09 23:00:00+00",
+          "hours": 9.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-02 04:00:00+00",
+          "curr": "2026-03-02 13:00:00+00",
+          "hours": 9.0,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "VIX",
+      "timeframe": "M1",
+      "first_ts": "2014-03-17 14:31:00+00",
+      "last_ts": "2026-04-29 21:15:00+00",
+      "total_bars": 2144396,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "BC",
+          "bars": 2144396,
+          "first_ts": "2014-03-17 14:31:00+00",
+          "last_ts": "2026-04-29 21:15:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 2416,
+        "weekend": 611,
+        "suspicious_multi_day": 33,
+        "holiday_likely": 20
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 29042.8,
+        "weekend": 38016.1,
+        "suspicious_multi_day": 2237.5,
+        "holiday_likely": 659.1
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2014-07-03 18:14:00+00",
+          "curr": "2014-07-07 14:31:00+00",
+          "hours": 92.28,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2015-12-24 19:14:00+00",
+          "curr": "2015-12-28 15:31:00+00",
+          "hours": 92.28,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2014-04-17 21:14:00+00",
+          "curr": "2014-04-21 14:31:00+00",
+          "hours": 89.28,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2015-04-02 21:14:00+00",
+          "curr": "2015-04-06 14:31:00+00",
+          "hours": 89.28,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2015-07-02 21:14:00+00",
+          "curr": "2015-07-06 14:31:00+00",
+          "hours": 89.28,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2015-12-31 22:14:00+00",
+          "curr": "2016-01-04 15:31:00+00",
+          "hours": 89.28,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2016-03-24 21:14:00+00",
+          "curr": "2016-03-28 14:31:00+00",
+          "hours": 89.28,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-12-24 19:14:00+00",
+          "curr": "2020-12-28 09:15:00+00",
+          "hours": 86.02,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2017-04-13 21:14:00+00",
+          "curr": "2017-04-17 08:15:00+00",
+          "hours": 83.02,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2018-03-29 21:14:00+00",
+          "curr": "2018-04-02 08:15:00+00",
+          "hours": 83.02,
+          "class": "suspicious_multi_day"
+        }
+      ]
+    },
+    {
+      "symbol": "WHEAT",
+      "timeframe": "D1",
+      "first_ts": "2026-02-27 00:00:00+00",
+      "last_ts": "2026-04-28 00:00:00+00",
+      "total_bars": 30,
+      "days_stale": 1,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 30,
+          "first_ts": "2026-02-27 00:00:00+00",
+          "last_ts": "2026-04-28 00:00:00+00"
+        }
+      ],
+      "gap_classes": {
+        "weekend": 6,
+        "suspicious_short": 20,
+        "suspicious_multi_day": 3
+      },
+      "gap_classes_hours": {
+        "weekend": 432.0,
+        "suspicious_short": 480.0,
+        "suspicious_multi_day": 528.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-04-02 00:00:00+00",
+          "curr": "2026-04-17 00:00:00+00",
+          "hours": 360.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 00:00:00+00",
+          "curr": "2026-03-09 00:00:00+00",
+          "hours": 120.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-11 00:00:00+00",
+          "curr": "2026-03-13 00:00:00+00",
+          "hours": 48.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-02 00:00:00+00",
+          "curr": "2026-03-03 00:00:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-03 00:00:00+00",
+          "curr": "2026-03-04 00:00:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-09 00:00:00+00",
+          "curr": "2026-03-10 00:00:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-10 00:00:00+00",
+          "curr": "2026-03-11 00:00:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-16 00:00:00+00",
+          "curr": "2026-03-17 00:00:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-17 00:00:00+00",
+          "curr": "2026-03-18 00:00:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-18 00:00:00+00",
+          "curr": "2026-03-19 00:00:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "WHEAT",
+      "timeframe": "H1",
+      "first_ts": "2026-02-27 07:00:00+00",
+      "last_ts": "2026-04-29 18:00:00+00",
+      "total_bars": 395,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 395,
+          "first_ts": "2026-02-27 07:00:00+00",
+          "last_ts": "2026-04-29 18:00:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 383,
+        "weekend": 6,
+        "suspicious_multi_day": 5
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 560.0,
+        "weekend": 324.0,
+        "suspicious_multi_day": 591.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-04-02 18:00:00+00",
+          "curr": "2026-04-17 18:00:00+00",
+          "hours": 360.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 17:00:00+00",
+          "curr": "2026-03-09 02:00:00+00",
+          "hours": 105.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-11 01:00:00+00",
+          "curr": "2026-03-13 18:00:00+00",
+          "hours": 65.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-19 06:00:00+00",
+          "curr": "2026-03-20 18:00:00+00",
+          "hours": 36.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-22 00:00:00+00",
+          "curr": "2026-04-23 01:00:00+00",
+          "hours": 25.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-23 18:00:00+00",
+          "curr": "2026-04-24 05:00:00+00",
+          "hours": 11.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-23 18:00:00+00",
+          "curr": "2026-03-24 04:00:00+00",
+          "hours": 10.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-02 04:00:00+00",
+          "curr": "2026-03-02 13:00:00+00",
+          "hours": 9.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-21 04:00:00+00",
+          "curr": "2026-04-21 13:00:00+00",
+          "hours": 9.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-24 05:00:00+00",
+          "curr": "2026-04-24 14:00:00+00",
+          "hours": 9.0,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "WHEAT",
+      "timeframe": "H4",
+      "first_ts": "2026-02-27 04:00:00+00",
+      "last_ts": "2026-04-29 16:00:00+00",
+      "total_bars": 125,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 125,
+          "first_ts": "2026-02-27 04:00:00+00",
+          "last_ts": "2026-04-29 16:00:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 114,
+        "weekend": 6,
+        "suspicious_multi_day": 4
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 576.0,
+        "weekend": 336.0,
+        "suspicious_multi_day": 564.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-04-02 16:00:00+00",
+          "curr": "2026-04-17 16:00:00+00",
+          "hours": 360.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 16:00:00+00",
+          "curr": "2026-03-09 00:00:00+00",
+          "hours": 104.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-11 00:00:00+00",
+          "curr": "2026-03-13 16:00:00+00",
+          "hours": 64.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-19 04:00:00+00",
+          "curr": "2026-03-20 16:00:00+00",
+          "hours": 36.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-22 00:00:00+00",
+          "curr": "2026-04-23 00:00:00+00",
+          "hours": 24.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-23 16:00:00+00",
+          "curr": "2026-03-24 04:00:00+00",
+          "hours": 12.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-23 16:00:00+00",
+          "curr": "2026-04-24 04:00:00+00",
+          "hours": 12.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-02 04:00:00+00",
+          "curr": "2026-03-02 12:00:00+00",
+          "hours": 8.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-02 16:00:00+00",
+          "curr": "2026-03-03 00:00:00+00",
+          "hours": 8.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-03 16:00:00+00",
+          "curr": "2026-03-04 00:00:00+00",
+          "hours": 8.0,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "WHEAT",
+      "timeframe": "M1",
+      "first_ts": "2026-02-27 07:11:00+00",
+      "last_ts": "2026-04-29 18:13:00+00",
+      "total_bars": 13910,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 13910,
+          "first_ts": "2026-02-27 07:11:00+00",
+          "last_ts": "2026-04-29 18:13:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 47,
+        "weekend": 6,
+        "suspicious_multi_day": 5
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 221.8,
+        "weekend": 323.0,
+        "suspicious_multi_day": 591.2
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-04-02 18:13:00+00",
+          "curr": "2026-04-17 18:13:00+00",
+          "hours": 360.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 17:35:00+00",
+          "curr": "2026-03-09 02:49:00+00",
+          "hours": 105.23,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-11 01:06:00+00",
+          "curr": "2026-03-13 18:13:00+00",
+          "hours": 65.12,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-19 06:31:00+00",
+          "curr": "2026-03-20 18:13:00+00",
+          "hours": 35.7,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-22 00:26:00+00",
+          "curr": "2026-04-23 01:35:00+00",
+          "hours": 25.15,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-23 18:13:00+00",
+          "curr": "2026-04-24 05:39:00+00",
+          "hours": 11.43,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-23 18:13:00+00",
+          "curr": "2026-03-24 04:07:00+00",
+          "hours": 9.9,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-21 04:04:00+00",
+          "curr": "2026-04-21 13:49:00+00",
+          "hours": 9.75,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-02 04:00:00+00",
+          "curr": "2026-03-02 13:08:00+00",
+          "hours": 9.13,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-29 07:10:00+00",
+          "curr": "2026-04-29 15:48:00+00",
+          "hours": 8.63,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "WHEAT",
+      "timeframe": "M15",
+      "first_ts": "2026-02-27 07:00:00+00",
+      "last_ts": "2026-04-29 18:00:00+00",
+      "total_bars": 1273,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 1273,
+          "first_ts": "2026-02-27 07:00:00+00",
+          "last_ts": "2026-04-29 18:00:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 58,
+        "weekend": 6,
+        "suspicious_multi_day": 5
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 235.8,
+        "weekend": 324.0,
+        "suspicious_multi_day": 591.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-04-02 18:00:00+00",
+          "curr": "2026-04-17 18:00:00+00",
+          "hours": 360.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 17:30:00+00",
+          "curr": "2026-03-09 02:45:00+00",
+          "hours": 105.25,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-11 01:00:00+00",
+          "curr": "2026-03-13 18:00:00+00",
+          "hours": 65.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-19 06:30:00+00",
+          "curr": "2026-03-20 18:00:00+00",
+          "hours": 35.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-22 00:15:00+00",
+          "curr": "2026-04-23 01:30:00+00",
+          "hours": 25.25,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-23 18:00:00+00",
+          "curr": "2026-04-24 05:30:00+00",
+          "hours": 11.5,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-23 18:00:00+00",
+          "curr": "2026-03-24 04:00:00+00",
+          "hours": 10.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-21 04:00:00+00",
+          "curr": "2026-04-21 13:45:00+00",
+          "hours": 9.75,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-02 04:00:00+00",
+          "curr": "2026-03-02 13:00:00+00",
+          "hours": 9.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-24 05:30:00+00",
+          "curr": "2026-04-24 14:15:00+00",
+          "hours": 8.75,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "WHEAT",
+      "timeframe": "M30",
+      "first_ts": "2026-02-27 07:00:00+00",
+      "last_ts": "2026-04-29 18:00:00+00",
+      "total_bars": 709,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 709,
+          "first_ts": "2026-02-27 07:00:00+00",
+          "last_ts": "2026-04-29 18:00:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 68,
+        "weekend": 6,
+        "suspicious_multi_day": 5
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 245.5,
+        "weekend": 324.0,
+        "suspicious_multi_day": 591.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2026-04-02 18:00:00+00",
+          "curr": "2026-04-17 18:00:00+00",
+          "hours": 360.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-04 17:30:00+00",
+          "curr": "2026-03-09 02:30:00+00",
+          "hours": 105.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-11 01:00:00+00",
+          "curr": "2026-03-13 18:00:00+00",
+          "hours": 65.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-03-19 06:30:00+00",
+          "curr": "2026-03-20 18:00:00+00",
+          "hours": 35.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-22 00:00:00+00",
+          "curr": "2026-04-23 01:30:00+00",
+          "hours": 25.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-23 18:00:00+00",
+          "curr": "2026-04-24 05:30:00+00",
+          "hours": 11.5,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-23 18:00:00+00",
+          "curr": "2026-03-24 04:00:00+00",
+          "hours": 10.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-21 04:00:00+00",
+          "curr": "2026-04-21 13:30:00+00",
+          "hours": 9.5,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-03-02 04:00:00+00",
+          "curr": "2026-03-02 13:00:00+00",
+          "hours": 9.0,
+          "class": "suspicious_short"
+        },
+        {
+          "prev": "2026-04-24 05:30:00+00",
+          "curr": "2026-04-24 14:00:00+00",
+          "hours": 8.5,
+          "class": "suspicious_short"
+        }
+      ]
+    },
+    {
+      "symbol": "XAUUSD",
+      "timeframe": "D1",
+      "first_ts": "2019-01-01 00:00:00+00",
+      "last_ts": "2026-02-27 00:00:00+00",
+      "total_bars": 1859,
+      "days_stale": 61,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 1859,
+          "first_ts": "2019-01-01 00:00:00+00",
+          "last_ts": "2026-02-27 00:00:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 1449,
+        "weekend": 363,
+        "suspicious_multi_day": 10,
+        "holiday_likely": 36
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 34776.0,
+        "weekend": 26136.0,
+        "suspicious_multi_day": 960.0,
+        "holiday_likely": 864.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2019-04-18 00:00:00+00",
+          "curr": "2019-04-22 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-04-09 00:00:00+00",
+          "curr": "2020-04-13 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-12-24 00:00:00+00",
+          "curr": "2020-12-28 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-12-31 00:00:00+00",
+          "curr": "2021-01-04 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2021-04-01 00:00:00+00",
+          "curr": "2021-04-05 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2021-12-23 00:00:00+00",
+          "curr": "2021-12-27 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2022-04-14 00:00:00+00",
+          "curr": "2022-04-18 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2023-04-06 00:00:00+00",
+          "curr": "2023-04-10 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2024-03-28 00:00:00+00",
+          "curr": "2024-04-01 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-04-17 00:00:00+00",
+          "curr": "2025-04-21 00:00:00+00",
+          "hours": 96.0,
+          "class": "suspicious_multi_day"
+        }
+      ]
+    },
+    {
+      "symbol": "XAUUSD",
+      "timeframe": "H1",
+      "first_ts": "2019-01-01 23:00:00+00",
+      "last_ts": "2026-04-29 04:00:00+00",
+      "total_bars": 84353,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "DUKASCOPY",
+          "bars": 42643,
+          "first_ts": "2019-01-01 23:00:00+00",
+          "last_ts": "2026-04-29 04:00:00+00"
+        },
+        {
+          "source": "MT4",
+          "bars": 41710,
+          "first_ts": "2019-01-01 23:00:00+00",
+          "last_ts": "2026-02-27 21:00:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 40284,
+        "daily_break": 1609,
+        "weekend": 732,
+        "suspicious_multi_day": 11,
+        "holiday_likely": 6
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 41932.0,
+        "daily_break": 1609.0,
+        "weekend": 19639.0,
+        "suspicious_multi_day": 836.0,
+        "holiday_likely": 165.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2020-12-24 18:00:00+00",
+          "curr": "2020-12-28 00:00:00+00",
+          "hours": 78.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2019-04-18 20:00:00+00",
+          "curr": "2019-04-22 00:00:00+00",
+          "hours": 76.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-04-09 20:00:00+00",
+          "curr": "2020-04-13 00:00:00+00",
+          "hours": 76.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2021-04-01 20:00:00+00",
+          "curr": "2021-04-05 00:00:00+00",
+          "hours": 76.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2022-04-14 20:00:00+00",
+          "curr": "2022-04-18 00:00:00+00",
+          "hours": 76.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2023-04-06 20:00:00+00",
+          "curr": "2023-04-10 00:00:00+00",
+          "hours": 76.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2024-03-28 20:00:00+00",
+          "curr": "2024-04-01 00:00:00+00",
+          "hours": 76.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-04-17 20:00:00+00",
+          "curr": "2025-04-21 00:00:00+00",
+          "hours": 76.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-02 20:00:00+00",
+          "curr": "2026-04-06 00:00:00+00",
+          "hours": 76.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-12-31 21:00:00+00",
+          "curr": "2021-01-04 00:00:00+00",
+          "hours": 75.0,
+          "class": "suspicious_multi_day"
+        }
+      ]
+    },
+    {
+      "symbol": "XAUUSD",
+      "timeframe": "H4",
+      "first_ts": "2019-01-01 20:00:00+00",
+      "last_ts": "2026-04-29 04:00:00+00",
+      "total_bars": 11087,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 11087,
+          "first_ts": "2019-01-01 20:00:00+00",
+          "last_ts": "2026-04-29 04:00:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 10706,
+        "weekend": 364,
+        "suspicious_multi_day": 10,
+        "holiday_likely": 6
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 42824.0,
+        "weekend": 20440.0,
+        "suspicious_multi_day": 764.0,
+        "holiday_likely": 156.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2020-12-24 16:00:00+00",
+          "curr": "2020-12-28 00:00:00+00",
+          "hours": 80.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2019-04-18 20:00:00+00",
+          "curr": "2019-04-22 00:00:00+00",
+          "hours": 76.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-04-09 20:00:00+00",
+          "curr": "2020-04-13 00:00:00+00",
+          "hours": 76.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-12-31 20:00:00+00",
+          "curr": "2021-01-04 00:00:00+00",
+          "hours": 76.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2021-04-01 20:00:00+00",
+          "curr": "2021-04-05 00:00:00+00",
+          "hours": 76.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2021-12-23 20:00:00+00",
+          "curr": "2021-12-27 00:00:00+00",
+          "hours": 76.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2022-04-14 20:00:00+00",
+          "curr": "2022-04-18 00:00:00+00",
+          "hours": 76.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2023-04-06 20:00:00+00",
+          "curr": "2023-04-10 00:00:00+00",
+          "hours": 76.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2024-03-28 20:00:00+00",
+          "curr": "2024-04-01 00:00:00+00",
+          "hours": 76.0,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-04-17 20:00:00+00",
+          "curr": "2025-04-21 00:00:00+00",
+          "hours": 76.0,
+          "class": "suspicious_multi_day"
+        }
+      ]
+    },
+    {
+      "symbol": "XAUUSD",
+      "timeframe": "M1",
+      "first_ts": "2019-01-01 23:00:00+00",
+      "last_ts": "2026-04-29 04:59:00+00",
+      "total_bars": 2555565,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "DUKASCOPY",
+          "bars": 2555565,
+          "first_ts": "2019-01-01 23:00:00+00",
+          "last_ts": "2026-04-29 04:59:00+00"
+        }
+      ],
+      "gap_classes": {
+        "daily_break": 1454,
+        "weekend": 371,
+        "suspicious_short": 63,
+        "suspicious_multi_day": 11,
+        "holiday_likely": 6
+      },
+      "gap_classes_hours": {
+        "daily_break": 1479.6,
+        "weekend": 18916.1,
+        "suspicious_short": 215.0,
+        "suspicious_multi_day": 825.5,
+        "holiday_likely": 160.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2020-12-24 18:44:00+00",
+          "curr": "2020-12-28 00:00:00+00",
+          "hours": 77.27,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2019-04-18 20:58:00+00",
+          "curr": "2019-04-22 00:00:00+00",
+          "hours": 75.03,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2022-04-14 20:58:00+00",
+          "curr": "2022-04-18 00:00:00+00",
+          "hours": 75.03,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2023-04-06 20:58:00+00",
+          "curr": "2023-04-10 00:00:00+00",
+          "hours": 75.03,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2024-03-28 20:58:00+00",
+          "curr": "2024-04-01 00:00:00+00",
+          "hours": 75.03,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-04-17 20:58:00+00",
+          "curr": "2025-04-21 00:00:00+00",
+          "hours": 75.03,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-02 20:58:00+00",
+          "curr": "2026-04-06 00:00:00+00",
+          "hours": 75.03,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-04-09 20:59:00+00",
+          "curr": "2020-04-13 00:00:00+00",
+          "hours": 75.02,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2021-04-01 20:59:00+00",
+          "curr": "2021-04-05 00:00:00+00",
+          "hours": 75.02,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2021-12-23 21:58:00+00",
+          "curr": "2021-12-27 00:00:00+00",
+          "hours": 74.03,
+          "class": "suspicious_multi_day"
+        }
+      ]
+    },
+    {
+      "symbol": "XAUUSD",
+      "timeframe": "M15",
+      "first_ts": "2019-01-01 23:00:00+00",
+      "last_ts": "2026-02-27 21:45:00+00",
+      "total_bars": 166752,
+      "days_stale": 61,
+      "sources": [
+        {
+          "source": "MT4",
+          "bars": 166752,
+          "first_ts": "2019-01-01 23:00:00+00",
+          "last_ts": "2026-02-27 21:45:00+00"
+        }
+      ],
+      "gap_classes": {
+        "daily_break": 1421,
+        "weekend": 363,
+        "suspicious_short": 62,
+        "suspicious_multi_day": 10,
+        "holiday_likely": 6
+      },
+      "gap_classes_hours": {
+        "daily_break": 1776.2,
+        "weekend": 18594.0,
+        "suspicious_short": 226.8,
+        "suspicious_multi_day": 752.8,
+        "holiday_likely": 161.2
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2020-12-24 18:30:00+00",
+          "curr": "2020-12-28 00:00:00+00",
+          "hours": 77.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2019-04-18 20:45:00+00",
+          "curr": "2019-04-22 00:00:00+00",
+          "hours": 75.25,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-04-09 20:45:00+00",
+          "curr": "2020-04-13 00:00:00+00",
+          "hours": 75.25,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2021-04-01 20:45:00+00",
+          "curr": "2021-04-05 00:00:00+00",
+          "hours": 75.25,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2022-04-14 20:45:00+00",
+          "curr": "2022-04-18 00:00:00+00",
+          "hours": 75.25,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2023-04-06 20:45:00+00",
+          "curr": "2023-04-10 00:00:00+00",
+          "hours": 75.25,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2024-03-28 20:45:00+00",
+          "curr": "2024-04-01 00:00:00+00",
+          "hours": 75.25,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-04-17 20:45:00+00",
+          "curr": "2025-04-21 00:00:00+00",
+          "hours": 75.25,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-12-31 21:45:00+00",
+          "curr": "2021-01-04 00:00:00+00",
+          "hours": 74.25,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2021-12-23 21:45:00+00",
+          "curr": "2021-12-27 00:00:00+00",
+          "hours": 74.25,
+          "class": "suspicious_multi_day"
+        }
+      ]
+    },
+    {
+      "symbol": "XAUUSD",
+      "timeframe": "M30",
+      "first_ts": "2019-01-01 23:00:00+00",
+      "last_ts": "2026-04-29 04:30:00+00",
+      "total_bars": 86159,
+      "days_stale": 0,
+      "sources": [
+        {
+          "source": "DUKASCOPY",
+          "bars": 2773,
+          "first_ts": "2026-02-02 00:00:00+00",
+          "last_ts": "2026-04-29 04:30:00+00"
+        },
+        {
+          "source": "MT4",
+          "bars": 83386,
+          "first_ts": "2019-01-01 23:00:00+00",
+          "last_ts": "2026-02-27 21:30:00+00"
+        }
+      ],
+      "gap_classes": {
+        "suspicious_short": 1517,
+        "weekend": 371,
+        "suspicious_multi_day": 11,
+        "holiday_likely": 6
+      },
+      "gap_classes_hours": {
+        "suspicious_short": 2423.0,
+        "weekend": 19093.0,
+        "suspicious_multi_day": 830.5,
+        "holiday_likely": 162.0
+      },
+      "top_suspicious_gaps": [
+        {
+          "prev": "2020-12-24 18:30:00+00",
+          "curr": "2020-12-28 00:00:00+00",
+          "hours": 77.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2019-04-18 20:30:00+00",
+          "curr": "2019-04-22 00:00:00+00",
+          "hours": 75.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-04-09 20:30:00+00",
+          "curr": "2020-04-13 00:00:00+00",
+          "hours": 75.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2021-04-01 20:30:00+00",
+          "curr": "2021-04-05 00:00:00+00",
+          "hours": 75.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2022-04-14 20:30:00+00",
+          "curr": "2022-04-18 00:00:00+00",
+          "hours": 75.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2023-04-06 20:30:00+00",
+          "curr": "2023-04-10 00:00:00+00",
+          "hours": 75.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2024-03-28 20:30:00+00",
+          "curr": "2024-04-01 00:00:00+00",
+          "hours": 75.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2025-04-17 20:30:00+00",
+          "curr": "2025-04-21 00:00:00+00",
+          "hours": 75.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2026-04-02 20:30:00+00",
+          "curr": "2026-04-06 00:00:00+00",
+          "hours": 75.5,
+          "class": "suspicious_multi_day"
+        },
+        {
+          "prev": "2020-12-31 21:30:00+00",
+          "curr": "2021-01-04 00:00:00+00",
+          "hours": 74.5,
+          "class": "suspicious_multi_day"
+        }
+      ]
+    }
+  ]
+}

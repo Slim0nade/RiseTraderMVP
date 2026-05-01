@@ -96,3 +96,36 @@ mt4_integration:
       EURUSD: 10.0
       GBPUSD: 10.0
       GOLD: 10.0
+
+  # ---------------------------------------------------------------
+  # Multi-Symbol Streaming Configuration
+  # EA input parameter: SymbolList (comma-separated MT4 symbol names)
+  # ---------------------------------------------------------------
+  streaming:
+    # Comma-separated list passed as the SymbolList extern input in the EA.
+    # Copy this value into the EA's SymbolList input field in MT4.
+    symbol_list: "CrudeOIL,USA500,BRENT_OIL,CORN,WHEAT,GBPJPY.,TSLA,MSFT,GASOLINE"
+
+    # Timeframe the EA monitors for new bars (integer: 1=M1, 60=H1).
+    # The EA currently uses PERIOD_M1 (1).
+    timeframe_minutes: 1
+
+    # How often the fallback heartbeat fires per symbol (seconds).
+    heartbeat_interval_seconds: 60
+
+  # ---------------------------------------------------------------
+  # Symbol mapping: RiseTrader DB name  →  MT4 broker symbol name
+  # Used by mt4_sync_service.py to normalise the "symbol" field in
+  # incoming stream messages before writing to the market_data table.
+  # Note: GBPJPY has a trailing dot on this broker.
+  # ---------------------------------------------------------------
+  symbol_mapping:
+    CrudeOIL: CrudeOIL
+    USA500: USA500
+    BRENT_OIL: BRENT_OIL
+    CORN: CORN
+    WHEAT: WHEAT
+    GBPJPY: GBPJPY.
+    TSLA: TSLA
+    MSFT: MSFT
+    GASOLINE: GASOLINE

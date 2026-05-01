@@ -337,12 +337,21 @@ class TestSeasonalMAExits:
         sig = inject_crossover(strategy, "CORN", "golden", month=4)
         assert sig is not None and sig.action == "buy", f"Setup failed: {sig}"
 
-        # Feed a tick in July (neutral) with prices still above fast MA → should hold
+        # Feed a tick in July (neutral) with price between entry and take-profit.
+        # ATR ≈ 0.5 from the crossover bars, so TP ≈ entry + 1.5 for a long.
+        # Compute a safe neutral price from the signal's SL/TP if available,
+        # otherwise fall back to midpoint that won't trigger either level.
+        if sig.stop_loss is not None and sig.take_profit is not None:
+            neutral_price = round((sig.stop_loss + sig.take_profit) / 2, 2)
+        else:
+            neutral_price = 501.0
         ts = datetime(2024, 7, 15, 10, 0, 0, tzinfo=timezone.utc)
         tick = MarketTick(
             symbol="CORN", timestamp=ts,
-            open=Decimal("519.00"), high=Decimal("521.00"),
-            low=Decimal("518.00"), close=Decimal("520.00"), volume=1000,
+            open=Decimal(str(neutral_price - 0.01)),
+            high=Decimal(str(neutral_price + 0.01)),
+            low=Decimal(str(neutral_price - 0.01)),
+            close=Decimal(str(neutral_price)), volume=1000,
         )
         sig2 = strategy.process_tick(tick)
         # With hold_through_neutral=True: position must still be open (no death cross occurred)

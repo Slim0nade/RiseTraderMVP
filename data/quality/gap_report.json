@@ -1,0 +1,2088 @@
+{
+  "generated_at": "2026-04-27T04:51:28.296537+00:00",
+  "symbols": [
+    "CrudeOIL",
+    "USA500",
+    "GBPJPY.",
+    "#TSLA"
+  ],
+  "timeframes": [
+    "M1",
+    "M5",
+    "M15",
+    "H1",
+    "H4",
+    "D1"
+  ],
+  "cells": {
+    "CrudeOIL|M1": {
+      "coverage": {
+        "first_time": "2009-08-04T17:21:00+00:00",
+        "last_time": "2026-04-27T04:51:00+00:00",
+        "total_bars": 5531032,
+        "source_count": 2,
+        "sources": "{MT4,BC}"
+      },
+      "duplicates": {
+        "dup_buckets": 34201,
+        "extra_rows": "34201"
+      },
+      "ohlc": {
+        "high_lt_low": 0,
+        "close_above_high": 0,
+        "close_below_low": 0,
+        "open_outside_range": 0,
+        "nonpositive_open": 0,
+        "nonpositive_high": 0,
+        "nonpositive_low": 0,
+        "nonpositive_close": 0,
+        "negative_volume": 0,
+        "zero_volume_bars": 3
+      },
+      "gaps": {
+        "suspicious_gap_count": 45,
+        "weekend_gap_count": 155,
+        "overnight_gap_count": 0,
+        "top_suspicious": [
+          {
+            "prev": "2025-06-18T20:58:00+00:00",
+            "curr": "2025-11-25T08:48:00.515002+00:00",
+            "gap_s": 13780201,
+            "missing_bars_est": 229669
+          },
+          {
+            "prev": "2025-11-25T09:14:01.115431+00:00",
+            "curr": "2025-12-29T19:08:00+00:00",
+            "gap_s": 2973239,
+            "missing_bars_est": 49552
+          },
+          {
+            "prev": "2026-04-02T20:58:00+00:00",
+            "curr": "2026-04-19T23:23:00+00:00",
+            "gap_s": 1477500,
+            "missing_bars_est": 24624
+          },
+          {
+            "prev": "2025-04-09T04:28:00+00:00",
+            "curr": "2025-04-22T16:34:00+00:00",
+            "gap_s": 1166760,
+            "missing_bars_est": 19445
+          },
+          {
+            "prev": "2026-01-23T17:44:00+00:00",
+            "curr": "2026-02-02T05:08:00+00:00",
+            "gap_s": 818640,
+            "missing_bars_est": 13643
+          },
+          {
+            "prev": "2026-02-17T20:33:00+00:00",
+            "curr": "2026-02-27T07:12:00+00:00",
+            "gap_s": 815940,
+            "missing_bars_est": 13598
+          },
+          {
+            "prev": "2026-01-14T19:41:00+00:00",
+            "curr": "2026-01-22T00:47:00+00:00",
+            "gap_s": 623160,
+            "missing_bars_est": 10385
+          },
+          {
+            "prev": "2026-03-11T01:06:00+00:00",
+            "curr": "2026-03-15T23:42:00+00:00",
+            "gap_s": 426960,
+            "missing_bars_est": 7115
+          },
+          {
+            "prev": "2026-03-04T17:35:00+00:00",
+            "curr": "2026-03-09T02:49:00+00:00",
+            "gap_s": 378840,
+            "missing_bars_est": 6313
+          },
+          {
+            "prev": "2026-02-02T13:45:00+00:00",
+            "curr": "2026-02-06T21:58:00+00:00",
+            "gap_s": 375180,
+            "missing_bars_est": 6252
+          },
+          {
+            "prev": "2015-12-24T18:44:00+00:00",
+            "curr": "2015-12-27T23:00:00+00:00",
+            "gap_s": 274560,
+            "missing_bars_est": 4575
+          },
+          {
+            "prev": "2020-12-24T18:44:00+00:00",
+            "curr": "2020-12-27T23:00:00+00:00",
+            "gap_s": 274560,
+            "missing_bars_est": 4575
+          },
+          {
+            "prev": "2009-12-24T18:44:00+00:00",
+            "curr": "2009-12-27T23:00:00+00:00",
+            "gap_s": 274560,
+            "missing_bars_est": 4575
+          },
+          {
+            "prev": "2018-03-29T20:59:00+00:00",
+            "curr": "2018-04-01T22:00:00+00:00",
+            "gap_s": 262860,
+            "missing_bars_est": 4380
+          },
+          {
+            "prev": "2016-12-23T21:59:00+00:00",
+            "curr": "2016-12-26T23:00:00+00:00",
+            "gap_s": 262860,
+            "missing_bars_est": 4380
+          },
+          {
+            "prev": "2022-04-14T20:59:00+00:00",
+            "curr": "2022-04-17T22:00:00+00:00",
+            "gap_s": 262860,
+            "missing_bars_est": 4380
+          },
+          {
+            "prev": "2023-04-06T20:59:00+00:00",
+            "curr": "2023-04-09T22:00:00+00:00",
+            "gap_s": 262860,
+            "missing_bars_est": 4380
+          },
+          {
+            "prev": "2016-03-24T20:59:00+00:00",
+            "curr": "2016-03-27T22:00:00+00:00",
+            "gap_s": 262860,
+            "missing_bars_est": 4380
+          },
+          {
+            "prev": "2023-12-22T21:59:00+00:00",
+            "curr": "2023-12-25T23:00:00+00:00",
+            "gap_s": 262860,
+            "missing_bars_est": 4380
+          },
+          {
+            "prev": "2020-12-31T21:59:00+00:00",
+            "curr": "2021-01-03T23:00:00+00:00",
+            "gap_s": 262860,
+            "missing_bars_est": 4380
+          },
+          {
+            "prev": "2020-04-09T20:59:00+00:00",
+            "curr": "2020-04-12T22:00:00+00:00",
+            "gap_s": 262860,
+            "missing_bars_est": 4380
+          },
+          {
+            "prev": "2017-12-22T21:59:00+00:00",
+            "curr": "2017-12-25T23:00:00+00:00",
+            "gap_s": 262860,
+            "missing_bars_est": 4380
+          },
+          {
+            "prev": "2019-04-18T20:59:00+00:00",
+            "curr": "2019-04-21T22:00:00+00:00",
+            "gap_s": 262860,
+            "missing_bars_est": 4380
+          },
+          {
+            "prev": "2015-12-31T21:59:00+00:00",
+            "curr": "2016-01-03T23:00:00+00:00",
+            "gap_s": 262860,
+            "missing_bars_est": 4380
+          },
+          {
+            "prev": "2022-12-23T21:59:00+00:00",
+            "curr": "2022-12-26T23:00:00+00:00",
+            "gap_s": 262860,
+            "missing_bars_est": 4380
+          }
+        ],
+        "bar_interval_s": 60
+      }
+    },
+    "CrudeOIL|M5": {
+      "coverage": {
+        "first_time": "2018-12-06T04:10:00+00:00",
+        "last_time": "2024-12-06T21:59:00+00:00",
+        "total_bars": 441834,
+        "source_count": 1,
+        "sources": "{BC}"
+      },
+      "duplicates": {
+        "dup_buckets": 0,
+        "extra_rows": "0"
+      },
+      "ohlc": {
+        "high_lt_low": 0,
+        "close_above_high": 0,
+        "close_below_low": 0,
+        "open_outside_range": 0,
+        "nonpositive_open": 0,
+        "nonpositive_high": 0,
+        "nonpositive_low": 0,
+        "nonpositive_close": 0,
+        "negative_volume": 0,
+        "zero_volume_bars": 0
+      },
+      "gaps": {
+        "suspicious_gap_count": 13,
+        "weekend_gap_count": 187,
+        "overnight_gap_count": 0,
+        "top_suspicious": [
+          {
+            "prev": "2020-12-24T18:40:00+00:00",
+            "curr": "2020-12-27T23:00:00+00:00",
+            "gap_s": 274800,
+            "missing_bars_est": 915
+          },
+          {
+            "prev": "2023-12-29T21:55:00+00:00",
+            "curr": "2024-01-01T23:00:00+00:00",
+            "gap_s": 263100,
+            "missing_bars_est": 876
+          },
+          {
+            "prev": "2023-12-22T21:55:00+00:00",
+            "curr": "2023-12-25T23:00:00+00:00",
+            "gap_s": 263100,
+            "missing_bars_est": 876
+          },
+          {
+            "prev": "2020-04-09T20:55:00+00:00",
+            "curr": "2020-04-12T22:00:00+00:00",
+            "gap_s": 263100,
+            "missing_bars_est": 876
+          },
+          {
+            "prev": "2023-04-06T20:55:00+00:00",
+            "curr": "2023-04-09T22:00:00+00:00",
+            "gap_s": 263100,
+            "missing_bars_est": 876
+          },
+          {
+            "prev": "2022-04-14T20:55:00+00:00",
+            "curr": "2022-04-17T22:00:00+00:00",
+            "gap_s": 263100,
+            "missing_bars_est": 876
+          },
+          {
+            "prev": "2024-03-28T20:55:00+00:00",
+            "curr": "2024-03-31T22:00:00+00:00",
+            "gap_s": 263100,
+            "missing_bars_est": 876
+          },
+          {
+            "prev": "2021-04-01T20:55:00+00:00",
+            "curr": "2021-04-04T22:00:00+00:00",
+            "gap_s": 263100,
+            "missing_bars_est": 876
+          },
+          {
+            "prev": "2022-12-30T21:55:00+00:00",
+            "curr": "2023-01-02T23:00:00+00:00",
+            "gap_s": 263100,
+            "missing_bars_est": 876
+          },
+          {
+            "prev": "2019-04-18T20:55:00+00:00",
+            "curr": "2019-04-21T22:00:00+00:00",
+            "gap_s": 263100,
+            "missing_bars_est": 876
+          },
+          {
+            "prev": "2021-12-23T21:55:00+00:00",
+            "curr": "2021-12-26T23:00:00+00:00",
+            "gap_s": 263100,
+            "missing_bars_est": 876
+          },
+          {
+            "prev": "2022-12-23T21:55:00+00:00",
+            "curr": "2022-12-26T23:00:00+00:00",
+            "gap_s": 263100,
+            "missing_bars_est": 876
+          },
+          {
+            "prev": "2020-12-31T21:55:00+00:00",
+            "curr": "2021-01-03T23:00:00+00:00",
+            "gap_s": 263100,
+            "missing_bars_est": 876
+          }
+        ],
+        "bar_interval_s": 300
+      }
+    },
+    "CrudeOIL|M15": {
+      "coverage": {
+        "first_time": "2009-08-04T17:15:00+00:00",
+        "last_time": "2026-04-27T04:30:00+00:00",
+        "total_bars": 376621,
+        "source_count": 1,
+        "sources": "{MT4}"
+      },
+      "duplicates": {
+        "dup_buckets": 0,
+        "extra_rows": "0"
+      },
+      "ohlc": {
+        "high_lt_low": 0,
+        "close_above_high": 0,
+        "close_below_low": 0,
+        "open_outside_range": 0,
+        "nonpositive_open": 0,
+        "nonpositive_high": 0,
+        "nonpositive_low": 0,
+        "nonpositive_close": 0,
+        "negative_volume": 0,
+        "zero_volume_bars": 2
+      },
+      "gaps": {
+        "suspicious_gap_count": 45,
+        "weekend_gap_count": 155,
+        "overnight_gap_count": 0,
+        "top_suspicious": [
+          {
+            "prev": "2025-06-18T20:45:00+00:00",
+            "curr": "2025-11-25T08:45:00+00:00",
+            "gap_s": 13780800,
+            "missing_bars_est": 15311
+          },
+          {
+            "prev": "2025-11-25T09:00:00+00:00",
+            "curr": "2025-12-29T19:00:00+00:00",
+            "gap_s": 2973600,
+            "missing_bars_est": 3303
+          },
+          {
+            "prev": "2026-04-02T20:45:00+00:00",
+            "curr": "2026-04-19T23:15:00+00:00",
+            "gap_s": 1477800,
+            "missing_bars_est": 1641
+          },
+          {
+            "prev": "2025-04-09T04:15:00+00:00",
+            "curr": "2025-04-22T16:30:00+00:00",
+            "gap_s": 1167300,
+            "missing_bars_est": 1296
+          },
+          {
+            "prev": "2026-01-23T17:30:00+00:00",
+            "curr": "2026-02-02T05:00:00+00:00",
+            "gap_s": 819000,
+            "missing_bars_est": 909
+          },
+          {
+            "prev": "2026-02-17T20:30:00+00:00",
+            "curr": "2026-02-27T07:00:00+00:00",
+            "gap_s": 815400,
+            "missing_bars_est": 905
+          },
+          {
+            "prev": "2026-01-14T19:30:00+00:00",
+            "curr": "2026-01-22T00:45:00+00:00",
+            "gap_s": 623700,
+            "missing_bars_est": 692
+          },
+          {
+            "prev": "2026-03-11T01:00:00+00:00",
+            "curr": "2026-03-15T23:30:00+00:00",
+            "gap_s": 426600,
+            "missing_bars_est": 473
+          },
+          {
+            "prev": "2026-03-04T17:30:00+00:00",
+            "curr": "2026-03-09T02:45:00+00:00",
+            "gap_s": 378900,
+            "missing_bars_est": 420
+          },
+          {
+            "prev": "2026-02-02T13:45:00+00:00",
+            "curr": "2026-02-06T21:45:00+00:00",
+            "gap_s": 374400,
+            "missing_bars_est": 415
+          },
+          {
+            "prev": "2009-12-24T18:30:00+00:00",
+            "curr": "2009-12-27T23:00:00+00:00",
+            "gap_s": 275400,
+            "missing_bars_est": 305
+          },
+          {
+            "prev": "2020-12-24T18:30:00+00:00",
+            "curr": "2020-12-27T23:00:00+00:00",
+            "gap_s": 275400,
+            "missing_bars_est": 305
+          },
+          {
+            "prev": "2015-12-24T18:30:00+00:00",
+            "curr": "2015-12-27T23:00:00+00:00",
+            "gap_s": 275400,
+            "missing_bars_est": 305
+          },
+          {
+            "prev": "2017-12-29T21:45:00+00:00",
+            "curr": "2018-01-01T23:00:00+00:00",
+            "gap_s": 263700,
+            "missing_bars_est": 292
+          },
+          {
+            "prev": "2022-04-14T20:45:00+00:00",
+            "curr": "2022-04-17T22:00:00+00:00",
+            "gap_s": 263700,
+            "missing_bars_est": 292
+          },
+          {
+            "prev": "2015-12-31T21:45:00+00:00",
+            "curr": "2016-01-03T23:00:00+00:00",
+            "gap_s": 263700,
+            "missing_bars_est": 292
+          },
+          {
+            "prev": "2020-12-31T21:45:00+00:00",
+            "curr": "2021-01-03T23:00:00+00:00",
+            "gap_s": 263700,
+            "missing_bars_est": 292
+          },
+          {
+            "prev": "2023-12-22T21:45:00+00:00",
+            "curr": "2023-12-25T23:00:00+00:00",
+            "gap_s": 263700,
+            "missing_bars_est": 292
+          },
+          {
+            "prev": "2016-12-30T21:45:00+00:00",
+            "curr": "2017-01-02T23:00:00+00:00",
+            "gap_s": 263700,
+            "missing_bars_est": 292
+          },
+          {
+            "prev": "2021-04-01T20:45:00+00:00",
+            "curr": "2021-04-04T22:00:00+00:00",
+            "gap_s": 263700,
+            "missing_bars_est": 292
+          },
+          {
+            "prev": "2017-04-13T20:45:00+00:00",
+            "curr": "2017-04-16T22:00:00+00:00",
+            "gap_s": 263700,
+            "missing_bars_est": 292
+          },
+          {
+            "prev": "2021-12-23T21:45:00+00:00",
+            "curr": "2021-12-26T23:00:00+00:00",
+            "gap_s": 263700,
+            "missing_bars_est": 292
+          },
+          {
+            "prev": "2019-04-18T20:45:00+00:00",
+            "curr": "2019-04-21T22:00:00+00:00",
+            "gap_s": 263700,
+            "missing_bars_est": 292
+          },
+          {
+            "prev": "2022-12-30T21:45:00+00:00",
+            "curr": "2023-01-02T23:00:00+00:00",
+            "gap_s": 263700,
+            "missing_bars_est": 292
+          },
+          {
+            "prev": "2024-03-28T20:45:00+00:00",
+            "curr": "2024-03-31T22:00:00+00:00",
+            "gap_s": 263700,
+            "missing_bars_est": 292
+          }
+        ],
+        "bar_interval_s": 900
+      }
+    },
+    "CrudeOIL|H1": {
+      "coverage": {
+        "first_time": "2009-08-04T17:00:00+00:00",
+        "last_time": "2026-04-27T03:00:00+00:00",
+        "total_bars": 95478,
+        "source_count": 1,
+        "sources": "{MT4}"
+      },
+      "duplicates": {
+        "dup_buckets": 0,
+        "extra_rows": "0"
+      },
+      "ohlc": {
+        "high_lt_low": 0,
+        "close_above_high": 0,
+        "close_below_low": 0,
+        "open_outside_range": 0,
+        "nonpositive_open": 0,
+        "nonpositive_high": 0,
+        "nonpositive_low": 0,
+        "nonpositive_close": 0,
+        "negative_volume": 0,
+        "zero_volume_bars": 2
+      },
+      "gaps": {
+        "suspicious_gap_count": 45,
+        "weekend_gap_count": 155,
+        "overnight_gap_count": 0,
+        "top_suspicious": [
+          {
+            "prev": "2025-06-18T20:00:00+00:00",
+            "curr": "2025-11-25T08:00:00+00:00",
+            "gap_s": 13780800,
+            "missing_bars_est": 3827
+          },
+          {
+            "prev": "2025-11-25T09:00:00+00:00",
+            "curr": "2025-12-29T19:00:00+00:00",
+            "gap_s": 2973600,
+            "missing_bars_est": 825
+          },
+          {
+            "prev": "2026-04-02T20:00:00+00:00",
+            "curr": "2026-04-19T23:00:00+00:00",
+            "gap_s": 1479600,
+            "missing_bars_est": 410
+          },
+          {
+            "prev": "2025-04-09T04:00:00+00:00",
+            "curr": "2025-04-22T16:00:00+00:00",
+            "gap_s": 1166400,
+            "missing_bars_est": 323
+          },
+          {
+            "prev": "2026-01-23T17:00:00+00:00",
+            "curr": "2026-02-02T05:00:00+00:00",
+            "gap_s": 820800,
+            "missing_bars_est": 227
+          },
+          {
+            "prev": "2026-02-17T20:00:00+00:00",
+            "curr": "2026-02-27T07:00:00+00:00",
+            "gap_s": 817200,
+            "missing_bars_est": 226
+          },
+          {
+            "prev": "2026-01-14T19:00:00+00:00",
+            "curr": "2026-01-22T00:00:00+00:00",
+            "gap_s": 622800,
+            "missing_bars_est": 172
+          },
+          {
+            "prev": "2026-03-11T01:00:00+00:00",
+            "curr": "2026-03-15T23:00:00+00:00",
+            "gap_s": 424800,
+            "missing_bars_est": 117
+          },
+          {
+            "prev": "2026-03-04T17:00:00+00:00",
+            "curr": "2026-03-09T02:00:00+00:00",
+            "gap_s": 378000,
+            "missing_bars_est": 104
+          },
+          {
+            "prev": "2026-02-02T13:00:00+00:00",
+            "curr": "2026-02-06T21:00:00+00:00",
+            "gap_s": 374400,
+            "missing_bars_est": 103
+          },
+          {
+            "prev": "2009-12-24T18:00:00+00:00",
+            "curr": "2009-12-27T23:00:00+00:00",
+            "gap_s": 277200,
+            "missing_bars_est": 76
+          },
+          {
+            "prev": "2015-12-24T18:00:00+00:00",
+            "curr": "2015-12-27T23:00:00+00:00",
+            "gap_s": 277200,
+            "missing_bars_est": 76
+          },
+          {
+            "prev": "2020-12-24T18:00:00+00:00",
+            "curr": "2020-12-27T23:00:00+00:00",
+            "gap_s": 277200,
+            "missing_bars_est": 76
+          },
+          {
+            "prev": "2021-04-01T20:00:00+00:00",
+            "curr": "2021-04-04T22:00:00+00:00",
+            "gap_s": 266400,
+            "missing_bars_est": 73
+          },
+          {
+            "prev": "2015-12-31T21:00:00+00:00",
+            "curr": "2016-01-03T23:00:00+00:00",
+            "gap_s": 266400,
+            "missing_bars_est": 73
+          },
+          {
+            "prev": "2020-12-31T21:00:00+00:00",
+            "curr": "2021-01-03T23:00:00+00:00",
+            "gap_s": 266400,
+            "missing_bars_est": 73
+          },
+          {
+            "prev": "2016-12-30T21:00:00+00:00",
+            "curr": "2017-01-02T23:00:00+00:00",
+            "gap_s": 266400,
+            "missing_bars_est": 73
+          },
+          {
+            "prev": "2017-12-22T21:00:00+00:00",
+            "curr": "2017-12-25T23:00:00+00:00",
+            "gap_s": 266400,
+            "missing_bars_est": 73
+          },
+          {
+            "prev": "2016-12-23T21:00:00+00:00",
+            "curr": "2016-12-26T23:00:00+00:00",
+            "gap_s": 266400,
+            "missing_bars_est": 73
+          },
+          {
+            "prev": "2018-03-29T20:00:00+00:00",
+            "curr": "2018-04-01T22:00:00+00:00",
+            "gap_s": 266400,
+            "missing_bars_est": 73
+          },
+          {
+            "prev": "2022-12-23T21:00:00+00:00",
+            "curr": "2022-12-26T23:00:00+00:00",
+            "gap_s": 266400,
+            "missing_bars_est": 73
+          },
+          {
+            "prev": "2023-12-22T21:00:00+00:00",
+            "curr": "2023-12-25T23:00:00+00:00",
+            "gap_s": 266400,
+            "missing_bars_est": 73
+          },
+          {
+            "prev": "2016-03-24T20:00:00+00:00",
+            "curr": "2016-03-27T22:00:00+00:00",
+            "gap_s": 266400,
+            "missing_bars_est": 73
+          },
+          {
+            "prev": "2019-04-18T20:00:00+00:00",
+            "curr": "2019-04-21T22:00:00+00:00",
+            "gap_s": 266400,
+            "missing_bars_est": 73
+          },
+          {
+            "prev": "2017-04-13T20:00:00+00:00",
+            "curr": "2017-04-16T22:00:00+00:00",
+            "gap_s": 266400,
+            "missing_bars_est": 73
+          }
+        ],
+        "bar_interval_s": 3600
+      }
+    },
+    "CrudeOIL|H4": {
+      "coverage": {
+        "first_time": "2009-08-04T16:00:00+00:00",
+        "last_time": "2026-04-27T00:00:00+00:00",
+        "total_bars": 25493,
+        "source_count": 1,
+        "sources": "{MT4}"
+      },
+      "duplicates": {
+        "dup_buckets": 0,
+        "extra_rows": "0"
+      },
+      "ohlc": {
+        "high_lt_low": 0,
+        "close_above_high": 0,
+        "close_below_low": 0,
+        "open_outside_range": 0,
+        "nonpositive_open": 0,
+        "nonpositive_high": 0,
+        "nonpositive_low": 0,
+        "nonpositive_close": 0,
+        "negative_volume": 0,
+        "zero_volume_bars": 1
+      },
+      "gaps": {
+        "suspicious_gap_count": 15,
+        "weekend_gap_count": 185,
+        "overnight_gap_count": 0,
+        "top_suspicious": [
+          {
+            "prev": "2025-06-18T20:00:00+00:00",
+            "curr": "2025-11-25T08:00:00+00:00",
+            "gap_s": 13780800,
+            "missing_bars_est": 956
+          },
+          {
+            "prev": "2025-11-25T08:00:00+00:00",
+            "curr": "2025-12-29T16:00:00+00:00",
+            "gap_s": 2966400,
+            "missing_bars_est": 205
+          },
+          {
+            "prev": "2026-04-02T20:00:00+00:00",
+            "curr": "2026-04-19T20:00:00+00:00",
+            "gap_s": 1468800,
+            "missing_bars_est": 101
+          },
+          {
+            "prev": "2025-04-09T04:00:00+00:00",
+            "curr": "2025-04-22T16:00:00+00:00",
+            "gap_s": 1166400,
+            "missing_bars_est": 80
+          },
+          {
+            "prev": "2026-01-23T16:00:00+00:00",
+            "curr": "2026-02-02T04:00:00+00:00",
+            "gap_s": 820800,
+            "missing_bars_est": 56
+          },
+          {
+            "prev": "2026-02-17T20:00:00+00:00",
+            "curr": "2026-02-27T04:00:00+00:00",
+            "gap_s": 806400,
+            "missing_bars_est": 55
+          },
+          {
+            "prev": "2026-01-14T16:00:00+00:00",
+            "curr": "2026-01-22T00:00:00+00:00",
+            "gap_s": 633600,
+            "missing_bars_est": 43
+          },
+          {
+            "prev": "2026-03-11T00:00:00+00:00",
+            "curr": "2026-03-15T20:00:00+00:00",
+            "gap_s": 417600,
+            "missing_bars_est": 28
+          },
+          {
+            "prev": "2026-02-02T12:00:00+00:00",
+            "curr": "2026-02-06T20:00:00+00:00",
+            "gap_s": 374400,
+            "missing_bars_est": 25
+          },
+          {
+            "prev": "2026-03-04T16:00:00+00:00",
+            "curr": "2026-03-09T00:00:00+00:00",
+            "gap_s": 374400,
+            "missing_bars_est": 25
+          },
+          {
+            "prev": "2015-12-24T16:00:00+00:00",
+            "curr": "2015-12-27T20:00:00+00:00",
+            "gap_s": 273600,
+            "missing_bars_est": 18
+          },
+          {
+            "prev": "2009-12-24T16:00:00+00:00",
+            "curr": "2009-12-27T20:00:00+00:00",
+            "gap_s": 273600,
+            "missing_bars_est": 18
+          },
+          {
+            "prev": "2020-12-24T16:00:00+00:00",
+            "curr": "2020-12-27T20:00:00+00:00",
+            "gap_s": 273600,
+            "missing_bars_est": 18
+          },
+          {
+            "prev": "2025-05-14T04:00:00+00:00",
+            "curr": "2025-05-16T20:00:00+00:00",
+            "gap_s": 230400,
+            "missing_bars_est": 15
+          },
+          {
+            "prev": "2025-05-28T12:00:00+00:00",
+            "curr": "2025-05-30T20:00:00+00:00",
+            "gap_s": 201600,
+            "missing_bars_est": 13
+          }
+        ],
+        "bar_interval_s": 14400
+      }
+    },
+    "CrudeOIL|D1": {
+      "coverage": {
+        "first_time": "2009-08-04T00:00:00+00:00",
+        "last_time": "2026-04-26T00:00:00+00:00",
+        "total_bars": 4979,
+        "source_count": 1,
+        "sources": "{MT4}"
+      },
+      "duplicates": {
+        "dup_buckets": 0,
+        "extra_rows": "0"
+      },
+      "ohlc": {
+        "high_lt_low": 0,
+        "close_above_high": 0,
+        "close_below_low": 0,
+        "open_outside_range": 0,
+        "nonpositive_open": 0,
+        "nonpositive_high": 0,
+        "nonpositive_low": 0,
+        "nonpositive_close": 0,
+        "negative_volume": 0,
+        "zero_volume_bars": 1
+      },
+      "gaps": {
+        "suspicious_gap_count": 10,
+        "weekend_gap_count": 190,
+        "overnight_gap_count": 0,
+        "top_suspicious": [
+          {
+            "prev": "2025-06-18T00:00:00+00:00",
+            "curr": "2025-11-25T00:00:00+00:00",
+            "gap_s": 13824000,
+            "missing_bars_est": 159
+          },
+          {
+            "prev": "2025-11-25T00:00:00+00:00",
+            "curr": "2025-12-29T00:00:00+00:00",
+            "gap_s": 2937600,
+            "missing_bars_est": 33
+          },
+          {
+            "prev": "2026-04-02T00:00:00+00:00",
+            "curr": "2026-04-19T00:00:00+00:00",
+            "gap_s": 1468800,
+            "missing_bars_est": 16
+          },
+          {
+            "prev": "2025-04-09T00:00:00+00:00",
+            "curr": "2025-04-22T00:00:00+00:00",
+            "gap_s": 1123200,
+            "missing_bars_est": 12
+          },
+          {
+            "prev": "2026-01-23T00:00:00+00:00",
+            "curr": "2026-02-02T00:00:00+00:00",
+            "gap_s": 864000,
+            "missing_bars_est": 9
+          },
+          {
+            "prev": "2026-02-17T00:00:00+00:00",
+            "curr": "2026-02-27T00:00:00+00:00",
+            "gap_s": 864000,
+            "missing_bars_est": 9
+          },
+          {
+            "prev": "2026-01-14T00:00:00+00:00",
+            "curr": "2026-01-22T00:00:00+00:00",
+            "gap_s": 691200,
+            "missing_bars_est": 7
+          },
+          {
+            "prev": "2026-03-04T00:00:00+00:00",
+            "curr": "2026-03-09T00:00:00+00:00",
+            "gap_s": 432000,
+            "missing_bars_est": 4
+          },
+          {
+            "prev": "2026-02-02T00:00:00+00:00",
+            "curr": "2026-02-06T00:00:00+00:00",
+            "gap_s": 345600,
+            "missing_bars_est": 3
+          },
+          {
+            "prev": "2026-03-11T00:00:00+00:00",
+            "curr": "2026-03-15T00:00:00+00:00",
+            "gap_s": 345600,
+            "missing_bars_est": 3
+          }
+        ],
+        "bar_interval_s": 86400
+      }
+    },
+    "USA500|M1": {
+      "coverage": {
+        "first_time": "2024-01-01T23:00:00+00:00",
+        "last_time": "2026-04-27T04:51:00+00:00",
+        "total_bars": 736049,
+        "source_count": 2,
+        "sources": "{MT4,DUKASCOPY}"
+      },
+      "duplicates": {
+        "dup_buckets": 415,
+        "extra_rows": "415"
+      },
+      "ohlc": {
+        "high_lt_low": 0,
+        "close_above_high": 0,
+        "close_below_low": 0,
+        "open_outside_range": 0,
+        "nonpositive_open": 0,
+        "nonpositive_high": 0,
+        "nonpositive_low": 0,
+        "nonpositive_close": 0,
+        "negative_volume": 0,
+        "zero_volume_bars": 662379
+      },
+      "gaps": {
+        "suspicious_gap_count": 86,
+        "weekend_gap_count": 114,
+        "overnight_gap_count": 0,
+        "top_suspicious": [
+          {
+            "prev": "2026-04-03T13:14:00+00:00",
+            "curr": "2026-04-19T23:23:00+00:00",
+            "gap_s": 1418940,
+            "missing_bars_est": 23648
+          },
+          {
+            "prev": "2026-03-11T01:06:00+00:00",
+            "curr": "2026-03-15T23:42:00+00:00",
+            "gap_s": 426960,
+            "missing_bars_est": 7115
+          },
+          {
+            "prev": "2026-03-04T17:35:00+00:00",
+            "curr": "2026-03-09T02:49:00+00:00",
+            "gap_s": 378840,
+            "missing_bars_est": 6313
+          },
+          {
+            "prev": "2024-03-28T20:13:00+00:00",
+            "curr": "2024-04-01T00:00:00+00:00",
+            "gap_s": 272820,
+            "missing_bars_est": 4546
+          },
+          {
+            "prev": "2025-04-17T20:13:00+00:00",
+            "curr": "2025-04-21T00:00:00+00:00",
+            "gap_s": 272820,
+            "missing_bars_est": 4546
+          },
+          {
+            "prev": "2026-03-19T06:32:00+00:00",
+            "curr": "2026-03-20T20:13:00+00:00",
+            "gap_s": 135660,
+            "missing_bars_est": 2260
+          },
+          {
+            "prev": "2025-12-24T18:13:00+00:00",
+            "curr": "2025-12-25T23:00:00+00:00",
+            "gap_s": 103620,
+            "missing_bars_est": 1726
+          },
+          {
+            "prev": "2024-12-24T18:13:00+00:00",
+            "curr": "2024-12-25T23:00:00+00:00",
+            "gap_s": 103620,
+            "missing_bars_est": 1726
+          },
+          {
+            "prev": "2025-12-31T21:13:00+00:00",
+            "curr": "2026-01-01T23:00:00+00:00",
+            "gap_s": 92820,
+            "missing_bars_est": 1546
+          },
+          {
+            "prev": "2024-12-31T21:13:00+00:00",
+            "curr": "2025-01-01T23:00:00+00:00",
+            "gap_s": 92820,
+            "missing_bars_est": 1546
+          },
+          {
+            "prev": "2026-04-22T00:26:00+00:00",
+            "curr": "2026-04-23T01:36:00+00:00",
+            "gap_s": 90600,
+            "missing_bars_est": 1509
+          },
+          {
+            "prev": "2026-04-21T04:04:00+00:00",
+            "curr": "2026-04-21T13:49:00+00:00",
+            "gap_s": 35100,
+            "missing_bars_est": 584
+          },
+          {
+            "prev": "2026-04-23T20:13:00+00:00",
+            "curr": "2026-04-24T05:39:00+00:00",
+            "gap_s": 33960,
+            "missing_bars_est": 565
+          },
+          {
+            "prev": "2026-03-02T04:08:00+00:00",
+            "curr": "2026-03-02T13:08:00+00:00",
+            "gap_s": 32400,
+            "missing_bars_est": 539
+          },
+          {
+            "prev": "2026-03-23T19:23:00+00:00",
+            "curr": "2026-03-24T04:08:00+00:00",
+            "gap_s": 31500,
+            "missing_bars_est": 524
+          },
+          {
+            "prev": "2026-04-24T05:41:00+00:00",
+            "curr": "2026-04-24T14:17:00+00:00",
+            "gap_s": 30960,
+            "missing_bars_est": 515
+          },
+          {
+            "prev": "2025-01-09T14:28:00+00:00",
+            "curr": "2025-01-09T23:00:00+00:00",
+            "gap_s": 30720,
+            "missing_bars_est": 511
+          },
+          {
+            "prev": "2026-03-30T16:05:00+00:00",
+            "curr": "2026-03-31T00:12:00+00:00",
+            "gap_s": 29220,
+            "missing_bars_est": 486
+          },
+          {
+            "prev": "2026-03-10T08:17:00+00:00",
+            "curr": "2026-03-10T15:41:00+00:00",
+            "gap_s": 26640,
+            "missing_bars_est": 443
+          },
+          {
+            "prev": "2025-11-28T06:30:00+00:00",
+            "curr": "2025-11-28T13:30:00+00:00",
+            "gap_s": 25200,
+            "missing_bars_est": 419
+          },
+          {
+            "prev": "2026-03-23T09:18:00+00:00",
+            "curr": "2026-03-23T15:53:00+00:00",
+            "gap_s": 23700,
+            "missing_bars_est": 394
+          },
+          {
+            "prev": "2026-03-18T08:36:00+00:00",
+            "curr": "2026-03-18T15:05:00+00:00",
+            "gap_s": 23340,
+            "missing_bars_est": 388
+          },
+          {
+            "prev": "2026-03-16T19:30:00+00:00",
+            "curr": "2026-03-17T01:45:00+00:00",
+            "gap_s": 22500,
+            "missing_bars_est": 374
+          },
+          {
+            "prev": "2025-05-26T16:58:00+00:00",
+            "curr": "2025-05-26T22:47:00+00:00",
+            "gap_s": 20940,
+            "missing_bars_est": 348
+          },
+          {
+            "prev": "2026-04-20T14:26:00+00:00",
+            "curr": "2026-04-20T20:12:00+00:00",
+            "gap_s": 20760,
+            "missing_bars_est": 345
+          }
+        ],
+        "bar_interval_s": 60
+      }
+    },
+    "USA500|M5": {
+      "coverage": {
+        "first_time": null,
+        "last_time": null,
+        "total_bars": 0,
+        "source_count": 0,
+        "sources": null
+      },
+      "duplicates": {
+        "dup_buckets": 0,
+        "extra_rows": "0"
+      },
+      "ohlc": {
+        "high_lt_low": 0,
+        "close_above_high": 0,
+        "close_below_low": 0,
+        "open_outside_range": 0,
+        "nonpositive_open": 0,
+        "nonpositive_high": 0,
+        "nonpositive_low": 0,
+        "nonpositive_close": 0,
+        "negative_volume": 0,
+        "zero_volume_bars": 0
+      },
+      "gaps": {
+        "suspicious_gap_count": 0,
+        "weekend_gap_count": 0,
+        "overnight_gap_count": 0,
+        "top_suspicious": [],
+        "bar_interval_s": 300
+      }
+    },
+    "USA500|M15": {
+      "coverage": {
+        "first_time": "2024-01-01T23:00:00+00:00",
+        "last_time": "2026-04-27T04:30:00+00:00",
+        "total_bars": 49943,
+        "source_count": 1,
+        "sources": "{MT4}"
+      },
+      "duplicates": {
+        "dup_buckets": 0,
+        "extra_rows": "0"
+      },
+      "ohlc": {
+        "high_lt_low": 0,
+        "close_above_high": 0,
+        "close_below_low": 0,
+        "open_outside_range": 0,
+        "nonpositive_open": 0,
+        "nonpositive_high": 0,
+        "nonpositive_low": 0,
+        "nonpositive_close": 0,
+        "negative_volume": 0,
+        "zero_volume_bars": 42361
+      },
+      "gaps": {
+        "suspicious_gap_count": 86,
+        "weekend_gap_count": 114,
+        "overnight_gap_count": 0,
+        "top_suspicious": [
+          {
+            "prev": "2026-04-03T13:00:00+00:00",
+            "curr": "2026-04-19T23:15:00+00:00",
+            "gap_s": 1419300,
+            "missing_bars_est": 1576
+          },
+          {
+            "prev": "2026-03-11T01:00:00+00:00",
+            "curr": "2026-03-15T23:30:00+00:00",
+            "gap_s": 426600,
+            "missing_bars_est": 473
+          },
+          {
+            "prev": "2026-03-04T17:30:00+00:00",
+            "curr": "2026-03-09T02:45:00+00:00",
+            "gap_s": 378900,
+            "missing_bars_est": 420
+          },
+          {
+            "prev": "2024-03-28T20:00:00+00:00",
+            "curr": "2024-04-01T00:00:00+00:00",
+            "gap_s": 273600,
+            "missing_bars_est": 303
+          },
+          {
+            "prev": "2025-04-17T20:00:00+00:00",
+            "curr": "2025-04-21T00:00:00+00:00",
+            "gap_s": 273600,
+            "missing_bars_est": 303
+          },
+          {
+            "prev": "2026-03-19T06:30:00+00:00",
+            "curr": "2026-03-20T20:00:00+00:00",
+            "gap_s": 135000,
+            "missing_bars_est": 149
+          },
+          {
+            "prev": "2025-12-24T18:00:00+00:00",
+            "curr": "2025-12-25T23:00:00+00:00",
+            "gap_s": 104400,
+            "missing_bars_est": 115
+          },
+          {
+            "prev": "2024-12-24T18:00:00+00:00",
+            "curr": "2024-12-25T23:00:00+00:00",
+            "gap_s": 104400,
+            "missing_bars_est": 115
+          },
+          {
+            "prev": "2025-12-31T21:00:00+00:00",
+            "curr": "2026-01-01T23:00:00+00:00",
+            "gap_s": 93600,
+            "missing_bars_est": 103
+          },
+          {
+            "prev": "2024-12-31T21:00:00+00:00",
+            "curr": "2025-01-01T23:00:00+00:00",
+            "gap_s": 93600,
+            "missing_bars_est": 103
+          },
+          {
+            "prev": "2026-04-22T00:15:00+00:00",
+            "curr": "2026-04-23T01:30:00+00:00",
+            "gap_s": 90900,
+            "missing_bars_est": 100
+          },
+          {
+            "prev": "2026-04-21T04:00:00+00:00",
+            "curr": "2026-04-21T13:45:00+00:00",
+            "gap_s": 35100,
+            "missing_bars_est": 38
+          },
+          {
+            "prev": "2026-04-23T20:00:00+00:00",
+            "curr": "2026-04-24T05:30:00+00:00",
+            "gap_s": 34200,
+            "missing_bars_est": 37
+          },
+          {
+            "prev": "2026-03-02T04:00:00+00:00",
+            "curr": "2026-03-02T13:00:00+00:00",
+            "gap_s": 32400,
+            "missing_bars_est": 35
+          },
+          {
+            "prev": "2026-04-24T05:30:00+00:00",
+            "curr": "2026-04-24T14:15:00+00:00",
+            "gap_s": 31500,
+            "missing_bars_est": 34
+          },
+          {
+            "prev": "2026-03-23T19:15:00+00:00",
+            "curr": "2026-03-24T04:00:00+00:00",
+            "gap_s": 31500,
+            "missing_bars_est": 34
+          },
+          {
+            "prev": "2025-01-09T14:15:00+00:00",
+            "curr": "2025-01-09T23:00:00+00:00",
+            "gap_s": 31500,
+            "missing_bars_est": 34
+          },
+          {
+            "prev": "2026-03-30T16:00:00+00:00",
+            "curr": "2026-03-31T00:00:00+00:00",
+            "gap_s": 28800,
+            "missing_bars_est": 31
+          },
+          {
+            "prev": "2026-03-10T08:15:00+00:00",
+            "curr": "2026-03-10T15:30:00+00:00",
+            "gap_s": 26100,
+            "missing_bars_est": 28
+          },
+          {
+            "prev": "2025-11-28T06:30:00+00:00",
+            "curr": "2025-11-28T13:30:00+00:00",
+            "gap_s": 25200,
+            "missing_bars_est": 27
+          },
+          {
+            "prev": "2026-03-23T09:15:00+00:00",
+            "curr": "2026-03-23T15:45:00+00:00",
+            "gap_s": 23400,
+            "missing_bars_est": 25
+          },
+          {
+            "prev": "2026-03-18T08:30:00+00:00",
+            "curr": "2026-03-18T15:00:00+00:00",
+            "gap_s": 23400,
+            "missing_bars_est": 25
+          },
+          {
+            "prev": "2026-03-16T19:30:00+00:00",
+            "curr": "2026-03-17T01:45:00+00:00",
+            "gap_s": 22500,
+            "missing_bars_est": 24
+          },
+          {
+            "prev": "2025-05-26T16:45:00+00:00",
+            "curr": "2025-05-26T22:45:00+00:00",
+            "gap_s": 21600,
+            "missing_bars_est": 23
+          },
+          {
+            "prev": "2026-04-20T14:15:00+00:00",
+            "curr": "2026-04-20T20:00:00+00:00",
+            "gap_s": 20700,
+            "missing_bars_est": 22
+          }
+        ],
+        "bar_interval_s": 900
+      }
+    },
+    "USA500|H1": {
+      "coverage": {
+        "first_time": "2024-01-01T23:00:00+00:00",
+        "last_time": "2026-04-27T03:00:00+00:00",
+        "total_bars": 25525,
+        "source_count": 2,
+        "sources": "{MT4,DUKASCOPY}"
+      },
+      "duplicates": {
+        "dup_buckets": 12557,
+        "extra_rows": "12557"
+      },
+      "ohlc": {
+        "high_lt_low": 0,
+        "close_above_high": 0,
+        "close_below_low": 0,
+        "open_outside_range": 0,
+        "nonpositive_open": 0,
+        "nonpositive_high": 0,
+        "nonpositive_low": 0,
+        "nonpositive_close": 0,
+        "negative_volume": 0,
+        "zero_volume_bars": 20187
+      },
+      "gaps": {
+        "suspicious_gap_count": 86,
+        "weekend_gap_count": 114,
+        "overnight_gap_count": 0,
+        "top_suspicious": [
+          {
+            "prev": "2026-04-03T13:00:00+00:00",
+            "curr": "2026-04-19T23:00:00+00:00",
+            "gap_s": 1418400,
+            "missing_bars_est": 393
+          },
+          {
+            "prev": "2026-03-11T01:00:00+00:00",
+            "curr": "2026-03-15T23:00:00+00:00",
+            "gap_s": 424800,
+            "missing_bars_est": 117
+          },
+          {
+            "prev": "2026-03-04T17:00:00+00:00",
+            "curr": "2026-03-09T02:00:00+00:00",
+            "gap_s": 378000,
+            "missing_bars_est": 104
+          },
+          {
+            "prev": "2025-04-17T20:00:00+00:00",
+            "curr": "2025-04-21T00:00:00+00:00",
+            "gap_s": 273600,
+            "missing_bars_est": 75
+          },
+          {
+            "prev": "2024-03-28T20:00:00+00:00",
+            "curr": "2024-04-01T00:00:00+00:00",
+            "gap_s": 273600,
+            "missing_bars_est": 75
+          },
+          {
+            "prev": "2026-03-19T06:00:00+00:00",
+            "curr": "2026-03-20T20:00:00+00:00",
+            "gap_s": 136800,
+            "missing_bars_est": 37
+          },
+          {
+            "prev": "2025-12-24T18:00:00+00:00",
+            "curr": "2025-12-25T23:00:00+00:00",
+            "gap_s": 104400,
+            "missing_bars_est": 28
+          },
+          {
+            "prev": "2024-12-24T18:00:00+00:00",
+            "curr": "2024-12-25T23:00:00+00:00",
+            "gap_s": 104400,
+            "missing_bars_est": 28
+          },
+          {
+            "prev": "2025-12-31T21:00:00+00:00",
+            "curr": "2026-01-01T23:00:00+00:00",
+            "gap_s": 93600,
+            "missing_bars_est": 25
+          },
+          {
+            "prev": "2024-12-31T21:00:00+00:00",
+            "curr": "2025-01-01T23:00:00+00:00",
+            "gap_s": 93600,
+            "missing_bars_est": 25
+          },
+          {
+            "prev": "2026-04-22T00:00:00+00:00",
+            "curr": "2026-04-23T01:00:00+00:00",
+            "gap_s": 90000,
+            "missing_bars_est": 24
+          },
+          {
+            "prev": "2026-04-23T20:00:00+00:00",
+            "curr": "2026-04-24T05:00:00+00:00",
+            "gap_s": 32400,
+            "missing_bars_est": 8
+          },
+          {
+            "prev": "2026-04-24T05:00:00+00:00",
+            "curr": "2026-04-24T14:00:00+00:00",
+            "gap_s": 32400,
+            "missing_bars_est": 8
+          },
+          {
+            "prev": "2026-04-21T04:00:00+00:00",
+            "curr": "2026-04-21T13:00:00+00:00",
+            "gap_s": 32400,
+            "missing_bars_est": 8
+          },
+          {
+            "prev": "2026-03-23T19:00:00+00:00",
+            "curr": "2026-03-24T04:00:00+00:00",
+            "gap_s": 32400,
+            "missing_bars_est": 8
+          },
+          {
+            "prev": "2026-03-02T04:00:00+00:00",
+            "curr": "2026-03-02T13:00:00+00:00",
+            "gap_s": 32400,
+            "missing_bars_est": 8
+          },
+          {
+            "prev": "2025-01-09T14:00:00+00:00",
+            "curr": "2025-01-09T23:00:00+00:00",
+            "gap_s": 32400,
+            "missing_bars_est": 8
+          },
+          {
+            "prev": "2026-03-30T16:00:00+00:00",
+            "curr": "2026-03-31T00:00:00+00:00",
+            "gap_s": 28800,
+            "missing_bars_est": 7
+          },
+          {
+            "prev": "2026-03-18T08:00:00+00:00",
+            "curr": "2026-03-18T15:00:00+00:00",
+            "gap_s": 25200,
+            "missing_bars_est": 6
+          },
+          {
+            "prev": "2026-03-10T08:00:00+00:00",
+            "curr": "2026-03-10T15:00:00+00:00",
+            "gap_s": 25200,
+            "missing_bars_est": 6
+          },
+          {
+            "prev": "2025-11-28T06:00:00+00:00",
+            "curr": "2025-11-28T13:00:00+00:00",
+            "gap_s": 25200,
+            "missing_bars_est": 6
+          },
+          {
+            "prev": "2024-06-19T16:00:00+00:00",
+            "curr": "2024-06-19T22:00:00+00:00",
+            "gap_s": 21600,
+            "missing_bars_est": 5
+          },
+          {
+            "prev": "2024-05-27T16:00:00+00:00",
+            "curr": "2024-05-27T22:00:00+00:00",
+            "gap_s": 21600,
+            "missing_bars_est": 5
+          },
+          {
+            "prev": "2026-04-20T14:00:00+00:00",
+            "curr": "2026-04-20T20:00:00+00:00",
+            "gap_s": 21600,
+            "missing_bars_est": 5
+          },
+          {
+            "prev": "2026-04-03T07:00:00+00:00",
+            "curr": "2026-04-03T13:00:00+00:00",
+            "gap_s": 21600,
+            "missing_bars_est": 5
+          }
+        ],
+        "bar_interval_s": 3600
+      }
+    },
+    "USA500|H4": {
+      "coverage": {
+        "first_time": "2024-01-01T20:00:00+00:00",
+        "last_time": "2026-04-27T00:00:00+00:00",
+        "total_bars": 3477,
+        "source_count": 1,
+        "sources": "{MT4}"
+      },
+      "duplicates": {
+        "dup_buckets": 0,
+        "extra_rows": "0"
+      },
+      "ohlc": {
+        "high_lt_low": 0,
+        "close_above_high": 0,
+        "close_below_low": 0,
+        "open_outside_range": 0,
+        "nonpositive_open": 0,
+        "nonpositive_high": 0,
+        "nonpositive_low": 0,
+        "nonpositive_close": 0,
+        "negative_volume": 0,
+        "zero_volume_bars": 2289
+      },
+      "gaps": {
+        "suspicious_gap_count": 22,
+        "weekend_gap_count": 114,
+        "overnight_gap_count": 0,
+        "top_suspicious": [
+          {
+            "prev": "2026-04-03T12:00:00+00:00",
+            "curr": "2026-04-19T20:00:00+00:00",
+            "gap_s": 1411200,
+            "missing_bars_est": 97
+          },
+          {
+            "prev": "2026-03-11T00:00:00+00:00",
+            "curr": "2026-03-15T20:00:00+00:00",
+            "gap_s": 417600,
+            "missing_bars_est": 28
+          },
+          {
+            "prev": "2026-03-04T16:00:00+00:00",
+            "curr": "2026-03-09T00:00:00+00:00",
+            "gap_s": 374400,
+            "missing_bars_est": 25
+          },
+          {
+            "prev": "2024-03-28T20:00:00+00:00",
+            "curr": "2024-04-01T00:00:00+00:00",
+            "gap_s": 273600,
+            "missing_bars_est": 18
+          },
+          {
+            "prev": "2025-04-17T20:00:00+00:00",
+            "curr": "2025-04-21T00:00:00+00:00",
+            "gap_s": 273600,
+            "missing_bars_est": 18
+          },
+          {
+            "prev": "2026-03-19T04:00:00+00:00",
+            "curr": "2026-03-20T20:00:00+00:00",
+            "gap_s": 144000,
+            "missing_bars_est": 9
+          },
+          {
+            "prev": "2025-12-24T16:00:00+00:00",
+            "curr": "2025-12-25T20:00:00+00:00",
+            "gap_s": 100800,
+            "missing_bars_est": 6
+          },
+          {
+            "prev": "2024-12-24T16:00:00+00:00",
+            "curr": "2024-12-25T20:00:00+00:00",
+            "gap_s": 100800,
+            "missing_bars_est": 6
+          },
+          {
+            "prev": "2026-04-22T00:00:00+00:00",
+            "curr": "2026-04-23T00:00:00+00:00",
+            "gap_s": 86400,
+            "missing_bars_est": 5
+          },
+          {
+            "prev": "2024-12-31T20:00:00+00:00",
+            "curr": "2025-01-01T20:00:00+00:00",
+            "gap_s": 86400,
+            "missing_bars_est": 5
+          },
+          {
+            "prev": "2025-12-31T20:00:00+00:00",
+            "curr": "2026-01-01T20:00:00+00:00",
+            "gap_s": 86400,
+            "missing_bars_est": 5
+          },
+          {
+            "prev": "2026-03-23T16:00:00+00:00",
+            "curr": "2026-03-24T04:00:00+00:00",
+            "gap_s": 43200,
+            "missing_bars_est": 2
+          },
+          {
+            "prev": "2025-01-09T12:00:00+00:00",
+            "curr": "2025-01-09T20:00:00+00:00",
+            "gap_s": 28800,
+            "missing_bars_est": 1
+          },
+          {
+            "prev": "2026-03-02T04:00:00+00:00",
+            "curr": "2026-03-02T12:00:00+00:00",
+            "gap_s": 28800,
+            "missing_bars_est": 1
+          },
+          {
+            "prev": "2026-03-30T16:00:00+00:00",
+            "curr": "2026-03-31T00:00:00+00:00",
+            "gap_s": 28800,
+            "missing_bars_est": 1
+          },
+          {
+            "prev": "2026-04-23T20:00:00+00:00",
+            "curr": "2026-04-24T04:00:00+00:00",
+            "gap_s": 28800,
+            "missing_bars_est": 1
+          },
+          {
+            "prev": "2026-04-03T04:00:00+00:00",
+            "curr": "2026-04-03T12:00:00+00:00",
+            "gap_s": 28800,
+            "missing_bars_est": 1
+          },
+          {
+            "prev": "2026-04-24T04:00:00+00:00",
+            "curr": "2026-04-24T12:00:00+00:00",
+            "gap_s": 28800,
+            "missing_bars_est": 1
+          },
+          {
+            "prev": "2026-04-20T12:00:00+00:00",
+            "curr": "2026-04-20T20:00:00+00:00",
+            "gap_s": 28800,
+            "missing_bars_est": 1
+          },
+          {
+            "prev": "2026-04-21T04:00:00+00:00",
+            "curr": "2026-04-21T12:00:00+00:00",
+            "gap_s": 28800,
+            "missing_bars_est": 1
+          },
+          {
+            "prev": "2026-03-16T16:00:00+00:00",
+            "curr": "2026-03-17T00:00:00+00:00",
+            "gap_s": 28800,
+            "missing_bars_est": 1
+          },
+          {
+            "prev": "2025-11-28T04:00:00+00:00",
+            "curr": "2025-11-28T12:00:00+00:00",
+            "gap_s": 28800,
+            "missing_bars_est": 1
+          }
+        ],
+        "bar_interval_s": 14400
+      }
+    },
+    "USA500|D1": {
+      "coverage": {
+        "first_time": "2024-01-01T00:00:00+00:00",
+        "last_time": "2026-04-26T00:00:00+00:00",
+        "total_bars": 595,
+        "source_count": 1,
+        "sources": "{MT4}"
+      },
+      "duplicates": {
+        "dup_buckets": 0,
+        "extra_rows": "0"
+      },
+      "ohlc": {
+        "high_lt_low": 0,
+        "close_above_high": 0,
+        "close_below_low": 0,
+        "open_outside_range": 0,
+        "nonpositive_open": 0,
+        "nonpositive_high": 0,
+        "nonpositive_low": 0,
+        "nonpositive_close": 0,
+        "negative_volume": 0,
+        "zero_volume_bars": 83
+      },
+      "gaps": {
+        "suspicious_gap_count": 5,
+        "weekend_gap_count": 114,
+        "overnight_gap_count": 0,
+        "top_suspicious": [
+          {
+            "prev": "2026-04-03T00:00:00+00:00",
+            "curr": "2026-04-19T00:00:00+00:00",
+            "gap_s": 1382400,
+            "missing_bars_est": 15
+          },
+          {
+            "prev": "2026-03-04T00:00:00+00:00",
+            "curr": "2026-03-09T00:00:00+00:00",
+            "gap_s": 432000,
+            "missing_bars_est": 4
+          },
+          {
+            "prev": "2024-03-28T00:00:00+00:00",
+            "curr": "2024-04-01T00:00:00+00:00",
+            "gap_s": 345600,
+            "missing_bars_est": 3
+          },
+          {
+            "prev": "2025-04-17T00:00:00+00:00",
+            "curr": "2025-04-21T00:00:00+00:00",
+            "gap_s": 345600,
+            "missing_bars_est": 3
+          },
+          {
+            "prev": "2026-03-11T00:00:00+00:00",
+            "curr": "2026-03-15T00:00:00+00:00",
+            "gap_s": 345600,
+            "missing_bars_est": 3
+          }
+        ],
+        "bar_interval_s": 86400
+      }
+    },
+    "GBPJPY.|M1": {
+      "coverage": {
+        "first_time": null,
+        "last_time": null,
+        "total_bars": 0,
+        "source_count": 0,
+        "sources": null
+      },
+      "duplicates": {
+        "dup_buckets": 0,
+        "extra_rows": "0"
+      },
+      "ohlc": {
+        "high_lt_low": 0,
+        "close_above_high": 0,
+        "close_below_low": 0,
+        "open_outside_range": 0,
+        "nonpositive_open": 0,
+        "nonpositive_high": 0,
+        "nonpositive_low": 0,
+        "nonpositive_close": 0,
+        "negative_volume": 0,
+        "zero_volume_bars": 0
+      },
+      "gaps": {
+        "suspicious_gap_count": 0,
+        "weekend_gap_count": 0,
+        "overnight_gap_count": 0,
+        "top_suspicious": [],
+        "bar_interval_s": 60
+      }
+    },
+    "GBPJPY.|M5": {
+      "coverage": {
+        "first_time": null,
+        "last_time": null,
+        "total_bars": 0,
+        "source_count": 0,
+        "sources": null
+      },
+      "duplicates": {
+        "dup_buckets": 0,
+        "extra_rows": "0"
+      },
+      "ohlc": {
+        "high_lt_low": 0,
+        "close_above_high": 0,
+        "close_below_low": 0,
+        "open_outside_range": 0,
+        "nonpositive_open": 0,
+        "nonpositive_high": 0,
+        "nonpositive_low": 0,
+        "nonpositive_close": 0,
+        "negative_volume": 0,
+        "zero_volume_bars": 0
+      },
+      "gaps": {
+        "suspicious_gap_count": 0,
+        "weekend_gap_count": 0,
+        "overnight_gap_count": 0,
+        "top_suspicious": [],
+        "bar_interval_s": 300
+      }
+    },
+    "GBPJPY.|M15": {
+      "coverage": {
+        "first_time": null,
+        "last_time": null,
+        "total_bars": 0,
+        "source_count": 0,
+        "sources": null
+      },
+      "duplicates": {
+        "dup_buckets": 0,
+        "extra_rows": "0"
+      },
+      "ohlc": {
+        "high_lt_low": 0,
+        "close_above_high": 0,
+        "close_below_low": 0,
+        "open_outside_range": 0,
+        "nonpositive_open": 0,
+        "nonpositive_high": 0,
+        "nonpositive_low": 0,
+        "nonpositive_close": 0,
+        "negative_volume": 0,
+        "zero_volume_bars": 0
+      },
+      "gaps": {
+        "suspicious_gap_count": 0,
+        "weekend_gap_count": 0,
+        "overnight_gap_count": 0,
+        "top_suspicious": [],
+        "bar_interval_s": 900
+      }
+    },
+    "GBPJPY.|H1": {
+      "coverage": {
+        "first_time": null,
+        "last_time": null,
+        "total_bars": 0,
+        "source_count": 0,
+        "sources": null
+      },
+      "duplicates": {
+        "dup_buckets": 0,
+        "extra_rows": "0"
+      },
+      "ohlc": {
+        "high_lt_low": 0,
+        "close_above_high": 0,
+        "close_below_low": 0,
+        "open_outside_range": 0,
+        "nonpositive_open": 0,
+        "nonpositive_high": 0,
+        "nonpositive_low": 0,
+        "nonpositive_close": 0,
+        "negative_volume": 0,
+        "zero_volume_bars": 0
+      },
+      "gaps": {
+        "suspicious_gap_count": 0,
+        "weekend_gap_count": 0,
+        "overnight_gap_count": 0,
+        "top_suspicious": [],
+        "bar_interval_s": 3600
+      }
+    },
+    "GBPJPY.|H4": {
+      "coverage": {
+        "first_time": null,
+        "last_time": null,
+        "total_bars": 0,
+        "source_count": 0,
+        "sources": null
+      },
+      "duplicates": {
+        "dup_buckets": 0,
+        "extra_rows": "0"
+      },
+      "ohlc": {
+        "high_lt_low": 0,
+        "close_above_high": 0,
+        "close_below_low": 0,
+        "open_outside_range": 0,
+        "nonpositive_open": 0,
+        "nonpositive_high": 0,
+        "nonpositive_low": 0,
+        "nonpositive_close": 0,
+        "negative_volume": 0,
+        "zero_volume_bars": 0
+      },
+      "gaps": {
+        "suspicious_gap_count": 0,
+        "weekend_gap_count": 0,
+        "overnight_gap_count": 0,
+        "top_suspicious": [],
+        "bar_interval_s": 14400
+      }
+    },
+    "GBPJPY.|D1": {
+      "coverage": {
+        "first_time": null,
+        "last_time": null,
+        "total_bars": 0,
+        "source_count": 0,
+        "sources": null
+      },
+      "duplicates": {
+        "dup_buckets": 0,
+        "extra_rows": "0"
+      },
+      "ohlc": {
+        "high_lt_low": 0,
+        "close_above_high": 0,
+        "close_below_low": 0,
+        "open_outside_range": 0,
+        "nonpositive_open": 0,
+        "nonpositive_high": 0,
+        "nonpositive_low": 0,
+        "nonpositive_close": 0,
+        "negative_volume": 0,
+        "zero_volume_bars": 0
+      },
+      "gaps": {
+        "suspicious_gap_count": 0,
+        "weekend_gap_count": 0,
+        "overnight_gap_count": 0,
+        "top_suspicious": [],
+        "bar_interval_s": 86400
+      }
+    },
+    "#TSLA|M1": {
+      "coverage": {
+        "first_time": null,
+        "last_time": null,
+        "total_bars": 0,
+        "source_count": 0,
+        "sources": null
+      },
+      "duplicates": {
+        "dup_buckets": 0,
+        "extra_rows": "0"
+      },
+      "ohlc": {
+        "high_lt_low": 0,
+        "close_above_high": 0,
+        "close_below_low": 0,
+        "open_outside_range": 0,
+        "nonpositive_open": 0,
+        "nonpositive_high": 0,
+        "nonpositive_low": 0,
+        "nonpositive_close": 0,
+        "negative_volume": 0,
+        "zero_volume_bars": 0
+      },
+      "gaps": {
+        "suspicious_gap_count": 0,
+        "weekend_gap_count": 0,
+        "overnight_gap_count": 0,
+        "top_suspicious": [],
+        "bar_interval_s": 60
+      }
+    },
+    "#TSLA|M5": {
+      "coverage": {
+        "first_time": null,
+        "last_time": null,
+        "total_bars": 0,
+        "source_count": 0,
+        "sources": null
+      },
+      "duplicates": {
+        "dup_buckets": 0,
+        "extra_rows": "0"
+      },
+      "ohlc": {
+        "high_lt_low": 0,
+        "close_above_high": 0,
+        "close_below_low": 0,
+        "open_outside_range": 0,
+        "nonpositive_open": 0,
+        "nonpositive_high": 0,
+        "nonpositive_low": 0,
+        "nonpositive_close": 0,
+        "negative_volume": 0,
+        "zero_volume_bars": 0
+      },
+      "gaps": {
+        "suspicious_gap_count": 0,
+        "weekend_gap_count": 0,
+        "overnight_gap_count": 0,
+        "top_suspicious": [],
+        "bar_interval_s": 300
+      }
+    },
+    "#TSLA|M15": {
+      "coverage": {
+        "first_time": null,
+        "last_time": null,
+        "total_bars": 0,
+        "source_count": 0,
+        "sources": null
+      },
+      "duplicates": {
+        "dup_buckets": 0,
+        "extra_rows": "0"
+      },
+      "ohlc": {
+        "high_lt_low": 0,
+        "close_above_high": 0,
+        "close_below_low": 0,
+        "open_outside_range": 0,
+        "nonpositive_open": 0,
+        "nonpositive_high": 0,
+        "nonpositive_low": 0,
+        "nonpositive_close": 0,
+        "negative_volume": 0,
+        "zero_volume_bars": 0
+      },
+      "gaps": {
+        "suspicious_gap_count": 0,
+        "weekend_gap_count": 0,
+        "overnight_gap_count": 0,
+        "top_suspicious": [],
+        "bar_interval_s": 900
+      }
+    },
+    "#TSLA|H1": {
+      "coverage": {
+        "first_time": null,
+        "last_time": null,
+        "total_bars": 0,
+        "source_count": 0,
+        "sources": null
+      },
+      "duplicates": {
+        "dup_buckets": 0,
+        "extra_rows": "0"
+      },
+      "ohlc": {
+        "high_lt_low": 0,
+        "close_above_high": 0,
+        "close_below_low": 0,
+        "open_outside_range": 0,
+        "nonpositive_open": 0,
+        "nonpositive_high": 0,
+        "nonpositive_low": 0,
+        "nonpositive_close": 0,
+        "negative_volume": 0,
+        "zero_volume_bars": 0
+      },
+      "gaps": {
+        "suspicious_gap_count": 0,
+        "weekend_gap_count": 0,
+        "overnight_gap_count": 0,
+        "top_suspicious": [],
+        "bar_interval_s": 3600
+      }
+    },
+    "#TSLA|H4": {
+      "coverage": {
+        "first_time": null,
+        "last_time": null,
+        "total_bars": 0,
+        "source_count": 0,
+        "sources": null
+      },
+      "duplicates": {
+        "dup_buckets": 0,
+        "extra_rows": "0"
+      },
+      "ohlc": {
+        "high_lt_low": 0,
+        "close_above_high": 0,
+        "close_below_low": 0,
+        "open_outside_range": 0,
+        "nonpositive_open": 0,
+        "nonpositive_high": 0,
+        "nonpositive_low": 0,
+        "nonpositive_close": 0,
+        "negative_volume": 0,
+        "zero_volume_bars": 0
+      },
+      "gaps": {
+        "suspicious_gap_count": 0,
+        "weekend_gap_count": 0,
+        "overnight_gap_count": 0,
+        "top_suspicious": [],
+        "bar_interval_s": 14400
+      }
+    },
+    "#TSLA|D1": {
+      "coverage": {
+        "first_time": null,
+        "last_time": null,
+        "total_bars": 0,
+        "source_count": 0,
+        "sources": null
+      },
+      "duplicates": {
+        "dup_buckets": 0,
+        "extra_rows": "0"
+      },
+      "ohlc": {
+        "high_lt_low": 0,
+        "close_above_high": 0,
+        "close_below_low": 0,
+        "open_outside_range": 0,
+        "nonpositive_open": 0,
+        "nonpositive_high": 0,
+        "nonpositive_low": 0,
+        "nonpositive_close": 0,
+        "negative_volume": 0,
+        "zero_volume_bars": 0
+      },
+      "gaps": {
+        "suspicious_gap_count": 0,
+        "weekend_gap_count": 0,
+        "overnight_gap_count": 0,
+        "top_suspicious": [],
+        "bar_interval_s": 86400
+      }
+    }
+  }
+}

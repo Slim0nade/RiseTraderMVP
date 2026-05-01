@@ -1,0 +1,290 @@
+{
+  "generated_at": "2026-04-27T23:57:38.177667+00:00",
+  "pg": {
+    "host": "localhost",
+    "port": 5433,
+    "dbname": "risetrader",
+    "user": "postgres"
+  },
+  "checks": {
+    "per_source": {
+      "total_crudeoil_m1": 5718765,
+      "by_source": [
+        {
+          "source": "MT4",
+          "bars": 104635,
+          "first_ts": "2024-08-19 05:01:00+00",
+          "last_ts": "2026-04-27 23:57:00+00"
+        },
+        {
+          "source": "BC",
+          "bars": 5614130,
+          "first_ts": "2009-08-04 17:21:00+00",
+          "last_ts": "2026-04-20 04:59:00+00"
+        }
+      ]
+    },
+    "per_gap_fill": [
+      {
+        "bc_bars": 61741,
+        "first_bc": "2025-06-18 20:59:00+00",
+        "last_bc": "2025-11-25 08:46:00+00",
+        "first_bc_close": "65.85",
+        "last_bc_close": "57.91",
+        "mt4_last_close_before": 73.08,
+        "mt4_first_close_after": 58.83,
+        "head_stitch_diff": -7.230000000000004,
+        "tail_stitch_diff": 0.9200000000000017,
+        "gap": "2025-06-18 20:58:00+00 \u2192 2025-11-25 08:48:00+00"
+      },
+      {
+        "bc_bars": 15769,
+        "first_bc": "2025-11-25 09:15:00+00",
+        "last_bc": "2025-12-29 19:07:00+00",
+        "first_bc_close": "58.07",
+        "last_bc_close": "57.57",
+        "mt4_last_close_before": 58.83,
+        "mt4_first_close_after": 58.0,
+        "head_stitch_diff": -0.759999999999998,
+        "tail_stitch_diff": 0.4299999999999997,
+        "gap": "2025-11-25 09:14:01+00 \u2192 2025-12-29 19:08:00+00"
+      },
+      {
+        "bc_bars": 13760,
+        "first_bc": "2026-04-02 20:59:00+00",
+        "last_bc": "2026-04-19 23:22:00+00",
+        "first_bc_close": "97.80",
+        "last_bc_close": "88.21",
+        "mt4_last_close_before": 111.94,
+        "mt4_first_close_after": 88.16,
+        "head_stitch_diff": -14.14,
+        "tail_stitch_diff": -0.04999999999999716,
+        "gap": "2026-04-02 20:58:00+00 \u2192 2026-04-19 23:23:00+00"
+      },
+      {
+        "bc_bars": 4213,
+        "first_bc": "2025-04-09 05:04:00+00",
+        "last_bc": "2025-04-22 16:30:00+00",
+        "first_bc_close": "56.36",
+        "last_bc_close": "61.06",
+        "mt4_last_close_before": 56.95,
+        "mt4_first_close_after": 64.2,
+        "head_stitch_diff": -0.5900000000000034,
+        "tail_stitch_diff": 3.1400000000000006,
+        "gap": "2025-04-09 04:28:00+00 \u2192 2025-04-22 16:34:00+00"
+      },
+      {
+        "bc_bars": 5322,
+        "first_bc": "2026-01-23 17:45:00+00",
+        "last_bc": "2026-02-02 05:07:00+00",
+        "first_bc_close": "60.46",
+        "last_bc_close": "61.10",
+        "mt4_last_close_before": 61.06,
+        "mt4_first_close_after": 62.13,
+        "head_stitch_diff": -0.6000000000000014,
+        "tail_stitch_diff": 1.0300000000000011,
+        "gap": "2026-01-23 17:44:00+00 \u2192 2026-02-02 05:08:00+00"
+      },
+      {
+        "bc_bars": 7913,
+        "first_bc": "2026-02-17 20:36:00+00",
+        "last_bc": "2026-02-27 07:11:00+00",
+        "first_bc_close": "61.85",
+        "last_bc_close": "65.36",
+        "mt4_last_close_before": 62.17,
+        "mt4_first_close_after": 65.71,
+        "head_stitch_diff": -0.3200000000000003,
+        "tail_stitch_diff": 0.3499999999999943,
+        "gap": "2026-02-17 20:33:00+00 \u2192 2026-02-27 07:12:00+00"
+      },
+      {
+        "bc_bars": 4348,
+        "first_bc": "2026-01-14 19:42:00+00",
+        "last_bc": "2026-01-22 00:41:00+00",
+        "first_bc_close": "61.22",
+        "last_bc_close": "59.95",
+        "mt4_last_close_before": 61.91,
+        "mt4_first_close_after": 60.5,
+        "head_stitch_diff": -0.6899999999999977,
+        "tail_stitch_diff": 0.5499999999999972,
+        "gap": "2026-01-14 19:41:00+00 \u2192 2026-01-22 00:47:00+00"
+      },
+      {
+        "bc_bars": 3975,
+        "first_bc": "2026-03-11 01:07:00+00",
+        "last_bc": "2026-03-15 23:41:00+00",
+        "first_bc_close": "80.25",
+        "last_bc_close": "93.21",
+        "mt4_last_close_before": 83.86,
+        "mt4_first_close_after": 97.95,
+        "head_stitch_diff": -3.6099999999999994,
+        "tail_stitch_diff": 4.740000000000009,
+        "gap": "2026-03-11 01:06:00+00 \u2192 2026-03-15 23:42:00+00"
+      },
+      {
+        "bc_bars": 3187,
+        "first_bc": "2026-03-04 17:36:00+00",
+        "last_bc": "2026-03-09 02:48:00+00",
+        "first_bc_close": "72.24",
+        "last_bc_close": "101.54",
+        "mt4_last_close_before": 74.98,
+        "mt4_first_close_after": 115.42,
+        "head_stitch_diff": -2.740000000000009,
+        "tail_stitch_diff": 13.879999999999995,
+        "gap": "2026-03-04 17:35:00+00 \u2192 2026-03-09 02:49:00+00"
+      },
+      {
+        "bc_bars": 4528,
+        "first_bc": "2026-02-02 13:46:00+00",
+        "last_bc": "2026-02-06 21:56:00+00",
+        "first_bc_close": "60.86",
+        "last_bc_close": "62.82",
+        "mt4_last_close_before": 61.91,
+        "mt4_first_close_after": 63.48,
+        "head_stitch_diff": -1.0499999999999972,
+        "tail_stitch_diff": 0.6599999999999966,
+        "gap": "2026-02-02 13:45:00+00 \u2192 2026-02-06 21:58:00+00"
+      }
+    ],
+    "cross_source_overlap": {
+      "n": 5000,
+      "mean_diff": -1.48688,
+      "stddev_diff": 2.62828,
+      "min_diff": -15.68,
+      "max_diff": 0.47,
+      "median_abs_diff": 0.265,
+      "p95_abs_diff": 7.85,
+      "p99_abs_diff": 11.032,
+      "n_disagree_gt_0_50": 1964,
+      "n_disagree_gt_1_00": 1650
+    },
+    "suspicious_gaps_post_import": {
+      "suspicious_5plus_days": 0,
+      "gap_1_to_4_days": 888,
+      "gap_under_1_day": 140275,
+      "max_gap_hours": 76.26666666666667
+    },
+    "top_remaining_gaps": [
+      {
+        "prev": "2015-12-24 18:44:00+00",
+        "curr": "2015-12-27 23:00:00+00",
+        "hours": 76.26666666666667
+      },
+      {
+        "prev": "2020-12-24 18:44:00+00",
+        "curr": "2020-12-27 23:00:00+00",
+        "hours": 76.26666666666667
+      },
+      {
+        "prev": "2009-12-24 18:44:00+00",
+        "curr": "2009-12-27 23:00:00+00",
+        "hours": 76.26666666666667
+      },
+      {
+        "prev": "2025-04-17 20:46:00+00",
+        "curr": "2025-04-20 22:02:00+00",
+        "hours": 73.26666666666667
+      },
+      {
+        "prev": "2018-03-29 20:59:00+00",
+        "curr": "2018-04-01 22:00:00+00",
+        "hours": 73.01666666666667
+      },
+      {
+        "prev": "2019-04-18 20:59:00+00",
+        "curr": "2019-04-21 22:00:00+00",
+        "hours": 73.01666666666667
+      },
+      {
+        "prev": "2020-12-31 21:59:00+00",
+        "curr": "2021-01-03 23:00:00+00",
+        "hours": 73.01666666666667
+      },
+      {
+        "prev": "2017-04-13 20:59:00+00",
+        "curr": "2017-04-16 22:00:00+00",
+        "hours": 73.01666666666667
+      },
+      {
+        "prev": "2016-03-24 20:59:00+00",
+        "curr": "2016-03-27 22:00:00+00",
+        "hours": 73.01666666666667
+      },
+      {
+        "prev": "2016-12-30 21:59:00+00",
+        "curr": "2017-01-02 23:00:00+00",
+        "hours": 73.01666666666667
+      },
+      {
+        "prev": "2015-12-31 21:59:00+00",
+        "curr": "2016-01-03 23:00:00+00",
+        "hours": 73.01666666666667
+      },
+      {
+        "prev": "2017-12-29 21:59:00+00",
+        "curr": "2018-01-01 23:00:00+00",
+        "hours": 73.01666666666667
+      },
+      {
+        "prev": "2016-12-23 21:59:00+00",
+        "curr": "2016-12-26 23:00:00+00",
+        "hours": 73.01666666666667
+      },
+      {
+        "prev": "2020-04-09 20:59:00+00",
+        "curr": "2020-04-12 22:00:00+00",
+        "hours": 73.01666666666667
+      },
+      {
+        "prev": "2017-12-22 21:59:00+00",
+        "curr": "2017-12-25 23:00:00+00",
+        "hours": 73.01666666666667
+      }
+    ],
+    "bc_ohlc_integrity": {
+      "high_lt_low": 0,
+      "open_gt_high": 0,
+      "open_lt_low": 0,
+      "close_gt_high": 0,
+      "close_lt_low": 0,
+      "nonpos_open": 0,
+      "nonpos_high": 0,
+      "nonpos_low": 0,
+      "nonpos_close": 0,
+      "neg_volume": 0,
+      "total_bc": 5614130
+    }
+  },
+  "verdicts": [
+    {
+      "check": "import_landed",
+      "status": "PASS",
+      "detail": "total 5,718,765 >= 5.7M expected"
+    },
+    {
+      "check": "bc_count",
+      "status": "PASS",
+      "detail": "BC rows = 5,614,130"
+    },
+    {
+      "check": "ohlc_integrity",
+      "status": "PASS",
+      "detail": "0 violations"
+    },
+    {
+      "check": "gap_closure",
+      "status": "PASS",
+      "detail": "0 suspicious gaps remain (was 10)"
+    },
+    {
+      "check": "cross_source_agreement",
+      "status": "REVIEW",
+      "detail": "median |BC-MT4|=$0.265, p95=$7.85"
+    },
+    {
+      "check": "boundary_stitch",
+      "status": "REVIEW",
+      "detail": "9 gap heads stitch > $0.50 off"
+    }
+  ]
+}
