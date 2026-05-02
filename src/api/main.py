@@ -34,6 +34,12 @@ from src.services.stealth_stop_manager import StealthStopManager, DynamicTrailCo
 from src.services.price_alert_service import get_price_alert_service
 from src.services.candle_aggregator_service import CandleAggregatorService
 from src.services.live_trading_service import get_live_trading_service
+from src.services.paper_resolution_service import (
+    create_paper_resolution_service,
+    _DEFAULT_SCAN_INTERVAL,
+    _DEFAULT_STALENESS_HOURS,
+    _read_env_int,
+)
 from src.api.mcp_endpoint import create_mcp_app
 
 # Configure structured logging
@@ -54,6 +60,9 @@ _price_alert_task: asyncio.Task | None = None
 # Global candle aggregator task (M1 → H1 real-time aggregation)
 _candle_aggregator_task: asyncio.Task | None = None
 
+# Global paper watchdog task (24h auto-resolve for stale paper positions)
+_paper_watchdog_task: asyncio.Task | None = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -62,7 +71,7 @@ async def lifespan(app: FastAPI):
 
     Handles startup and shutdown events.
     """
-    global _stealth_stop_manager, _stealth_stop_task, _price_alert_task, _candle_aggregator_task
+    global _stealth_stop_manager, _stealth_stop_task, _price_alert_task, _candle_aggregator_task, _paper_watchdog_task
     
     # Startup
     logger.info("application_starting", version=settings.app_version)
@@ -161,6 +170,31 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning("live_trading_service_start_failed", error=str(e))
 
+        # Start Paper Watchdog Service (24h auto-resolve for stale paper positions)
+        # Enabled when PAPER_WATCHDOG_ENABLED=true, or automatically when
+        # PAPER_VALIDATION_MODE=true (to match paper trading lifecycle).
+        _paper_watchdog_default = (
+            "true" if os.getenv("PAPER_VALIDATION_MODE", "false").lower() == "true" else "false"
+        )
+        paper_watchdog_enabled = (
+            os.getenv("PAPER_WATCHDOG_ENABLED", _paper_watchdog_default).lower() == "true"
+        )
+        if paper_watchdog_enabled:
+            try:
+                _watchdog_scan = _read_env_int("PAPER_WATCHDOG_SCAN_INTERVAL", _DEFAULT_SCAN_INTERVAL)
+                _watchdog_staleness = _read_env_int("PAPER_WATCHDOG_STALENESS_HOURS", _DEFAULT_STALENESS_HOURS)
+                _paper_watchdog_svc = create_paper_resolution_service()
+                _paper_watchdog_task = asyncio.create_task(_paper_watchdog_svc.run())
+                logger.info(
+                    "paper_watchdog_service_started",
+                    scan_interval_seconds=_watchdog_scan,
+                    staleness_hours=_watchdog_staleness,
+                )
+            except Exception as e:
+                logger.warning("paper_watchdog_service_start_failed", error=str(e))
+        else:
+            logger.info("paper_watchdog_service_disabled")
+
     except Exception as e:
         logger.error("startup_failed", error=str(e), exc_info=True)
         raise
@@ -201,6 +235,15 @@ async def lifespan(app: FastAPI):
             except asyncio.CancelledError:
                 pass
             logger.info("candle_aggregator_service_stopped")
+
+        # Stop Paper Watchdog Service
+        if _paper_watchdog_task:
+            _paper_watchdog_task.cancel()
+            try:
+                await _paper_watchdog_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("paper_watchdog_service_stopped")
 
         # Stop Live Trading Service
         try:
