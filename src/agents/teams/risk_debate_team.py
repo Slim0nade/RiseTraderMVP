@@ -347,6 +347,15 @@ Be authentic in each perspective - genuine adversarial debate produces better de
             position_size: Baseline position size
             trade_context: Trade context
             symbol: Trading symbol
+
+        Schema note (migration 015):
+            This method uses the pre-015 DecisionLog constructor directly with
+            old field names (reasoning_trace, output_decision, confidence_score)
+            that do not exist on the current ORM model.  It will raise an
+            AttributeError at runtime and is already silently swallowed by the
+            outer try/except.  Migration 015 signal-tag columns are NOT yet
+            wired here — fix the column names first (decision_type,
+            decision_data, reasoning), then add strategy_version etc.
         """
         try:
             from src.database.models.decision_log import DecisionLog
