@@ -2,7 +2,7 @@
 Integration tests for Phase 6 Task A1 — paper/live threshold split.
 
 Tier 2: instantiate LiveTradingService in each mode, feed a synthetic candle
-stream that produces a signal at score~0.45/conf~0.45, and verify that paper
+stream that produces a signal at score~0.42/conf~0.42, and verify that paper
 mode passes while live mode blocks.
 
 No MT4 connection required — the test never calls service.start().
@@ -26,7 +26,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 # ---------------------------------------------------------------------------
 # Candle factory — builds a simple trending sequence that the momentum
-# strategy can score BUY at ~0.45.  Not a real DB fetch.
+# strategy can score BUY at ~0.42.  Not a real DB fetch.
 # ---------------------------------------------------------------------------
 
 def _make_candles(n: int = 60, start_price: float = 80.0, slope: float = 0.05) -> List[Dict]:
@@ -70,8 +70,8 @@ def _make_service(monkeypatch, is_paper: bool, tmp_path: Path):
         fallback.write_text(
             "thresholds:\n"
             "  paper:\n"
-            "    signal_threshold: 0.40\n"
-            "    min_confidence: 0.40\n"
+            "    signal_threshold: 0.35\n"
+            "    min_confidence: 0.35\n"
             "  live:\n"
             "    signal_threshold: 0.60\n"
             "    min_confidence: 0.60\n"
@@ -109,21 +109,21 @@ def _make_service(monkeypatch, is_paper: bool, tmp_path: Path):
 
 
 # ---------------------------------------------------------------------------
-# T1 — paper mode: signal at score=0.45 / conf=0.45 PASSES
+# T1 — paper mode: signal at score=0.42 / conf=0.42 PASSES (above 0.35)
 # ---------------------------------------------------------------------------
 
 def test_paper_mode_passes_mid_strength_signal(monkeypatch, tmp_path):
     svc = _make_service(monkeypatch, is_paper=True, tmp_path=tmp_path)
 
-    assert svc._signal_threshold == pytest.approx(0.40), (
-        f"expected 0.40, got {svc._signal_threshold}"
+    assert svc._signal_threshold == pytest.approx(0.35), (
+        f"expected 0.35, got {svc._signal_threshold}"
     )
-    assert svc._min_confidence == pytest.approx(0.40)
+    assert svc._min_confidence == pytest.approx(0.35)
     assert svc._paper_mode is True
 
-    # Simulate a strategy result at score=0.45, conf=0.45 — should clear paper threshold
-    score = 0.45
-    conf = 0.45
+    # Simulate a strategy result at score=0.42, conf=0.42 — should clear paper threshold (0.35)
+    score = 0.42
+    conf = 0.42
     passed = abs(score) >= svc._signal_threshold and conf >= svc._min_confidence
     assert passed, (
         f"Paper mode should pass score={score}/conf={conf} with threshold={svc._signal_threshold}"
@@ -131,7 +131,7 @@ def test_paper_mode_passes_mid_strength_signal(monkeypatch, tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# T2 — live mode: same signal at score=0.45 / conf=0.45 BLOCKS
+# T2 — live mode: same signal at score=0.42 / conf=0.42 BLOCKS (below 0.60)
 # ---------------------------------------------------------------------------
 
 def test_live_mode_blocks_mid_strength_signal(monkeypatch, tmp_path):
@@ -143,8 +143,8 @@ def test_live_mode_blocks_mid_strength_signal(monkeypatch, tmp_path):
     assert svc._min_confidence == pytest.approx(0.60)
     assert svc._paper_mode is False
 
-    score = 0.45
-    conf = 0.45
+    score = 0.42
+    conf = 0.42
     passed = abs(score) >= svc._signal_threshold and conf >= svc._min_confidence
     assert not passed, (
         f"Live mode should block score={score}/conf={conf} with threshold={svc._signal_threshold}"
@@ -152,18 +152,18 @@ def test_live_mode_blocks_mid_strength_signal(monkeypatch, tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# T3 — gap invariant: live is at least 0.10 above paper
+# T3 — gap invariant: live is at least 0.20 above paper
 # ---------------------------------------------------------------------------
 
-def test_live_threshold_at_least_10_above_paper(monkeypatch, tmp_path):
+def test_live_threshold_at_least_20_above_paper(monkeypatch, tmp_path):
     svc_paper = _make_service(monkeypatch, is_paper=True, tmp_path=tmp_path)
     svc_live = _make_service(monkeypatch, is_paper=False, tmp_path=tmp_path)
 
-    assert svc_live._signal_threshold >= svc_paper._signal_threshold + 0.10, (
-        "live signal_threshold must be >= paper + 0.10"
+    assert svc_live._signal_threshold >= svc_paper._signal_threshold + 0.20, (
+        "live signal_threshold must be >= paper + 0.20"
     )
-    assert svc_live._min_confidence >= svc_paper._min_confidence + 0.10, (
-        "live min_confidence must be >= paper + 0.10"
+    assert svc_live._min_confidence >= svc_paper._min_confidence + 0.20, (
+        "live min_confidence must be >= paper + 0.20"
     )
 
 

@@ -290,8 +290,8 @@ async def set_network_location(request: NetworkLocationUpdateRequest):
 _RISK_YAML = Path(__file__).resolve().parent.parent.parent.parent / "config" / "risk.yaml"
 
 # Code-level defaults (must mirror live_trading_service.py)
-_PAPER_THRESHOLD_DEFAULT: float = 0.40
-_PAPER_CONFIDENCE_DEFAULT: float = 0.40
+_PAPER_THRESHOLD_DEFAULT: float = 0.35
+_PAPER_CONFIDENCE_DEFAULT: float = 0.35
 _LIVE_THRESHOLD_DEFAULT: float = 0.60
 _LIVE_CONFIDENCE_DEFAULT: float = 0.60
 

@@ -4,16 +4,18 @@ Unit tests for Phase 6 Task A1 — paper/live threshold split.
 Tier 1: pure logic, no DB, no MT4, no mocks of external services.
 
 Test matrix:
-  T1  paper mode (PAPER_VALIDATION_MODE=true)  → 0.40 / 0.40
+  T1  paper mode (PAPER_VALIDATION_MODE=true)  → 0.35 / 0.35
   T2  live mode  (ENABLE_LIVE_TRADING=true)    → 0.60 / 0.60
   T3  both flags set → paper wins (safer)
   T4  neither flag set → defaults to paper
-  T5  fat-finger assert fires when live < paper + 0.10
+  T5  fat-finger assert fires when live < paper + 0.20
   T6  fat-finger assert fires on confidence too
   T7  YAML missing → falls back to coded defaults, no crash
   T8  YAML present with custom values → values honoured
   T9  source field is "yaml" when YAML read, "default" otherwise
   T10 mode returned as "paper" / "live" string
+  T11 paper=0.40 with live=0.60 raises (gap is only 0.20 — exactly at boundary)
+  T12 paper=0.40 with live=0.65 passes (gap is 0.25 — above minimum)
 """
 
 import os
@@ -41,8 +43,8 @@ def test_paper_mode_returns_paper_thresholds(monkeypatch, tmp_path):
     monkeypatch.setattr(svc_mod, "_RISK_YAML", tmp_path / "nonexistent.yaml")
 
     st, mc, source = _load_thresholds(is_paper=True)
-    assert st == pytest.approx(0.40)
-    assert mc == pytest.approx(0.40)
+    assert st == pytest.approx(0.35)
+    assert mc == pytest.approx(0.35)
     assert source == "default"
 
 
@@ -84,7 +86,8 @@ def test_no_flags_defaults_to_paper(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# T5 — fat-finger: live signal_threshold < paper + 0.10 raises AssertionError
+# T5 — fat-finger: live signal_threshold < paper + 0.20 raises AssertionError
+# Paper=0.50, live=0.65: gap is 0.15 — violates the +0.20 invariant.
 # ---------------------------------------------------------------------------
 def test_fat_finger_signal_threshold_assert(monkeypatch, tmp_path):
     bad_yaml = tmp_path / "risk.yaml"
@@ -94,7 +97,7 @@ def test_fat_finger_signal_threshold_assert(monkeypatch, tmp_path):
         "    signal_threshold: 0.50\n"
         "    min_confidence: 0.40\n"
         "  live:\n"
-        "    signal_threshold: 0.55\n"   # only 0.05 above paper — violates invariant
+        "    signal_threshold: 0.65\n"   # only 0.15 above paper — violates +0.20 invariant
         "    min_confidence: 0.60\n"
     )
     import src.services.live_trading_service as svc_mod
@@ -105,18 +108,19 @@ def test_fat_finger_signal_threshold_assert(monkeypatch, tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# T6 — fat-finger: live min_confidence < paper + 0.10 raises AssertionError
+# T6 — fat-finger: live min_confidence < paper + 0.20 raises AssertionError
+# Paper mc=0.50, live mc=0.65: gap is 0.15 — violates +0.20 invariant.
 # ---------------------------------------------------------------------------
 def test_fat_finger_min_confidence_assert(monkeypatch, tmp_path):
     bad_yaml = tmp_path / "risk.yaml"
     bad_yaml.write_text(
         "thresholds:\n"
         "  paper:\n"
-        "    signal_threshold: 0.40\n"
+        "    signal_threshold: 0.35\n"
         "    min_confidence: 0.50\n"
         "  live:\n"
         "    signal_threshold: 0.60\n"
-        "    min_confidence: 0.55\n"   # only 0.05 above paper — violates invariant
+        "    min_confidence: 0.65\n"   # only 0.15 above paper — violates +0.20 invariant
     )
     import src.services.live_trading_service as svc_mod
     monkeypatch.setattr(svc_mod, "_RISK_YAML", bad_yaml)
@@ -133,8 +137,8 @@ def test_missing_yaml_falls_back_to_defaults(monkeypatch, tmp_path):
     monkeypatch.setattr(svc_mod, "_RISK_YAML", tmp_path / "does_not_exist.yaml")
 
     st, mc, source = _load_thresholds(is_paper=True)
-    assert st == pytest.approx(0.40)
-    assert mc == pytest.approx(0.40)
+    assert st == pytest.approx(0.35)
+    assert mc == pytest.approx(0.35)
     assert source == "default"
 
 
@@ -146,8 +150,8 @@ def test_yaml_custom_values_honoured(monkeypatch, tmp_path):
     custom_yaml.write_text(
         "thresholds:\n"
         "  paper:\n"
-        "    signal_threshold: 0.35\n"
-        "    min_confidence: 0.38\n"
+        "    signal_threshold: 0.30\n"
+        "    min_confidence: 0.32\n"
         "  live:\n"
         "    signal_threshold: 0.65\n"
         "    min_confidence: 0.68\n"
@@ -156,8 +160,8 @@ def test_yaml_custom_values_honoured(monkeypatch, tmp_path):
     monkeypatch.setattr(svc_mod, "_RISK_YAML", custom_yaml)
 
     st_paper, mc_paper, source = _load_thresholds(is_paper=True)
-    assert st_paper == pytest.approx(0.35)
-    assert mc_paper == pytest.approx(0.38)
+    assert st_paper == pytest.approx(0.30)
+    assert mc_paper == pytest.approx(0.32)
     assert source == "yaml"
 
     st_live, mc_live, source_live = _load_thresholds(is_paper=False)
@@ -174,8 +178,8 @@ def test_source_field_yaml_when_file_present(monkeypatch, tmp_path):
     good_yaml.write_text(
         "thresholds:\n"
         "  paper:\n"
-        "    signal_threshold: 0.40\n"
-        "    min_confidence: 0.40\n"
+        "    signal_threshold: 0.35\n"
+        "    min_confidence: 0.35\n"
         "  live:\n"
         "    signal_threshold: 0.60\n"
         "    min_confidence: 0.60\n"
@@ -217,3 +221,55 @@ def test_resolve_mode_enable_paper_flag(monkeypatch):
     monkeypatch.setenv("ENABLE_PAPER_TRADING", "true")
     monkeypatch.delenv("ENABLE_LIVE_TRADING", raising=False)
     assert _resolve_trading_mode() is True
+
+
+# ---------------------------------------------------------------------------
+# T11 — paper=0.45, live=0.60: gap is exactly 0.15 — violates +0.20 invariant
+# ---------------------------------------------------------------------------
+def test_old_baseline_0_45_paper_0_60_live_fails_new_gap(monkeypatch, tmp_path):
+    """
+    The pre-Phase6 baseline was paper=0.45, live=0.60 (gap=0.15).
+    That configuration must now fail the +0.20 invariant.
+    """
+    bad_yaml = tmp_path / "risk.yaml"
+    bad_yaml.write_text(
+        "thresholds:\n"
+        "  paper:\n"
+        "    signal_threshold: 0.45\n"
+        "    min_confidence: 0.45\n"
+        "  live:\n"
+        "    signal_threshold: 0.60\n"
+        "    min_confidence: 0.60\n"
+    )
+    import src.services.live_trading_service as svc_mod
+    monkeypatch.setattr(svc_mod, "_RISK_YAML", bad_yaml)
+
+    with pytest.raises(AssertionError):
+        _load_thresholds(is_paper=True)
+
+
+# ---------------------------------------------------------------------------
+# T12 — paper=0.40, live=0.65: gap is 0.25 — passes the +0.20 invariant
+# ---------------------------------------------------------------------------
+def test_paper_0_40_live_0_65_passes_gap(monkeypatch, tmp_path):
+    """
+    Gap of 0.25 satisfies the >= +0.20 requirement.
+    """
+    ok_yaml = tmp_path / "risk.yaml"
+    ok_yaml.write_text(
+        "thresholds:\n"
+        "  paper:\n"
+        "    signal_threshold: 0.40\n"
+        "    min_confidence: 0.40\n"
+        "  live:\n"
+        "    signal_threshold: 0.65\n"
+        "    min_confidence: 0.65\n"
+    )
+    import src.services.live_trading_service as svc_mod
+    monkeypatch.setattr(svc_mod, "_RISK_YAML", ok_yaml)
+
+    # Should not raise
+    st, mc, source = _load_thresholds(is_paper=True)
+    assert st == pytest.approx(0.40)
+    assert mc == pytest.approx(0.40)
+    assert source == "yaml"

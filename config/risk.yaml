@@ -4,15 +4,15 @@
 # more signals for quality validation; live mode requires higher conviction.
 #
 # INVARIANT (enforced at service init with AssertionError):
-#   live_signal_threshold >= paper_signal_threshold + 0.10
-#   live_min_confidence   >= paper_min_confidence   + 0.10
+#   live_signal_threshold >= paper_signal_threshold + 0.20
+#   live_min_confidence   >= paper_min_confidence   + 0.20
 #
-# Never set paper > live — that would invert the safety guarantee.
+# Never set paper > live - 0.20 — that would invert the safety guarantee.
 
 thresholds:
   paper:
-    signal_threshold: 0.40   # Lower bar — collect signals for quality validation
-    min_confidence: 0.40
+    signal_threshold: 0.35   # Lower bar — collect signals for quality validation
+    min_confidence: 0.35
   live:
     signal_threshold: 0.60   # Higher conviction required for real-money execution
     min_confidence: 0.60
