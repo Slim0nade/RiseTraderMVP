@@ -187,8 +187,8 @@ def _env_int(key: str, default: int) -> int:
 # ---------------------------------------------------------------------------
 
 # Code-level defaults — used only when config/risk.yaml is missing.
-_PAPER_THRESHOLD_DEFAULT: float = 0.40
-_PAPER_CONFIDENCE_DEFAULT: float = 0.40
+_PAPER_THRESHOLD_DEFAULT: float = 0.35
+_PAPER_CONFIDENCE_DEFAULT: float = 0.35
 _LIVE_THRESHOLD_DEFAULT: float = 0.60
 _LIVE_CONFIDENCE_DEFAULT: float = 0.60
 
@@ -202,7 +202,7 @@ def _load_thresholds(is_paper: bool) -> Tuple[float, float, str]:
     source is "yaml" when config/risk.yaml was found and parsed successfully,
     or "default" when the file is absent or unreadable (a warning is logged).
 
-    Raises AssertionError if the live threshold is not at least 0.10 above
+    Raises AssertionError if the live threshold is not at least 0.20 above
     the paper threshold (fat-finger guard).  This is checked regardless of
     which mode is active so a bad YAML is caught immediately on startup.
     """
@@ -232,14 +232,14 @@ def _load_thresholds(is_paper: bool) -> Tuple[float, float, str]:
                 fallback="coded defaults",
             )
 
-    # Fat-finger guard: live must be strictly tighter than paper by at least 0.10.
-    assert live_st >= paper_st + 0.10, (
+    # Fat-finger guard: live must be strictly tighter than paper by at least 0.20.
+    assert live_st >= paper_st + 0.20, (
         f"config/risk.yaml invariant violated: live_signal_threshold ({live_st}) "
-        f"must be >= paper_signal_threshold ({paper_st}) + 0.10"
+        f"must be >= paper_signal_threshold ({paper_st}) + 0.20"
     )
-    assert live_mc >= paper_mc + 0.10, (
+    assert live_mc >= paper_mc + 0.20, (
         f"config/risk.yaml invariant violated: live_min_confidence ({live_mc}) "
-        f"must be >= paper_min_confidence ({paper_mc}) + 0.10"
+        f"must be >= paper_min_confidence ({paper_mc}) + 0.20"
     )
 
     if is_paper:
@@ -777,7 +777,7 @@ class LiveTradingService:
         self._paper_mode: bool = _resolve_trading_mode()
 
         # Signal thresholds — mode-aware, loaded from config/risk.yaml at startup.
-        # Paper: 0.40/0.40  (more signals → quality data for validation gate)
+        # Paper: 0.35/0.35  (more signals → quality data for validation gate)
         # Live:  0.60/0.60  (higher conviction required for real-money execution)
         # If config/risk.yaml is absent, coded defaults above are used (warning logged).
         # RegimeRouter still enforces per-regime thresholds on top of these.

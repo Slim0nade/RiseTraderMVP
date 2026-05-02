@@ -4,7 +4,7 @@ Phase 6 Task A1 — Signal replay script.
 
 Pulls the last 17 days of H1 candle data from PostgreSQL, runs the same
 _generate_signal() logic that LiveTradingService uses, and counts how many
-signals would have fired under the new paper threshold (0.40/0.40) versus
+signals would have fired under the new paper threshold (0.35/0.35) versus
 the old threshold (0.45/0.45).
 
 WHY NOT USE decision_log:
@@ -22,10 +22,11 @@ USAGE:
   python3 scripts/replay_signals.py [--days 17] [--symbols CrudeOIL,USA500,GBPJPY.]
 
 EXPECTED OUTPUT:
-  The new paper threshold (0.40) should produce >= 30 signals for CrudeOIL
-  alone given 17 days of CrudeOIL's strongest rally.  If the DB has no rows
-  in the last 17 days for a symbol, the script warns and counts 0 — it does
-  NOT fabricate counts.
+  The new paper threshold (0.35) should produce >= 30 signals for CrudeOIL
+  alone given 17 days of CrudeOIL's strongest rally.  Because 0.35 < 0.40
+  (prior spawn value), the count will be equal to or higher than the prior
+  spawn's replay.  If the DB has no rows in the last 17 days for a symbol,
+  the script warns and counts 0 — it does NOT fabricate counts.
 """
 
 import argparse
@@ -160,7 +161,7 @@ async def replay(
     symbols: List[str],
     days: int,
     old_threshold: float = 0.45,
-    new_threshold: float = 0.40,
+    new_threshold: float = 0.35,
 ) -> None:
     print(f"\n=== Signal Replay — last {days} days ===")
     print(f"Old threshold: score>={old_threshold}, conf>={old_threshold}")
@@ -242,7 +243,7 @@ def main() -> None:
         "--old-threshold", type=float, default=0.45, help="Old threshold to compare against"
     )
     parser.add_argument(
-        "--new-threshold", type=float, default=0.40, help="New paper threshold"
+        "--new-threshold", type=float, default=0.35, help="New paper threshold"
     )
     args = parser.parse_args()
 
