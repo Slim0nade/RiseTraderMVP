@@ -16,3 +16,26 @@ thresholds:
   live:
     signal_threshold: 0.60   # Higher conviction required for real-money execution
     min_confidence: 0.60
+
+# -----------------------------------------------------------------------
+# Position caps — maximum concurrent open positions per symbol per mode.
+#
+# paper mode: up to 5 concurrent positions per symbol so we accumulate
+#   resolved-trade statistics quickly.  Each position independently
+#   obeys the 2% account-risk rule (per-position cap).  Total aggregate
+#   exposure across all open paper positions on the same symbol must
+#   not exceed 8% of account balance (aggregate cap).  A 6th signal is
+#   rejected with reason "paper_concurrent_cap_reached(5)" and IS
+#   logged to the decision log.  No FIFO eviction — reject is policy.
+#
+# live mode: hard cap of 1 per symbol — safety invariant, never relax.
+#   Enforced by assertion in _validate_signal.
+#
+# INVARIANT: max_open_live_per_symbol must always be 1.
+# -----------------------------------------------------------------------
+position_caps:
+  paper:
+    max_open_per_symbol: 5          # Max concurrent paper positions per symbol
+    max_aggregate_exposure_pct: 8.0 # Max total exposure across open positions (% of balance)
+  live:
+    max_open_per_symbol: 1          # Hard cap — never relax without lead approval

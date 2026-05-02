@@ -192,6 +192,12 @@ _PAPER_CONFIDENCE_DEFAULT: float = 0.35
 _LIVE_THRESHOLD_DEFAULT: float = 0.60
 _LIVE_CONFIDENCE_DEFAULT: float = 0.60
 
+# Position-cap defaults — used only when config/risk.yaml is missing or the
+# position_caps block is absent.  Never change _LIVE_CAP_DEFAULT below 1.
+_PAPER_CAP_DEFAULT: int = 5          # Max concurrent paper positions per symbol
+_LIVE_CAP_DEFAULT: int = 1           # Hard cap for live — NEVER relax
+_PAPER_AGGREGATE_PCT_DEFAULT: float = 8.0  # 8% aggregate exposure cap (paper)
+
 _RISK_YAML = Path(__file__).resolve().parent.parent.parent / "config" / "risk.yaml"
 
 
@@ -245,6 +251,54 @@ def _load_thresholds(is_paper: bool) -> Tuple[float, float, str]:
     if is_paper:
         return paper_st, paper_mc, source
     return live_st, live_mc, source
+
+
+def _load_position_caps() -> Tuple[int, int, float, str]:
+    """
+    Return (paper_cap, live_cap, paper_aggregate_pct, source) from config/risk.yaml.
+
+    paper_cap           — max concurrent paper positions per symbol (default 5)
+    live_cap            — max concurrent live positions per symbol  (default 1, NEVER > 1)
+    paper_aggregate_pct — max aggregate exposure % of balance for paper (default 8.0)
+    source              — "yaml" if loaded from file, "default" otherwise
+
+    Raises AssertionError if live_cap != 1 — the live-mode hard cap is a
+    safety invariant that must never be relaxed without explicit code change.
+    """
+    paper_cap = _PAPER_CAP_DEFAULT
+    live_cap = _LIVE_CAP_DEFAULT
+    paper_agg_pct = _PAPER_AGGREGATE_PCT_DEFAULT
+    source = "default"
+
+    if _RISK_YAML.exists():
+        try:
+            with open(_RISK_YAML, "r") as fh:
+                data: Dict[str, Any] = yaml.safe_load(fh) or {}
+            caps = data.get("position_caps", {})
+            paper_block = caps.get("paper", {})
+            live_block = caps.get("live", {})
+            if caps:  # only update source to "yaml" if the block was present
+                paper_cap = int(paper_block.get("max_open_per_symbol", paper_cap))
+                live_cap = int(live_block.get("max_open_per_symbol", live_cap))
+                paper_agg_pct = float(
+                    paper_block.get("max_aggregate_exposure_pct", paper_agg_pct)
+                )
+                source = "yaml"
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "risk_yaml_position_caps_load_failed",
+                path=str(_RISK_YAML),
+                error=str(exc),
+                fallback="coded defaults",
+            )
+
+    # Safety invariant: live cap must always be 1.
+    assert live_cap == 1, (
+        f"config/risk.yaml position_caps.live.max_open_per_symbol must be 1 "
+        f"(got {live_cap}). Live-mode per-symbol cap is a hard safety invariant."
+    )
+
+    return paper_cap, live_cap, paper_agg_pct, source
 
 
 def _resolve_trading_mode() -> bool:
@@ -788,6 +842,21 @@ class LiveTradingService:
             _load_thresholds(self._paper_mode)
         )
 
+        # Position caps — mode-aware, loaded from config/risk.yaml position_caps block.
+        # Paper: up to _max_paper_per_symbol concurrent positions per symbol.
+        #        Aggregate exposure across all open positions on a symbol ≤ 8% of balance.
+        # Live:  hard cap of 1 per symbol — assert in _validate_signal.
+        self._max_paper_per_symbol: int
+        self._max_live_per_symbol: int
+        self._max_aggregate_paper_pct: float
+        self._caps_source: str
+        (
+            self._max_paper_per_symbol,
+            self._max_live_per_symbol,
+            self._max_aggregate_paper_pct,
+            self._caps_source,
+        ) = _load_position_caps()
+
         # Runtime state
         self._running: bool = False
         self._task: Optional[asyncio.Task] = None
@@ -865,6 +934,10 @@ class LiveTradingService:
             signal_threshold=self._signal_threshold,
             min_confidence=self._min_confidence,
             threshold_source=self._threshold_source,
+            max_paper_per_symbol=self._max_paper_per_symbol,
+            max_live_per_symbol=self._max_live_per_symbol,
+            max_aggregate_paper_pct=self._max_aggregate_paper_pct,
+            caps_source=self._caps_source,
         )
 
     # ------------------------------------------------------------------
@@ -1575,16 +1648,28 @@ class LiveTradingService:
         """
         Validate a signal against risk rules and compute position size in lots.
 
-        Uses TieredPositionSizer for confidence-based sizing and supports
-        pyramiding (adding to winners in the same direction at 95%+ confidence).
+        Mode-aware position caps:
+          paper mode — up to _max_paper_per_symbol (5) concurrent positions per
+                       symbol, each independently obeying the 2% account-risk rule.
+                       Aggregate risk across all open positions on a symbol must not
+                       exceed _max_aggregate_paper_pct (8%) of account balance.
+                       A 6th signal is rejected with reason
+                       "paper_concurrent_cap_reached(5)" and logged.
+          live mode  — hard cap of 1 per symbol (asserted, never relaxed).
+                       Pyramid at same-direction + 95%+ ML confidence still allowed.
+
+        Direction-conflict semantics are preserved in both modes: if any open
+        position on the symbol is in the opposing direction, the signal is
+        rejected with "opposing_direction".
 
         Checks (in order):
           1. Daily loss limit (5% of account) not breached.
-          2. Open position count below max.
-          3. Existing position check — allow pyramid if same direction + 95%+ conf.
-          4. Account balance available and positive.
-          5. Tiered position sizing based on ML confidence.
-          6. Margin level validation (200% floor).
+          2. Global open position count below max.
+          3. Mode-aware per-symbol cap check.
+          4. Aggregate exposure cap (paper only).
+          5. Per-position 2% account-risk rule (ATR check).
+          6. Tiered position sizing based on ML confidence.
+          7. Margin level validation (200% floor).
 
         Args:
             symbol:        Trading symbol.
@@ -1625,44 +1710,135 @@ class LiveTradingService:
                 0.0,
             )
 
-        # 3. Existing position check — pyramid or reject
+        # 3. Mode-aware per-symbol cap check.
+        #
+        # Collect positions for this symbol (both direction and lot-size matters).
         db_symbol = symbol.rstrip(".")
-        has_existing = db_symbol in open_symbols or symbol in open_symbols
-        existing_lots = 0.0
-        existing_direction = None
+        symbol_positions = [
+            pos for pos in open_positions
+            if pos.get("symbol", "").rstrip(".") == db_symbol
+            or pos.get("symbol") == symbol
+        ]
+        symbol_count = len(symbol_positions)
+        existing_lots = sum(float(pos.get("lots", 0)) for pos in symbol_positions)
 
-        if has_existing:
-            # Find existing position details
-            for pos in open_positions:
-                pos_sym = pos.get("symbol", "").rstrip(".")
-                if pos_sym == db_symbol or pos.get("symbol") == symbol:
-                    existing_lots += float(pos.get("lots", 0))
-                    existing_direction = pos.get("type", "").upper()
+        # Direction-conflict check — applies in BOTH modes.
+        # If any open position on this symbol is in the opposing direction, reject.
+        opposing_positions = [
+            pos for pos in symbol_positions
+            if pos.get("type", "").upper() != action
+        ]
+        if opposing_positions:
+            opp_dir = opposing_positions[0].get("type", "").upper()
+            return (
+                False,
+                f"opposing_direction (existing={opp_dir}, signal={action})",
+                0.0,
+            )
 
-            # Pyramid check: same direction + 95%+ ML confidence (raw, not blended)
-            pyramid_conf = ml_confidence if ml_confidence > 0 else confidence
-            if existing_direction and action == existing_direction and pyramid_conf >= 0.95:
-                if existing_lots + MIN_LOTS <= sizer.max_total_lots:
-                    logger.info(
-                        "pyramid_eligible",
-                        symbol=symbol,
-                        action=action,
-                        existing_lots=existing_lots,
-                        confidence=round(confidence, 4),
-                    )
-                    # Fall through to sizing below
-                else:
-                    return False, f"pyramid_max_lots_reached ({existing_lots:.2f}/{sizer.max_total_lots})", 0.0
-            elif existing_direction and action != existing_direction:
-                return False, f"opposing_direction (existing={existing_direction}, signal={action})", 0.0
-            else:
-                return False, f"position_exists_low_confidence (ml={pyramid_conf:.2f} < 0.95)", 0.0
+        # Per-mode concurrency cap.
+        if self._paper_mode:
+            # Safety: live cap must be 1 — verified at init, double-check here.
+            assert self._max_live_per_symbol == 1, (
+                "live per-symbol cap must always be 1 — invariant violated"
+            )
+            max_per_symbol = self._max_paper_per_symbol
+            if symbol_count >= max_per_symbol:
+                logger.info(
+                    "paper_concurrent_cap_reached",
+                    symbol=symbol,
+                    open_count=symbol_count,
+                    cap=max_per_symbol,
+                    action=action,
+                    reason="logged_not_executed",
+                )
+                return (
+                    False,
+                    f"paper_concurrent_cap_reached({max_per_symbol})",
+                    0.0,
+                )
+        else:
+            # Live mode: hard cap of 1 per symbol.
+            assert self._max_live_per_symbol == 1, (
+                "live per-symbol cap must always be 1 — invariant violated"
+            )
+            if symbol_count >= self._max_live_per_symbol:
+                # In live mode we support pyramiding: same direction + 95%+ conf.
+                if symbol_count > 0:
+                    existing_direction = symbol_positions[0].get("type", "").upper()
+                    pyramid_conf = ml_confidence if ml_confidence > 0 else confidence
+                    if action == existing_direction and pyramid_conf >= 0.95:
+                        if existing_lots + MIN_LOTS <= sizer.max_total_lots:
+                            logger.info(
+                                "pyramid_eligible",
+                                symbol=symbol,
+                                action=action,
+                                existing_lots=existing_lots,
+                                confidence=round(confidence, 4),
+                            )
+                            # Fall through to sizing below
+                        else:
+                            return (
+                                False,
+                                f"pyramid_max_lots_reached ({existing_lots:.2f}/{sizer.max_total_lots})",
+                                0.0,
+                            )
+                    else:
+                        return (
+                            False,
+                            f"position_exists_low_confidence (ml={pyramid_conf:.2f} < 0.95)",
+                            0.0,
+                        )
 
-        # 4. ATR check
+        # 4. Aggregate exposure cap (paper mode only).
+        #
+        # Aggregate risk = sum of (lots × 2×ATR × contract_size) across all open
+        # positions on this symbol, expressed as a percentage of account balance.
+        # Uses the current ATR (same instrument, same timeframe — valid approximation;
+        # ATR moves slowly relative to hourly cycles).  No synthetic estimates —
+        # existing_lots comes directly from the live MT4 position list above.
+        if self._paper_mode and symbol_count > 0:
+            contract_size = float(CONTRACT_SIZES.get(symbol, 1000))
+            # Risk per lot = 2×ATR × contract_size (stop distance × contract value)
+            risk_per_lot = 2.0 * atr * contract_size
+            existing_risk_usd = existing_lots * risk_per_lot
+            aggregate_pct = (existing_risk_usd / balance) * 100.0 if balance > 0 else 0.0
+
+            # Risk that the new position would add
+            new_position_lots = sizer.calculate_lot_size(
+                confidence=min(ml_confidence if ml_confidence > 0 else confidence, 0.70),
+                account_balance=balance,
+                symbol=symbol,
+                atr=atr,
+                existing_lots=existing_lots,
+            )
+            projected_risk_usd = existing_risk_usd + new_position_lots * risk_per_lot
+            projected_pct = (projected_risk_usd / balance) * 100.0 if balance > 0 else 0.0
+
+            logger.info(
+                "paper_aggregate_exposure_check",
+                symbol=symbol,
+                open_positions_on_symbol=symbol_count,
+                existing_lots=round(existing_lots, 4),
+                existing_risk_usd=round(existing_risk_usd, 2),
+                existing_aggregate_pct=round(aggregate_pct, 2),
+                projected_pct=round(projected_pct, 2),
+                cap_pct=self._max_aggregate_paper_pct,
+            )
+
+            if projected_pct > self._max_aggregate_paper_pct:
+                return (
+                    False,
+                    f"aggregate_paper_exposure_capped "
+                    f"(projected={projected_pct:.1f}% > cap={self._max_aggregate_paper_pct:.1f}%)",
+                    0.0,
+                )
+
+        # 5. ATR check — per-position 2% rule depends on valid ATR
         if atr <= 0:
             return False, "zero_atr", 0.0
 
-        # 5. Tiered position sizing based on ML confidence (raw, not blended)
+        # 6. Tiered position sizing based on ML confidence (raw, not blended)
         # Cap ML confidence for sizing — model probability != model accuracy
         # Until model F1 > 0.50, cap at 0.70 to prevent top-tier abuse
         sizing_conf = ml_confidence if ml_confidence > 0 else confidence
@@ -1678,7 +1854,7 @@ class LiveTradingService:
         if position_size_lots <= 0:
             return False, "lot_size_zero_after_caps", 0.0
 
-        # 6. Margin validation (200% floor)
+        # 7. Margin validation (200% floor)
         equity = balance + self._daily_pnl  # Approximate current equity
         account_info = await self._get_account_info()
         current_margin = float(account_info.get("margin", 0))
@@ -1701,7 +1877,8 @@ class LiveTradingService:
             balance=round(balance, 2),
             lots=position_size_lots,
             existing_lots=existing_lots,
-            is_pyramid=has_existing,
+            open_positions_on_symbol=symbol_count,
+            paper_mode=self._paper_mode,
             projected_margin_level=round(projected_level, 1),
         )
         return True, "", position_size_lots
