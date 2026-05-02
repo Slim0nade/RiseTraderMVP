@@ -22,10 +22,11 @@ import random
 import time
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import structlog
+import yaml
 
 from src.database.repositories.market_data_repository import MarketDataRepository
 from src.utils.atr_calculator import Candle, InsufficientDataError, calculate_atr_wilder
@@ -179,6 +180,90 @@ def _env_int(key: str, default: int) -> int:
         return int(os.environ.get(key, ""))
     except (ValueError, TypeError):
         return default
+
+
+# ---------------------------------------------------------------------------
+# Trading-mode threshold resolution
+# ---------------------------------------------------------------------------
+
+# Code-level defaults — used only when config/risk.yaml is missing.
+_PAPER_THRESHOLD_DEFAULT: float = 0.40
+_PAPER_CONFIDENCE_DEFAULT: float = 0.40
+_LIVE_THRESHOLD_DEFAULT: float = 0.60
+_LIVE_CONFIDENCE_DEFAULT: float = 0.60
+
+_RISK_YAML = Path(__file__).resolve().parent.parent.parent / "config" / "risk.yaml"
+
+
+def _load_thresholds(is_paper: bool) -> Tuple[float, float, str]:
+    """
+    Return (signal_threshold, min_confidence, source) for the given mode.
+
+    source is "yaml" when config/risk.yaml was found and parsed successfully,
+    or "default" when the file is absent or unreadable (a warning is logged).
+
+    Raises AssertionError if the live threshold is not at least 0.10 above
+    the paper threshold (fat-finger guard).  This is checked regardless of
+    which mode is active so a bad YAML is caught immediately on startup.
+    """
+    paper_st = _PAPER_THRESHOLD_DEFAULT
+    paper_mc = _PAPER_CONFIDENCE_DEFAULT
+    live_st = _LIVE_THRESHOLD_DEFAULT
+    live_mc = _LIVE_CONFIDENCE_DEFAULT
+    source = "default"
+
+    if _RISK_YAML.exists():
+        try:
+            with open(_RISK_YAML, "r") as fh:
+                data: Dict[str, Any] = yaml.safe_load(fh) or {}
+            thr = data.get("thresholds", {})
+            paper_block = thr.get("paper", {})
+            live_block = thr.get("live", {})
+            paper_st = float(paper_block.get("signal_threshold", paper_st))
+            paper_mc = float(paper_block.get("min_confidence", paper_mc))
+            live_st = float(live_block.get("signal_threshold", live_st))
+            live_mc = float(live_block.get("min_confidence", live_mc))
+            source = "yaml"
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "risk_yaml_load_failed",
+                path=str(_RISK_YAML),
+                error=str(exc),
+                fallback="coded defaults",
+            )
+
+    # Fat-finger guard: live must be strictly tighter than paper by at least 0.10.
+    assert live_st >= paper_st + 0.10, (
+        f"config/risk.yaml invariant violated: live_signal_threshold ({live_st}) "
+        f"must be >= paper_signal_threshold ({paper_st}) + 0.10"
+    )
+    assert live_mc >= paper_mc + 0.10, (
+        f"config/risk.yaml invariant violated: live_min_confidence ({live_mc}) "
+        f"must be >= paper_min_confidence ({paper_mc}) + 0.10"
+    )
+
+    if is_paper:
+        return paper_st, paper_mc, source
+    return live_st, live_mc, source
+
+
+def _resolve_trading_mode() -> bool:
+    """
+    Determine whether we are in paper mode.
+
+    Resolution order (paper wins for safety):
+      1. PAPER_VALIDATION_MODE=true  → paper
+      2. ENABLE_PAPER_TRADING=true   → paper
+      3. ENABLE_LIVE_TRADING=true    → live
+      4. Neither set                 → paper (safe default)
+    """
+    if os.getenv("PAPER_VALIDATION_MODE", "").strip().lower() == "true":
+        return True
+    if os.getenv("ENABLE_PAPER_TRADING", "").strip().lower() == "true":
+        return True
+    if os.getenv("ENABLE_LIVE_TRADING", "").strip().lower() == "true":
+        return False
+    return True  # default: paper
 
 
 # ---------------------------------------------------------------------------
@@ -684,12 +769,24 @@ class LiveTradingService:
         self.max_open_positions: int = _env_int("MAX_OPEN_POSITIONS", 5)
         self.max_daily_loss: float = _env_float("MAX_DAILY_LOSS", 1000.0)
 
-        # Signal thresholds — RESTORED from 0.5 to 0.6 (lowering caused bad entries)
-        # Demo-validation thresholds — originally both 0.6 which combined with
-        # sqrt(conf) dampening in _combine_signals produced near-zero fire rate.
+        # Trading mode — resolved once at init from env flags; never re-read mid-run.
+        # Paper mode uses lower thresholds to generate signals for quality validation;
+        # live mode requires higher conviction before real-money execution.
+        # Resolution: PAPER_VALIDATION_MODE > ENABLE_PAPER_TRADING > ENABLE_LIVE_TRADING
+        # If neither paper nor live env flag is set, we default to paper (safer).
+        self._paper_mode: bool = _resolve_trading_mode()
+
+        # Signal thresholds — mode-aware, loaded from config/risk.yaml at startup.
+        # Paper: 0.40/0.40  (more signals → quality data for validation gate)
+        # Live:  0.60/0.60  (higher conviction required for real-money execution)
+        # If config/risk.yaml is absent, coded defaults above are used (warning logged).
         # RegimeRouter still enforces per-regime thresholds on top of these.
-        self._signal_threshold: float = 0.45
-        self._min_confidence: float = 0.45
+        self._signal_threshold: float
+        self._min_confidence: float
+        self._threshold_source: str
+        self._signal_threshold, self._min_confidence, self._threshold_source = (
+            _load_thresholds(self._paper_mode)
+        )
 
         # Runtime state
         self._running: bool = False
@@ -749,7 +846,7 @@ class LiveTradingService:
         logger.info("stealth_stop_manager_attached", yaml_loaded=stealth_yaml.exists())
 
         # Paper validation gate — must collect 50 signals before live execution
-        self._paper_mode: bool = os.getenv("PAPER_VALIDATION_MODE", "true").lower() == "true"
+        # NOTE: self._paper_mode already set above via _resolve_trading_mode().
         self._paper_validator = None
         if self._paper_mode:
             from src.services.paper_validation_service import PaperValidationService
@@ -765,6 +862,9 @@ class LiveTradingService:
             max_open_positions=self.max_open_positions,
             max_daily_loss=self.max_daily_loss,
             paper_mode=self._paper_mode,
+            signal_threshold=self._signal_threshold,
+            min_confidence=self._min_confidence,
+            threshold_source=self._threshold_source,
         )
 
     # ------------------------------------------------------------------

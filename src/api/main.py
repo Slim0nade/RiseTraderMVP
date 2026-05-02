@@ -269,6 +269,7 @@ app.include_router(forecasts.router, prefix="/api")
 app.include_router(performance.router, prefix="/api")
 app.include_router(strategies.router, prefix="/api")
 app.include_router(system.router, prefix="/api")
+app.include_router(system.admin_router, prefix="/api")  # Admin endpoints (thresholds, etc.)
 app.include_router(ml_forecasting.router)  # ML forecasting endpoints
 app.include_router(data_sync.router, prefix="/api")  # Data sync endpoints
 app.include_router(optimizer.router, prefix="/api")  # Strategy optimizer

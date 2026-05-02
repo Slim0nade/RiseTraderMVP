@@ -3,11 +3,14 @@ System Operations API Routes
 """
 import time
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict
 
 import structlog
+import yaml
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import text
 from pydantic import BaseModel
+from sqlalchemy import text
 
 from src.agents.agent_coordinator import AgentCoordinator
 from src.config.network_config import (
@@ -28,6 +31,7 @@ from ..models import (
 
 logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/system", tags=["system"])
+admin_router = APIRouter(prefix="/admin", tags=["admin"])
 
 _system_start_time = time.time()
 
@@ -277,3 +281,77 @@ async def set_network_location(request: NetworkLocationUpdateRequest):
     except Exception as e:
         logger.error("set_network_location_failed", error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Admin — signal threshold inspection
+# ---------------------------------------------------------------------------
+
+_RISK_YAML = Path(__file__).resolve().parent.parent.parent.parent / "config" / "risk.yaml"
+
+# Code-level defaults (must mirror live_trading_service.py)
+_PAPER_THRESHOLD_DEFAULT: float = 0.40
+_PAPER_CONFIDENCE_DEFAULT: float = 0.40
+_LIVE_THRESHOLD_DEFAULT: float = 0.60
+_LIVE_CONFIDENCE_DEFAULT: float = 0.60
+
+
+class ThresholdBlock(BaseModel):
+    signal_threshold: float
+    min_confidence: float
+
+
+class ThresholdsResponse(BaseModel):
+    mode: str            # "paper" or "live"
+    source: str          # "yaml" or "default"
+    paper: ThresholdBlock
+    live: ThresholdBlock
+
+
+@admin_router.get("/thresholds", response_model=ThresholdsResponse)
+async def get_thresholds() -> ThresholdsResponse:
+    """
+    Return the resolved signal thresholds and current trading mode.
+
+    Read-only — no auth required (system is behind paper gate).
+    Source field indicates whether values came from config/risk.yaml or
+    coded defaults (when the YAML is absent or unreadable).
+    """
+    import os
+
+    # Determine mode using same logic as LiveTradingService._resolve_trading_mode()
+    paper_mode = True
+    if os.getenv("PAPER_VALIDATION_MODE", "").strip().lower() == "true":
+        paper_mode = True
+    elif os.getenv("ENABLE_PAPER_TRADING", "").strip().lower() == "true":
+        paper_mode = True
+    elif os.getenv("ENABLE_LIVE_TRADING", "").strip().lower() == "true":
+        paper_mode = False
+
+    paper_st = _PAPER_THRESHOLD_DEFAULT
+    paper_mc = _PAPER_CONFIDENCE_DEFAULT
+    live_st = _LIVE_THRESHOLD_DEFAULT
+    live_mc = _LIVE_CONFIDENCE_DEFAULT
+    source = "default"
+
+    if _RISK_YAML.exists():
+        try:
+            with open(_RISK_YAML, "r") as fh:
+                data: Dict[str, Any] = yaml.safe_load(fh) or {}
+            thr = data.get("thresholds", {})
+            paper_block = thr.get("paper", {})
+            live_block = thr.get("live", {})
+            paper_st = float(paper_block.get("signal_threshold", paper_st))
+            paper_mc = float(paper_block.get("min_confidence", paper_mc))
+            live_st = float(live_block.get("signal_threshold", live_st))
+            live_mc = float(live_block.get("min_confidence", live_mc))
+            source = "yaml"
+        except Exception as exc:
+            logger.warning("thresholds_yaml_load_failed", error=str(exc))
+
+    return ThresholdsResponse(
+        mode="paper" if paper_mode else "live",
+        source=source,
+        paper=ThresholdBlock(signal_threshold=paper_st, min_confidence=paper_mc),
+        live=ThresholdBlock(signal_threshold=live_st, min_confidence=live_mc),
+    )
