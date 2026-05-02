@@ -369,6 +369,16 @@ class BullBearDebateTeam:
             debate_outcome: Complete debate outcome
             symbol: Trading symbol
             analyst_reports: Input analyst reports
+
+        Schema note (migration 015):
+            This method uses the pre-015 DecisionLog constructor directly with
+            old field names (reasoning_trace, output_decision, confidence_score)
+            that do not exist on the current ORM model.  It will raise an
+            AttributeError at runtime and is therefore already silently swallowed
+            by the outer try/except.  Fixing the field mapping is a separate
+            task — migration 015 signal-tag columns (strategy_version etc.) are
+            NOT yet wired here.  Do not wire them until the column names are also
+            corrected (decision_type, decision_data, reasoning).
         """
         try:
             from src.database.models.decision_log import DecisionLog
