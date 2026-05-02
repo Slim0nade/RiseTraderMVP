@@ -9,6 +9,10 @@ Provides structured logging for:
 
 All decisions are logged to the decision_log TimescaleDB hypertable
 for historical analysis and reinforcement learning.
+
+Migration 015 signal tags are accepted as optional keyword arguments on every
+log_* method.  Existing call sites that omit them continue to work; the new
+columns default to 'unknown' (strategy_version) or None (all others).
 """
 
 from datetime import datetime
@@ -37,6 +41,18 @@ class DecisionLogger:
     - Performance analysis
     - Reinforcement learning training data
     - Debugging and troubleshooting
+
+    Migration 015 signal-tag arguments (accepted by all log_* methods):
+        strategy_version (str): Versioned strategy identifier.
+            Defaults to 'unknown'.  Pass the actual name, e.g. 'crude_oil_v3'.
+        model_artifact_hash (Optional[str]): sha256 hex of the model file bytes.
+            Pass None for pure-rules decisions — never synthesise.
+        regime (Optional[str]): Market regime string from RegimeDetectionAgent.
+            Pass None if the agent was not running — never fake it.
+        feature_hash (Optional[str]): sha256 hex of the feature vector JSON.
+            Pass None if no feature vector was built.
+        account_phase (Optional[str]): MT4 broker account phase placeholder.
+            NULL until migration 014 FK wiring is complete.
     """
 
     def __init__(self, session: AsyncSession):
@@ -55,7 +71,13 @@ class DecisionLogger:
         symbol: str,
         timeframe: str = "H1",
         decision_latency_ms: Optional[int] = None,
-        strategy_team_id: Optional[UUID] = None
+        strategy_team_id: Optional[UUID] = None,
+        # Migration 015 signal tags
+        strategy_version: str = "unknown",
+        model_artifact_hash: Optional[str] = None,
+        regime: Optional[str] = None,
+        feature_hash: Optional[str] = None,
+        account_phase: Optional[str] = None,
     ) -> UUID:
         """
         Log Bull/Bear debate decision to database.
@@ -67,6 +89,11 @@ class DecisionLogger:
             timeframe: Chart timeframe
             decision_latency_ms: Time taken for decision (milliseconds)
             strategy_team_id: Optional strategy team ID
+            strategy_version: Versioned strategy identifier (defaults to 'unknown')
+            model_artifact_hash: sha256 of model file bytes; None for rules-based
+            regime: Market regime string from RegimeDetectionAgent; None if not running
+            feature_hash: sha256 of feature vector JSON; None if no features
+            account_phase: MT4 account phase placeholder; None until FK wired
 
         Returns:
             UUID of created decision log entry
@@ -87,7 +114,13 @@ class DecisionLogger:
             decision_data=debate_outcome.model_dump() if hasattr(debate_outcome, 'model_dump') else debate_outcome.__dict__,
             confidence=debate_outcome.consensus_confidence if hasattr(debate_outcome, 'consensus_confidence') else None,
             was_executed=False,  # Debate doesn't execute trades
-            decision_latency_ms=decision_latency_ms
+            decision_latency_ms=decision_latency_ms,
+            # Migration 015 signal tags
+            strategy_version=strategy_version,
+            model_artifact_hash=model_artifact_hash,
+            regime=regime,
+            feature_hash=feature_hash,
+            account_phase=account_phase,
         )
 
         self.session.add(decision_log)
@@ -109,7 +142,13 @@ class DecisionLogger:
         symbol: str,
         timeframe: str = "H1",
         decision_latency_ms: Optional[int] = None,
-        strategy_team_id: Optional[UUID] = None
+        strategy_team_id: Optional[UUID] = None,
+        # Migration 015 signal tags
+        strategy_version: str = "unknown",
+        model_artifact_hash: Optional[str] = None,
+        regime: Optional[str] = None,
+        feature_hash: Optional[str] = None,
+        account_phase: Optional[str] = None,
     ) -> UUID:
         """
         Log Risk Debate Team decision to database.
@@ -121,6 +160,11 @@ class DecisionLogger:
             timeframe: Chart timeframe
             decision_latency_ms: Time taken for decision (milliseconds)
             strategy_team_id: Optional strategy team ID
+            strategy_version: Versioned strategy identifier (defaults to 'unknown')
+            model_artifact_hash: sha256 of model file bytes; None for rules-based
+            regime: Market regime string; None if RegimeDetectionAgent not running
+            feature_hash: sha256 of feature vector JSON; None if no features
+            account_phase: MT4 account phase placeholder; None until FK wired
 
         Returns:
             UUID of created decision log entry
@@ -142,7 +186,13 @@ class DecisionLogger:
             decision_data=risk_debate_outcome.model_dump() if hasattr(risk_debate_outcome, 'model_dump') else risk_debate_outcome.__dict__,
             confidence=None,  # Risk debate has consensus_reached instead
             was_executed=False,  # Risk debate adjusts sizing, doesn't execute
-            decision_latency_ms=decision_latency_ms
+            decision_latency_ms=decision_latency_ms,
+            # Migration 015 signal tags
+            strategy_version=strategy_version,
+            model_artifact_hash=model_artifact_hash,
+            regime=regime,
+            feature_hash=feature_hash,
+            account_phase=account_phase,
         )
 
         self.session.add(decision_log)
@@ -165,7 +215,13 @@ class DecisionLogger:
         symbol: str,
         timeframe: str = "H1",
         decision_latency_ms: Optional[int] = None,
-        strategy_team_id: Optional[UUID] = None
+        strategy_team_id: Optional[UUID] = None,
+        # Migration 015 signal tags
+        strategy_version: str = "unknown",
+        model_artifact_hash: Optional[str] = None,
+        regime: Optional[str] = None,
+        feature_hash: Optional[str] = None,
+        account_phase: Optional[str] = None,
     ) -> UUID:
         """
         Log Fund Manager approval decision to database.
@@ -177,6 +233,11 @@ class DecisionLogger:
             timeframe: Chart timeframe
             decision_latency_ms: Time taken for decision (milliseconds)
             strategy_team_id: Optional strategy team ID
+            strategy_version: Versioned strategy identifier (defaults to 'unknown')
+            model_artifact_hash: sha256 of model file bytes; None for rules-based
+            regime: Market regime string; None if not running
+            feature_hash: sha256 of feature vector JSON; None if no features
+            account_phase: MT4 account phase placeholder; None until FK wired
 
         Returns:
             UUID of created decision log entry
@@ -199,7 +260,13 @@ class DecisionLogger:
             decision_data=fund_manager_approval.model_dump() if hasattr(fund_manager_approval, 'model_dump') else fund_manager_approval.__dict__,
             confidence=fund_manager_approval.confidence,
             was_executed=fund_manager_approval.decision.value == "APPROVE",  # Only approved trades execute
-            decision_latency_ms=decision_latency_ms
+            decision_latency_ms=decision_latency_ms,
+            # Migration 015 signal tags
+            strategy_version=strategy_version,
+            model_artifact_hash=model_artifact_hash,
+            regime=regime,
+            feature_hash=feature_hash,
+            account_phase=account_phase,
         )
 
         self.session.add(decision_log)
@@ -222,7 +289,13 @@ class DecisionLogger:
         symbol: str,
         timeframe: str = "H1",
         decision_latency_ms: Optional[int] = None,
-        strategy_team_id: Optional[UUID] = None
+        strategy_team_id: Optional[UUID] = None,
+        # Migration 015 signal tags
+        strategy_version: str = "unknown",
+        model_artifact_hash: Optional[str] = None,
+        regime: Optional[str] = None,
+        feature_hash: Optional[str] = None,
+        account_phase: Optional[str] = None,
     ) -> UUID:
         """
         Log TradeIntent decision to database.
@@ -234,6 +307,11 @@ class DecisionLogger:
             timeframe: Chart timeframe
             decision_latency_ms: Time taken for decision (milliseconds)
             strategy_team_id: Optional strategy team ID
+            strategy_version: Versioned strategy identifier (defaults to 'unknown')
+            model_artifact_hash: sha256 of model file bytes; None for rules-based
+            regime: Market regime string; None if not running
+            feature_hash: sha256 of feature vector JSON; None if no features
+            account_phase: MT4 account phase placeholder; None until FK wired
 
         Returns:
             UUID of created decision log entry
@@ -254,7 +332,13 @@ class DecisionLogger:
             decision_data=trade_intent.model_dump() if hasattr(trade_intent, 'model_dump') else trade_intent.__dict__,
             confidence=trade_intent.conviction if hasattr(trade_intent, 'conviction') else None,
             was_executed=False,  # Intent doesn't execute, only approves
-            decision_latency_ms=decision_latency_ms
+            decision_latency_ms=decision_latency_ms,
+            # Migration 015 signal tags
+            strategy_version=strategy_version,
+            model_artifact_hash=model_artifact_hash,
+            regime=regime,
+            feature_hash=feature_hash,
+            account_phase=account_phase,
         )
 
         self.session.add(decision_log)
@@ -276,7 +360,13 @@ class DecisionLogger:
         symbol: str,
         timeframe: str = "H1",
         decision_latency_ms: Optional[int] = None,
-        strategy_team_id: Optional[UUID] = None
+        strategy_team_id: Optional[UUID] = None,
+        # Migration 015 signal tags
+        strategy_version: str = "unknown",
+        model_artifact_hash: Optional[str] = None,
+        regime: Optional[str] = None,
+        feature_hash: Optional[str] = None,
+        account_phase: Optional[str] = None,
     ) -> UUID:
         """
         Log Position Sizing decision to database.
@@ -288,6 +378,11 @@ class DecisionLogger:
             timeframe: Chart timeframe
             decision_latency_ms: Time taken for decision (milliseconds)
             strategy_team_id: Optional strategy team ID
+            strategy_version: Versioned strategy identifier (defaults to 'unknown')
+            model_artifact_hash: sha256 of model file bytes; None for rules-based
+            regime: Market regime string; None if not running
+            feature_hash: sha256 of feature vector JSON; None if no features
+            account_phase: MT4 account phase placeholder; None until FK wired
 
         Returns:
             UUID of created decision log entry
@@ -309,7 +404,13 @@ class DecisionLogger:
             decision_data=position_size.model_dump() if hasattr(position_size, 'model_dump') else position_size.__dict__,
             confidence=position_size.confidence if hasattr(position_size, 'confidence') else None,
             was_executed=False,
-            decision_latency_ms=decision_latency_ms
+            decision_latency_ms=decision_latency_ms,
+            # Migration 015 signal tags
+            strategy_version=strategy_version,
+            model_artifact_hash=model_artifact_hash,
+            regime=regime,
+            feature_hash=feature_hash,
+            account_phase=account_phase,
         )
 
         self.session.add(decision_log)

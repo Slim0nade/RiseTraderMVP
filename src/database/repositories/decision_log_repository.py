@@ -302,17 +302,69 @@ class DecisionLogRepository(BaseRepository[DecisionLog]):
             for row in result.all()
         ]
 
-    async def create(self, **kwargs) -> DecisionLog:
+    async def create(
+        self,
+        *,
+        strategy_version: str = "unknown",
+        model_artifact_hash: Optional[str] = None,
+        regime: Optional[str] = None,
+        feature_hash: Optional[str] = None,
+        account_phase: Optional[str] = None,
+        **kwargs,
+    ) -> DecisionLog:
         """
         Create a new decision log entry.
 
+        All existing call sites that omit the new tag arguments continue to work
+        — the defaults keep them backward-compatible.
+
         Args:
-            **kwargs: DecisionLog fields
+            strategy_version: Versioned strategy name that generated this signal.
+                Defaults to 'unknown' (NOT 'legacy'; 'legacy' is reserved for
+                the migration 015 backfill of pre-existing rows).
+                Expected values: e.g. 'crude_oil_v3', 'value_area@1.2.0',
+                'ma_crossover', 'ml_reversal'.
+                Range: any non-empty string up to 100 chars.
+            model_artifact_hash: SHA-256 hex (64 chars) of the model artifact
+                file bytes when an ML model was used.  Pass None for
+                pure-rules signals — never synthesise a value.
+                Range: None or 64-char lowercase hex string.
+            regime: Market regime string from RegimeDetectionAgent at the
+                moment the signal was generated.  Pass None if the regime
+                agent was not running or raised — never fake it.
+                Expected values: 'high_volatility', 'trending_up',
+                'trending_down', 'ranging', 'low_volatility', 'unknown'.
+                Range: None or string up to 50 chars.
+            feature_hash: SHA-256 hex (64 chars) of
+                json.dumps(feature_vector, sort_keys=True, default=str).
+                Pass None when no feature vector was built for this signal.
+                Range: None or 64-char lowercase hex string.
+            account_phase: MT4 broker account phase identifier
+                (e.g. 'Phase_4_live').  NULL until migration 014 FK wiring
+                is complete.
+                Range: None or string up to 50 chars.
+            **kwargs: Remaining DecisionLog fields (agent_id, agent_type,
+                decided_at, decision_type, decision_data, input_data, etc.)
 
         Returns:
-            Created decision log
+            Persisted DecisionLog instance with all fields populated.
+
+        Edge cases:
+            - model_artifact_hash / feature_hash longer than 64 chars: the DB
+              column is VARCHAR(64) and Postgres will raise DataError at commit
+              time.  Callers must use compute_artifact_hash() / compute_feature_hash()
+              from src.utils.signal_tagging which always return 64-char strings.
+            - regime passed as an Enum: call .value before passing so the DB
+              receives a plain string, not 'MarketRegime.high_volatility'.
         """
-        decision_log = DecisionLog(**kwargs)
+        decision_log = DecisionLog(
+            strategy_version=strategy_version,
+            model_artifact_hash=model_artifact_hash,
+            regime=regime,
+            feature_hash=feature_hash,
+            account_phase=account_phase,
+            **kwargs,
+        )
         self.session.add(decision_log)
         await self.session.commit()
         await self.session.refresh(decision_log)

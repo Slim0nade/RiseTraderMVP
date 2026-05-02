@@ -309,6 +309,12 @@ class BaseAgent(ABC):
         input_data: Dict[str, Any],
         execution_time_ms: float,
         correlation_id: Optional[str] = None,
+        # Migration 015 signal tags — all optional, backwards-compatible
+        strategy_version: str = "unknown",
+        model_artifact_hash: Optional[str] = None,
+        regime: Optional[str] = None,
+        feature_hash: Optional[str] = None,
+        account_phase: Optional[str] = None,
     ):
         """
         Log decision to decision_log table.
@@ -319,6 +325,17 @@ class BaseAgent(ABC):
             input_data: Input context for the decision
             execution_time_ms: Execution time in milliseconds
             correlation_id: Optional correlation ID for multi-agent coordination
+            strategy_version: Versioned strategy identifier (migration 015).
+                Defaults to 'unknown'.  Subclasses should pass the actual
+                strategy name (e.g. 'crude_oil_v3').
+            model_artifact_hash: sha256 of model artifact bytes (migration 015).
+                Pass None for rules-based agents — never synthesise.
+            regime: Market regime string from RegimeDetectionAgent (migration 015).
+                Pass None if not available — never fake it.
+            feature_hash: sha256 of feature vector JSON (migration 015).
+                Pass None if no feature vector was built.
+            account_phase: MT4 account phase placeholder (migration 015).
+                NULL until FK wiring complete.
         """
         try:
             await self._decision_log_repo.create(
@@ -331,6 +348,12 @@ class BaseAgent(ABC):
                 input_data=input_data,
                 decision_latency_ms=int(execution_time_ms),
                 model_version=self.config.llm_model,
+                # Migration 015 signal tags
+                strategy_version=strategy_version,
+                model_artifact_hash=model_artifact_hash,
+                regime=regime,
+                feature_hash=feature_hash,
+                account_phase=account_phase,
             )
 
             logger.debug(

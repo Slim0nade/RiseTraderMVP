@@ -1284,6 +1284,28 @@ class LiveTradingService:
             ),
         )
 
+        # ── Decision-log DB write (migration 015 signal tags) ──────────────
+        # This is the canonical DB emit site for live-trading decisions.
+        # Tags are derived from context already in scope:
+        #   strategy_version  — active strategy names joined (e.g. "momentum+ml_reversal")
+        #   regime            — from RegimeClassifier.classify() above; NULL on failure
+        #   model_artifact_hash — sha256 of the XGBoost model file if ml_reversal fired
+        #   feature_hash      — None here; feature vector lives inside _ml_reversal_strategy
+        #                       and is not surfaced to this scope.  Wired in the ML layer.
+        #   account_phase     — NULL; awaiting migration 014 FK finalisation
+        await self._write_decision_log(
+            symbol=symbol,
+            action=action,
+            score=score,
+            confidence=confidence,
+            regime=regime,
+            strategy_config=strategy_config,
+            position_size_lots=position_size_lots,
+            stop_loss=stop_loss,
+            take_profit=take_profit,
+            atr=atr,
+        )
+
         # 7. Execute or dry-run (paper gate already checked at step 5)
         await self._execute_or_dryrun(
             symbol=symbol,
@@ -1558,6 +1580,134 @@ class LiveTradingService:
                 need=e.need,
             )
             return None
+
+    # ------------------------------------------------------------------
+    # Decision-log DB write (migration 015 signal tags)
+    # ------------------------------------------------------------------
+
+    async def _write_decision_log(
+        self,
+        symbol: str,
+        action: str,
+        score: float,
+        confidence: float,
+        regime: Any,
+        strategy_config: Optional[Dict],
+        position_size_lots: float,
+        stop_loss: float,
+        take_profit: float,
+        atr: float,
+    ) -> None:
+        """
+        Write a tagged decision_log row for a live-trading signal that passed
+        all filters and is about to be executed (or dry-run).
+
+        This is the only DB emit site for live-trading signals.  It runs inside
+        a try/except so that a DB failure never blocks the actual trade.
+
+        Signal tags (migration 015):
+            strategy_version  — joined list of active strategy names from
+                                strategy_config, e.g. "ml_reversal+momentum"
+            model_artifact_hash — sha256 of models/reversal_classifier/<sym>/model.json
+                                  when the ML model exists; None otherwise
+            regime            — regime.value if regime has .value; None on UNKNOWN
+                                Never faked — if regime_classifier raised,
+                                regime is already MarketRegime.UNKNOWN and we
+                                store that string so it is distinguishable from NULL
+            feature_hash      — None at this scope; the feature vector is built inside
+                                _ml_reversal_strategy and not returned.  A future
+                                refactor can plumb it through _generate_signal's return.
+            account_phase     — None; placeholder, FK wiring deferred
+
+        Args:
+            symbol: Trading symbol.
+            action: "BUY" or "SELL".
+            score: Combined weighted signal score in [-1.0, 1.0].
+            confidence: Blended confidence in [0.0, 1.0].
+            regime: MarketRegime enum from RegimeClassifier (may be UNKNOWN).
+            strategy_config: Dict from StrategyRouter.get_strategy_config(); may be None.
+            position_size_lots: Approved position size in lots.
+            stop_loss: Computed stop-loss price.
+            take_profit: Computed take-profit price.
+            atr: ATR(14) value used for stop/TP computation.
+        """
+        try:
+            from uuid import uuid4 as _uuid4
+            from src.api.dependencies import get_db_context
+            from src.database.repositories.decision_log_repository import DecisionLogRepository
+            from src.utils.signal_tagging import compute_artifact_hash
+
+            # ── strategy_version: active strategy names from strategy_config ──
+            if strategy_config is not None:
+                active_strategies = sorted(strategy_config.get("strategies", {}).keys())
+                strat_version = "+".join(active_strategies) if active_strategies else "unknown"
+            else:
+                strat_version = "unknown"
+
+            # ── model_artifact_hash: sha256 of the XGBoost model file ────────
+            model_file = MODELS_DIR / symbol / "model.json"
+            artifact_hash = compute_artifact_hash(model_file)
+
+            # ── regime: real value from RegimeClassifier; never faked ─────────
+            # MarketRegime.UNKNOWN is kept as a string so analysts can distinguish
+            # "classifier ran but returned UNKNOWN" from NULL ("classifier not running").
+            regime_str: Optional[str] = (
+                regime.value if hasattr(regime, "value") else str(regime)
+            ) if regime is not None else None
+
+            async with get_db_context() as db:
+                repo = DecisionLogRepository(db)
+                await repo.create(
+                    # Required core fields
+                    agent_id=_uuid4(),  # No agent-UUID in live trading loop; use ephemeral
+                    agent_type="live_trading_service",
+                    decided_at=datetime.now(timezone.utc),
+                    decision_type="trade_intent",
+                    decision_data={
+                        "action": action,
+                        "score": round(score, 6),
+                        "confidence": round(confidence, 6),
+                        "position_size_lots": position_size_lots,
+                        "stop_loss": round(stop_loss, 5),
+                        "take_profit": round(take_profit, 5),
+                        "atr": round(atr, 5),
+                        "dry_run": self.dry_run,
+                    },
+                    input_data={
+                        "symbol": symbol,
+                        "regime": regime_str,
+                        "strategy_config_strategies": (
+                            list(strategy_config.get("strategies", {}).keys())
+                            if strategy_config else []
+                        ),
+                        "signal_threshold": (
+                            strategy_config.get("signal_threshold", self._signal_threshold)
+                            if strategy_config else self._signal_threshold
+                        ),
+                    },
+                    was_executed=not self.dry_run,
+                    confidence=round(confidence, 6),
+                    symbol=symbol,
+                    timeframe="H1",
+                    # Migration 015 signal tags
+                    strategy_version=strat_version,
+                    model_artifact_hash=artifact_hash,
+                    regime=regime_str,
+                    feature_hash=None,   # Not surfaced at this scope; see docstring
+                    account_phase=None,  # Placeholder; FK wiring deferred
+                )
+
+            logger.debug(
+                "decision_log_written",
+                symbol=symbol,
+                strategy_version=strat_version,
+                regime=regime_str,
+                has_artifact_hash=artifact_hash is not None,
+            )
+
+        except Exception as exc:
+            # Decision-log failure must never block the actual trade execution
+            logger.warning("decision_log_write_failed", symbol=symbol, error=str(exc))
 
     # ------------------------------------------------------------------
     # Risk validation
